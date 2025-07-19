@@ -22,6 +22,7 @@
     "ink-text-input": "^6.0.0",
     "inquirer-tree-selector": "github:Token-Ring/inquirer-tree-selector#main",
     "next-auth": "^4.24.11",
+    "ora": "^8.2.0",
     "react-syntax-highlighter": "^5.8.0",
     "vite": "6.3.5"
   },
