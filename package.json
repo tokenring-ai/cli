@@ -32,8 +32,8 @@
 	"exports": {
 		".": "./index.js"
 	},
-	"license": "UNLICENSED",
-	"private": true,
+
+	"license": "MIT",
 	"scripts": {
 		"test": "vitest run",
 		"eslint": "eslint --fix ./"
