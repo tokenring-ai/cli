@@ -2,9 +2,19 @@ import ChatService from "@token-ring/chat/ChatService";
 import clipboardy from "clipboardy";
 import { ChatMessageStorage } from "@token-ring/ai-client";
 
+/**
+ * Command description for help display
+ * @type {string}
+ */
 export const description =
 	"/copy - Copy the last assistant message to the clipboard.";
 
+/**
+ * Executes the copy command to copy the last assistant message to clipboard
+ * @param {string} remainder - Any remaining text after the command (unused)
+ * @param {import('@token-ring/registry').Registry} registry - The service registry
+ * @returns {Promise<void>}
+ */
 export async function execute(remainder, registry) {
 	const chatService = registry.requireFirstServiceByType(ChatService);
 	const chatMessageStorage =
@@ -33,6 +43,10 @@ export async function execute(remainder, registry) {
 	}
 }
 
+/**
+ * Returns help information for the copy command
+ * @returns {Array<string>} Help text for the command
+ */
 export function help() {
 	return ["/copy - Copy the last assistant message to the clipboard"];
 }

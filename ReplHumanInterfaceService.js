@@ -1,6 +1,15 @@
 import { HumanInterfaceService } from "@token-ring/chat";
 import { treeSelector } from "inquirer-tree-selector";
+import inquirer from "inquirer";
 
+/**
+ * @typedef {import('@token-ring/chat').HumanInterfaceService} HumanInterfaceService
+ */
+
+/**
+ * REPL implementation of the HumanInterfaceService for terminal-based interactions
+ * @extends {HumanInterfaceService}
+ */
 export default class ReplHumanInterfaceService extends HumanInterfaceService {
 	/**
 	 * The name of the service
@@ -17,7 +26,7 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
 
 	/**
 	 * Asks the user to select an item from a list using a REPL interface.
-	 * @param {object} options - The options for the selection.
+	 * @param {Object} options - The options for the selection.
 	 * @param {string} options.title - The title of the selection prompt.
 	 * @param {Array<string>} options.items - The items to choose from.
 	 * @returns {Promise<string>} The selected item.
@@ -29,7 +38,7 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
 				name: "selection",
 				message: title,
 				choices: items,
-				loop: false, // Prevents looping through choices when reaching the end
+				loop: false,
 			},
 		]);
 
@@ -47,7 +56,7 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
 				type: "editor",
 				name: "answer",
 				message: question,
-				waitUserInput: true, // Wait for user to save and exit editor
+				waitUserInput: true,
 			},
 		]);
 		return answer;
@@ -55,8 +64,8 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
 
 	/**
 	 * Asks the user to select multiple items from a list using a REPL interface.
-	 * @param {object} options - The options for the selection.
-	 * @param {string} options.title - The title of the selection prompt (used as message if no explicit message).
+	 * @param {Object} options - The options for the selection.
+	 * @param {string} options.title - The title of the selection prompt.
 	 * @param {Array<string>} options.items - The items to choose from.
 	 * @param {string} [options.message] - An optional message to display above the items.
 	 * @returns {Promise<Array<string>>} A promise that resolves to an array of selected items.
@@ -68,8 +77,7 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
 				name: "selections",
 				message: message || title,
 				choices: items,
-				loop: false, // Standard for checkbox prompts
-				// `pageSize` could be added if lists are very long
+				loop: false,
 			},
 		]);
 
@@ -78,9 +86,9 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
 
 	/**
 	 * Asks the user to select items from a tree structure using a REPL interface.
-	 * @param {object} options - The options for the tree selection.
+	 * @param {Object} options - The options for the tree selection.
 	 * @param {string} [options.message] - The message to display to the user.
-	 * @param {Function|Array} options.tree - Tree data structure or function that returns tree data.
+	 * @param {Function|Array<Object>} options.tree - Tree data structure or function that returns tree data.
 	 * @param {boolean} [options.multiple=false] - Whether to allow multiple selections.
 	 * @param {boolean} [options.allowCancel=true] - Whether to allow canceling the selection.
 	 * @param {string|Array<string>} [options.initialSelection] - Initial selection of items.

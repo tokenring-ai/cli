@@ -3,23 +3,76 @@ import commandPrompt from "@token-ring/inquirer-command-prompt";
 import ChatService from "@token-ring/chat/ChatService";
 import { runCommand } from "@token-ring/chat/runCommand";
 import REPLOutputFormatter from "./utility/REPLOutputFormatter.js";
-
 import { Service } from "@token-ring/registry";
 
+/**
+ * @typedef {import('@token-ring/registry').Registry} Registry
+ * @typedef {import('@token-ring/chat/ChatService').default} ChatService
+ */
+
+/**
+ * REPL (Read-Eval-Print Loop) service for interactive command-line interface
+ * @extends {Service}
+ */
 export default class REPLService extends Service {
+	/**
+	 * Service name identifier
+	 * @type {string}
+	 */
 	name = "REPLService";
+
+	/**
+	 * Service description
+	 * @type {string}
+	 */
 	description = "Provides REPL functionality";
 
+	/**
+	 * Output formatter for REPL display
+	 * @type {REPLOutputFormatter}
+	 */
 	out = new REPLOutputFormatter();
+
+	/**
+	 * Flag indicating if a prompt is currently active
+	 * @type {boolean}
+	 */
 	isPromptActive = false;
+
+	/**
+	 * Flag to control REPL exit
+	 * @type {boolean}
+	 */
 	shouldExit = false;
+
+	/**
+	 * Accumulated input buffer
+	 * @type {string}
+	 */
 	inputSoFar = "";
+
+	/**
+	 * Abort controller for current operation
+	 * @type {AbortController|null}
+	 */
 	abortController = null;
 
-	// --- New properties ---
+	/**
+	 * Queue for pending prompts
+	 * @type {Array<string>}
+	 */
 	promptQueue = [];
+
+	/**
+	 * Abort controller for main input
+	 * @type {AbortController}
+	 */
 	mainInputAbortController = new AbortController();
-	// Define available commands for autocompletion
+
+	/**
+	 * Available commands for autocompletion
+	 * @type {Array<string>}
+	 */
 	availableCommands = [
 		"/help",
 		"/quit",
@@ -30,13 +83,38 @@ export default class REPLService extends Service {
 		"/model",
 		"/instructions",
 	];
-	// --- End new properties ---
 
+	/**
+	 * Flag for handling SIGINT double-press
+	 * @type {boolean}
+	 * @private
+	 */
+	sigintPending = false;
+
+	/**
+	 * Unsubscribe function for chat service
+	 * @type {Function|null}
+	 * @private
+	 */
+	unsubscribe = null;
+
+	/**
+	 * Stops the REPL service
+	 * @param {Registry} registry - The service registry
+	 * @returns {Promise<void>}
+	 */
 	async stop(registry) {
 		this.out.systemLine("Shutting down REPL.");
-		this.unsubscribe();
+		if (this.unsubscribe) {
+			this.unsubscribe();
+		}
 	}
 
+	/**
+	 * Starts the REPL service
+	 * @param {Registry} registry - The service registry
+	 * @returns {Promise<void>}
+	 */
 	async start(registry) {
 		const chatService = registry.getFirstServiceByType(ChatService);
 
@@ -54,13 +132,6 @@ export default class REPLService extends Service {
 			const commandNames = Object.keys(allCommandsObject).map(
 				(name) => `/${name}`,
 			);
-			// Let's merge with any pre-existing defaults or allow updateCommands to handle it.
-			// For now, let's ensure some core commands are always there if not in registry,
-			// or rely on updateCommands to build the full list.
-			// Using updateCommands will replace, so ensure it has the full desired list.
-			// A safer approach might be to add to the existing hardcoded ones,
-			// or ensure all commands (like /quit) are in the registry.
-			// Assuming registry provides a comprehensive list including /help, /quit etc.
 			this.updateCommands(commandNames);
 			this.out.systemLine(
 				`Loaded ${commandNames.length} commands for autocompletion.`,
@@ -71,17 +142,25 @@ export default class REPLService extends Service {
 			);
 		}
 
-		// --- Add global SIGINT handler ---
+		// Add global SIGINT handler
 		process.on("SIGINT", () => this.handleGlobalSIGINT(chatService));
 
-		this.mainLoop(chatService, registry);
+		await this.mainLoop(chatService, registry);
 	}
+
+	/**
+	 * Main REPL loop
+	 * @param {ChatService} chatService - The chat service instance
+	 * @param {Registry} registry - The service registry
+	 * @returns {Promise<void>}
+	 * @private
+	 */
 	async mainLoop(chatService, registry) {
 		while (true) {
 			try {
 				this.out.printHorizontalLine();
 
-				/* handle any queued prompts */
+				// Handle any queued prompts
 				while (this.promptQueue.length > 0) {
 					const prompt = this.promptQueue.shift();
 					await this.handleInput(prompt, chatService, registry);
@@ -116,11 +195,8 @@ export default class REPLService extends Service {
 				this.mainInputAbortController = null;
 
 				if (wasMainInputAborted) {
-					// Check if this abort was triggered by injectPrompt (i.e., queue is not empty)
 					if (this.promptQueue.length === 0) {
-						// AbortError received, but the queue was empty. This means it was a user Ctrl+C on the main prompt.
 						this.out.warningLine("[Input cancelled by user]");
-						// Check if an AI operation was ongoing (not related to the prompt itself but a previous command)
 						const ongoingOpAbortController = chatService.getAbortController();
 						if (
 							ongoingOpAbortController &&
@@ -132,10 +208,8 @@ export default class REPLService extends Service {
 							ongoingOpAbortController.abort();
 						}
 					}
-					// If queue has items, continue the loop to process them
 					continue;
 				} else {
-					// Handle other types of errors not related to our AbortController
 					this.out.errorLine(
 						"An unexpected error occurred with the main input prompt:",
 						e,
@@ -155,6 +229,14 @@ export default class REPLService extends Service {
 		process.exit(0);
 	}
 
+	/**
+	 * Handles user input processing
+	 * @param {string} line - The user input line
+	 * @param {ChatService} chatService - The chat service instance
+	 * @param {Registry} registry - The service registry
+	 * @returns {Promise<void>}
+	 * @private
+	 */
 	async handleInput(line, chatService, registry) {
 		this.inputSoFar = "";
 		let processedInput = (line ?? "").trim();
@@ -184,6 +266,12 @@ export default class REPLService extends Service {
 		chatService.clearAbortController();
 	}
 
+	/**
+	 * Handles global SIGINT (Ctrl+C) signals
+	 * @param {ChatService} chatService - The chat service instance
+	 * @returns {void}
+	 * @private
+	 */
 	handleGlobalSIGINT(chatService) {
 		if (this.sigintPending) {
 			this.out.systemLine("\nSIGINT received twice. Exiting REPL.");
@@ -195,7 +283,6 @@ export default class REPLService extends Service {
 		setTimeout(() => (this.sigintPending = false), 2000);
 
 		if (this.mainInputAbortController) {
-			// Cancel the prompt
 			this.out.warningLine("\n[Cancelling input operation]");
 			this.mainInputAbortController.abort();
 			return;
@@ -212,6 +299,11 @@ export default class REPLService extends Service {
 		this.out.systemLine("\n(Press Ctrl-C again to exit)");
 	}
 
+	/**
+	 * Injects a prompt into the processing queue
+	 * @param {string} prompt - The prompt to inject
+	 * @returns {Promise<void>}
+	 */
 	async injectPrompt(prompt) {
 		this.promptQueue.push(prompt);
 
@@ -223,12 +315,20 @@ export default class REPLService extends Service {
 		}
 	}
 
-	// Method to dynamically update available commands
+	/**
+	 * Updates the list of available commands for autocompletion
+	 * @param {Array<string>} newCommands - Array of command strings
+	 * @returns {void}
+	 */
 	updateCommands(newCommands) {
 		this.availableCommands = [...newCommands];
 	}
 
-	// Method to add a single command
+	/**
+	 * Adds a single command to the available commands list
+	 * @param {string} command - The command to add
+	 * @returns {void}
+	 */
 	addCommand(command) {
 		if (!this.availableCommands.includes(command)) {
 			this.availableCommands.push(command);
