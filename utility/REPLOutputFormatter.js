@@ -66,6 +66,20 @@ export default class REPLOutputFormatter {
 		}
 	}
 
+ infoLine(...msgs) {
+		if (this.spinner) {
+			this.spinner.stop();
+		}
+		if (!this.lastWriteHadNewline) {
+			console.log();
+		}
+		console.log(chalk.green(formatLogMessages(msgs)));
+		this.lastWriteHadNewline = true;
+  if (this.spinner) {
+   this.spinner.start();
+  }
+ }
+
 	printHorizontalLine() {
 		if (this.spinner) {
 			this.spinner.stop();
