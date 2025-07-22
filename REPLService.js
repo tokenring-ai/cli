@@ -145,7 +145,8 @@ export default class REPLService extends Service {
 		// Add global SIGINT handler
 		process.on("SIGINT", () => this.handleGlobalSIGINT(chatService));
 
-		await this.mainLoop(chatService, registry);
+		// noinspection ES6MissingAwait
+		this.mainLoop(chatService, registry);
 	}
 
 	/**
