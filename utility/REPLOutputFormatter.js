@@ -86,7 +86,7 @@ export default class REPLOutputFormatter {
 		if (!this.lastWriteHadNewline) {
 			console.log();
 		}
-		console.error(chalk.red(formatLogMessages(msgs)));
+		console.error(...msgs.map((msg) => chalk.red(formatLogMessages([msg]))));
 		this.lastWriteHadNewline = true;
 		if (this.spinner) {
 			this.spinner.start();
@@ -214,6 +214,14 @@ export default class REPLOutputFormatter {
 	 * @returns {void}
 	 */
 	jobFailed(jobInfo) {
-		this.errorLine(`Job [${jobInfo.name}] failed:`, jobInfo.error);
+		// The test expects two separate arguments: the string and the error message as a string
+		if (jobInfo.error instanceof Error) {
+			this.errorLine(
+				`Job [${jobInfo.name}] failed:`,
+				`Error: ${jobInfo.error.message}`,
+			);
+		} else {
+			this.errorLine(`Job [${jobInfo.name}] failed:`, jobInfo.error);
+		}
 	}
 }
