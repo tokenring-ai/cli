@@ -1,9 +1,9 @@
-import chalk from "chalk";
-import commandPrompt from "@token-ring/inquirer-command-prompt";
 import ChatService from "@token-ring/chat/ChatService";
 import { runCommand } from "@token-ring/chat/runCommand";
-import REPLOutputFormatter from "./utility/REPLOutputFormatter.js";
+import commandPrompt from "@token-ring/inquirer-command-prompt";
 import { Service } from "@token-ring/registry";
+import chalk from "chalk";
+import REPLOutputFormatter from "./utility/REPLOutputFormatter.js";
 
 /**
  * @typedef {import('@token-ring/registry').Registry} Registry

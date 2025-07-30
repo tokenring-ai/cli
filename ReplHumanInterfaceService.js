@@ -1,8 +1,8 @@
+import { confirm } from "@inquirer/prompts";
 import { HumanInterfaceService } from "@token-ring/chat";
 import { treeSelector } from "@token-ring/inquirer-tree-selector";
-import { confirm } from "@inquirer/prompts";
-import open from "open";
 import inquirer from "inquirer";
+import open from "open";
 
 /**
  * @typedef {import('@token-ring/chat').HumanInterfaceService} HumanInterfaceService

@@ -1,8 +1,8 @@
+import os from "os";
+import path from "path";
 import ChatService from "@token-ring/chat/ChatService";
 import { execa } from "execa";
-import os from "os";
 import fs from "fs/promises";
-import path from "path";
 
 /**
  * Gets the default editor based on environment variables and platform

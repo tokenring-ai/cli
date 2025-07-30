@@ -3,7 +3,7 @@
  * @module @token-ring/cli/test/integration
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import REPLService from "../REPLService.js";
 import ReplHumanInterfaceService from "../ReplHumanInterfaceService.js";
 import REPLOutputFormatter from "../utility/REPLOutputFormatter.js";

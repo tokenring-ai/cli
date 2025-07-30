@@ -1,5 +1,5 @@
-import chalk from "chalk";
 import formatLogMessages from "@token-ring/utility/formatLogMessage";
+import chalk from "chalk";
 import ora from "ora";
 
 /**

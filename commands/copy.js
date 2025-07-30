@@ -1,6 +1,6 @@
+import { ChatMessageStorage } from "@token-ring/ai-client";
 import ChatService from "@token-ring/chat/ChatService";
 import clipboardy from "clipboardy";
-import { ChatMessageStorage } from "@token-ring/ai-client";
 
 /**
  * Command description for help display
