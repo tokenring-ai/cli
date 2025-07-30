@@ -169,7 +169,7 @@ vi.mock("@token-ring/ai-client", () => ({
 describe("CLI Package Integration Tests", () => {
 	describe("REPLService", () => {
 		let replService;
-		let mockRegistry;
+		let _mockRegistry;
 		let mockChatService;
 
 		beforeEach(() => {
@@ -187,7 +187,7 @@ describe("CLI Package Integration Tests", () => {
 					})),
 				},
 			};
-			mockRegistry = {
+			_mockRegistry = {
 				getFirstServiceByType: vi.fn((type) => {
 					if (type.name === "ChatService") return mockChatService;
 					if (type.name === "REPLService") return replService;
@@ -333,7 +333,7 @@ describe("CLI Package Integration Tests", () => {
 
 		it("should stop waiting state correctly", () => {
 			formatter.waiting("Loading...");
-			const spinner = formatter.spinner;
+			const _spinner = formatter.spinner;
 			formatter.doneWaiting();
 			expect(formatter.spinner).toBe(null);
 		});

@@ -4,22 +4,21 @@
  */
 
 /**
- * REPL Human Interface Service for terminal-based user interactions
- * @type {typeof import('./ReplHumanInterfaceService.js').default}
+ * Chat commands available in the REPL interface
+ * @namespace chatCommands
  */
-export { default as ReplHumanInterfaceService } from "./ReplHumanInterfaceService.js";
+export * as chatCommands from "./chatCommands.js";
 
 /**
  * REPL Service for interactive command-line interface
  * @type {typeof import('./REPLService.js').default}
  */
 export { default as REPLService } from "./REPLService.js";
-
 /**
- * Chat commands available in the REPL interface
- * @namespace chatCommands
+ * REPL Human Interface Service for terminal-based user interactions
+ * @type {typeof import('./ReplHumanInterfaceService.js').default}
  */
-export * as chatCommands from "./chatCommands.js";
+export { default as ReplHumanInterfaceService } from "./ReplHumanInterfaceService.js";
 
 /**
  * Package name

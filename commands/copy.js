@@ -15,7 +15,7 @@ export const description =
  * @param {import('@token-ring/registry').Registry} registry - The service registry
  * @returns {Promise<void>}
  */
-export async function execute(remainder, registry) {
+export async function execute(_remainder, registry) {
 	const chatService = registry.requireFirstServiceByType(ChatService);
 	const chatMessageStorage =
 		registry.requireFirstServiceByType(ChatMessageStorage);
@@ -37,9 +37,7 @@ export async function execute(remainder, registry) {
 		await clipboardy.write(textToCopy);
 		chatService.systemLine("Last assistant message copied to clipboard.");
 	} catch (err) {
-		chatService.errorLine(
-			"Failed to copy to clipboard: " + (err.message || err),
-		);
+		chatService.errorLine(`Failed to copy to clipboard: ${err.message || err}`);
 	}
 }
 

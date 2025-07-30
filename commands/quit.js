@@ -12,7 +12,7 @@ export const description = "/quit - Exit the application.";
  * @param {import('@token-ring/registry').Registry} registry - The service registry
  * @returns {void}
  */
-export function execute(args, registry) {
+export function execute(_args, registry) {
 	const replService = registry.getFirstServiceByType(REPLService);
 	if (replService) {
 		replService.shouldExit = true;

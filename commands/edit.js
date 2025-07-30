@@ -1,8 +1,8 @@
-import os from "os";
-import path from "path";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import ChatService from "@token-ring/chat/ChatService";
 import { execa } from "execa";
-import fs from "fs/promises";
 
 /**
  * Gets the default editor based on environment variables and platform
@@ -47,7 +47,7 @@ export async function execute(remainder, registry) {
 		// Clean up the temporary file in case of editor error
 		try {
 			await fs.unlink(tmpFile);
-		} catch (e) {
+		} catch (_e) {
 			/* ignore cleanup error */
 		}
 		return; // Stop further execution
@@ -63,7 +63,7 @@ export async function execute(remainder, registry) {
 	// Clean up the temporary file
 	try {
 		await fs.unlink(tmpFile);
-	} catch (e) {
+	} catch (_e) {
 		/* ignore cleanup error */
 	}
 }
@@ -73,7 +73,7 @@ export async function execute(remainder, registry) {
  * @param {Object} chatService - The chat service instance (unused)
  * @returns {Array<string>} Help text for the command
  */
-export function help(chatService) {
+export function help(_chatService) {
 	return [
 		"/edit - Open your editor to write a prompt.",
 		"  - With no arguments: Opens editor with blank prompt",

@@ -103,7 +103,7 @@ export default class REPLService extends Service {
 	 * @param {Registry} registry - The service registry
 	 * @returns {Promise<void>}
 	 */
-	async stop(registry) {
+	async stop(_registry) {
 		this.out.systemLine("Shutting down REPL.");
 		if (this.unsubscribe) {
 			this.unsubscribe();
@@ -127,7 +127,7 @@ export default class REPLService extends Service {
 		this.out.systemLine("(Use ↑/↓ arrow keys to navigate command history)");
 
 		// Populate availableCommands from the registry
-		if (registry && registry.chatCommands) {
+		if (registry?.chatCommands) {
 			const allCommandsObject = registry.chatCommands.getCommands();
 			const commandNames = Object.keys(allCommandsObject).map(
 				(name) => `/${name}`,
@@ -189,8 +189,7 @@ export default class REPLService extends Service {
 				await this.handleInput(userInput, chatService, registry);
 			} catch (e) {
 				const wasMainInputAborted =
-					this.mainInputAbortController &&
-					this.mainInputAbortController.signal.aborted;
+					this.mainInputAbortController?.signal.aborted;
 
 				// Always reset the controller after an error
 				this.mainInputAbortController = null;
@@ -289,8 +288,7 @@ export default class REPLService extends Service {
 			return;
 		}
 
-		const abortController =
-			chatService.getAbortController && chatService.getAbortController();
+		const abortController = chatService.getAbortController?.();
 		if (abortController && !abortController.signal.aborted) {
 			this.out.warningLine("\n[Cancelling current chat operation]");
 			abortController.abort();

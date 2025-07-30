@@ -14,7 +14,7 @@ export const description =
  * @param {import('@token-ring/registry').Registry} registry - The service registry
  * @returns {Promise<void>}
  */
-export async function execute(args, registry) {
+export async function execute(_args, registry) {
 	const replService = registry.requireFirstServiceByType(REPLService);
 
 	const prompt = await editor({

@@ -14,7 +14,7 @@ export const description =
  * @param {import('@token-ring/registry').Registry} registry - The service registry
  * @returns {Promise<void>}
  */
-export async function execute(remainder, registry) {
+export async function execute(_remainder, registry) {
 	const chatService = registry.requireFirstServiceByType(ChatService);
 
 	try {
@@ -29,7 +29,7 @@ export async function execute(remainder, registry) {
 		chatService.systemLine(text);
 	} catch (err) {
 		chatService.errorLine(
-			"Failed to read from clipboard: " + (err.message || err),
+			`Failed to read from clipboard: ${err.message || err}`,
 		);
 	}
 }
