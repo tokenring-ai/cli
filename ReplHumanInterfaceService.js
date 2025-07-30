@@ -1,5 +1,7 @@
 import { HumanInterfaceService } from "@token-ring/chat";
-import { treeSelector } from "inquirer-tree-selector";
+import { treeSelector } from "@token-ring/inquirer-tree-selector";
+import { confirm } from "@inquirer/prompts";
+import open from "open";
 import inquirer from "inquirer";
 
 /**
@@ -23,6 +25,17 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
 	 */
 	description =
 		"Provides a REPL interface for asking the user for a selection from a list of items.";
+
+	async askForConfirmation({ message, default: defaultValue }) {
+		return confirm({
+			message,
+			default: defaultValue,
+		});
+	}
+
+	async openWebBrowser(url) {
+		await open(url);
+	}
 
 	/**
 	 * Asks the user to select an item from a list using a REPL interface.
