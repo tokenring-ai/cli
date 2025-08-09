@@ -23,6 +23,7 @@ export async function execute(_args, registry) {
 	});
 
 	if (prompt) {
+		// noinspection ES6MissingAwait
 		replService.injectPrompt(prompt);
 	}
 }
