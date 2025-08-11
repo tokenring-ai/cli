@@ -264,7 +264,9 @@ describe("CLI Package Integration Tests", () => {
 
 		it("should implement askForSelection interface", async () => {
 			const inquirer = await import("inquirer");
-			inquirer.default.prompt.mockResolvedValue({ selection: "test-choice" });
+			vi.mocked(inquirer.default.prompt).mockResolvedValue({
+				selection: "test-choice",
+			});
 
 			const result = await service.askForSelection({
 				title: "Test Title",
@@ -276,7 +278,9 @@ describe("CLI Package Integration Tests", () => {
 
 		it("should implement ask interface", async () => {
 			const inquirer = await import("inquirer");
-			inquirer.default.prompt.mockResolvedValue({ answer: "test answer" });
+			vi.mocked(inquirer.default.prompt).mockResolvedValue({
+				answer: "test answer",
+			});
 
 			const result = await service.ask("Test question");
 
@@ -285,7 +289,7 @@ describe("CLI Package Integration Tests", () => {
 
 		it("should implement askForMultipleSelections interface", async () => {
 			const inquirer = await import("inquirer");
-			inquirer.default.prompt.mockResolvedValue({
+			vi.mocked(inquirer.default.prompt).mockResolvedValue({
 				selections: ["item1", "item2"],
 			});
 

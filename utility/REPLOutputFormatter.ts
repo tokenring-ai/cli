@@ -6,61 +6,41 @@ import ora from "ora";
  * Output formatter for REPL interface with color coding and spinner support
  */
 export default class REPLOutputFormatter {
-	/**
-	 * Tracks if the last write operation ended with a newline
-	 * @type {boolean}
-	 */
-	lastWriteHadNewline = true;
+	/** Tracks if the last write operation ended with a newline */
+	lastWriteHadNewline: boolean = true;
 
-	/**
-	 * Current output type for styling
-	 * @type {string|null}
-	 */
-	currentOutputType = null;
+	/** Current output type for styling */
+	currentOutputType: string | null = null;
 
-	/**
-	 * Spinner instance for loading states
-	 * @type {import('ora').Ora|null}
-	 */
-	spinner = null;
+	/** Spinner instance for loading states */
+	spinner: import("ora").Ora | null = null;
 
 	/**
 	 * Sets the output type for styling
-	 * @param {string} type - The output type (e.g., 'chat', 'reasoning')
-	 * @returns {void}
 	 */
-	outputType(type) {
+	outputType(type: string): void {
 		this.currentOutputType = type;
 	}
 
 	/**
 	 * Starts a loading spinner with a message
-	 * @param {string} msg - The message to display with the spinner
-	 * @returns {void}
 	 */
-	waiting(msg) {
+	waiting(msg: string): void {
 		this.spinner = ora(msg);
 		this.spinner.start();
 		this.lastWriteHadNewline = true;
 	}
 
-	/**
-	 * Stops the loading spinner
-	 * @returns {void}
-	 */
-	doneWaiting() {
+	/** Stops the loading spinner */
+	doneWaiting(): void {
 		if (this.spinner) {
 			this.spinner.stop();
 			this.spinner = null;
 		}
 	}
 
-	/**
-	 * Outputs a system message in blue
-	 * @param {...(string|Object)} msgs - Messages to output
-	 * @returns {void}
-	 */
-	systemLine(...msgs) {
+	/** Outputs a system message in blue */
+	systemLine(...msgs: (string | unknown)[]): void {
 		if (this.spinner) {
 			this.spinner.stop();
 		}
@@ -74,31 +54,25 @@ export default class REPLOutputFormatter {
 		}
 	}
 
-	/**
-	 * Outputs an error message in red
-	 * @param {...(string|Object)} msgs - Error messages to output
-	 * @returns {void}
-	 */
-	errorLine(...msgs) {
+	/** Outputs an error message in red */
+	errorLine(...msgs: (string | unknown)[]): void {
 		if (this.spinner) {
 			this.spinner.stop();
 		}
 		if (!this.lastWriteHadNewline) {
 			console.log();
 		}
-		console.error(...msgs.map((msg) => chalk.red(formatLogMessages([msg]))));
+		console.error(
+			...msgs.map((msg) => chalk.red(formatLogMessages([msg as unknown as string]))),
+		);
 		this.lastWriteHadNewline = true;
 		if (this.spinner) {
 			this.spinner.start();
 		}
 	}
 
-	/**
-	 * Outputs a warning message in yellow
-	 * @param {...(string|Object)} msgs - Warning messages to output
-	 * @returns {void}
-	 */
-	warningLine(...msgs) {
+	/** Outputs a warning message in yellow */
+	warningLine(...msgs: (string | unknown)[]): void {
 		if (this.spinner) {
 			this.spinner.stop();
 		}
@@ -112,12 +86,8 @@ export default class REPLOutputFormatter {
 		}
 	}
 
-	/**
-	 * Outputs an info message in green
-	 * @param {...(string|Object)} msgs - Info messages to output
-	 * @returns {void}
-	 */
-	infoLine(...msgs) {
+	/** Outputs an info message in green */
+	infoLine(...msgs: (string | unknown)[]): void {
 		if (this.spinner) {
 			this.spinner.stop();
 		}
@@ -131,11 +101,8 @@ export default class REPLOutputFormatter {
 		}
 	}
 
-	/**
-	 * Prints a horizontal line separator
-	 * @returns {void}
-	 */
-	printHorizontalLine() {
+	/** Prints a horizontal line separator */
+	printHorizontalLine(): void {
 		if (this.spinner) {
 			this.spinner.stop();
 		}
@@ -152,10 +119,8 @@ export default class REPLOutputFormatter {
 
 	/**
 	 * Writes raw output to stdout with appropriate styling
-	 * @param {string} msg - The message to write
-	 * @returns {void}
 	 */
-	stdout(msg) {
+	stdout(msg: string): void {
 		if (this.spinner) {
 			this.spinner.stop();
 			this.spinner = null;
@@ -173,55 +138,32 @@ export default class REPLOutputFormatter {
 		this.lastWriteHadNewline = msg.endsWith("\n");
 	}
 
-	/**
-	 * Notifies that a job has been queued
-	 * @param {Object} jobInfo - Job information
-	 * @param {string} jobInfo.name - Job name
-	 * @param {number} jobInfo.queueLength - Current queue length
-	 * @returns {void}
-	 */
-	jobQueued(jobInfo) {
+	/** Notifies that a job has been queued */
+	jobQueued(jobInfo: { name: string; queueLength: number }): void {
 		this.systemLine(
 			`Job [${jobInfo.name}] queued. Queue length: ${jobInfo.queueLength}`,
 		);
 	}
 
-	/**
-	 * Notifies that a job has started
-	 * @param {Object} jobInfo - Job information
-	 * @param {string} jobInfo.name - Job name
-	 * @returns {void}
-	 */
-	jobStarted(jobInfo) {
+	/** Notifies that a job has started */
+	jobStarted(jobInfo: { name: string }): void {
 		this.systemLine(`Job [${jobInfo.name}] started`);
 	}
 
-	/**
-	 * Notifies that a job has completed successfully
-	 * @param {Object} jobInfo - Job information
-	 * @param {string} jobInfo.name - Job name
-	 * @returns {void}
-	 */
-	jobCompleted(jobInfo) {
+	/** Notifies that a job has completed successfully */
+	jobCompleted(jobInfo: { name: string }): void {
 		this.systemLine(`Job [${jobInfo.name}] completed successfully`);
 	}
 
-	/**
-	 * Notifies that a job has failed
-	 * @param {Object} jobInfo - Job information
-	 * @param {string} jobInfo.name - Job name
-	 * @param {Error} jobInfo.error - The error that occurred
-	 * @returns {void}
-	 */
-	jobFailed(jobInfo) {
-		// The test expects two separate arguments: the string and the error message as a string
+	/** Notifies that a job has failed */
+	jobFailed(jobInfo: { name: string; error: Error | unknown }): void {
 		if (jobInfo.error instanceof Error) {
 			this.errorLine(
 				`Job [${jobInfo.name}] failed:`,
 				`Error: ${jobInfo.error.message}`,
 			);
 		} else {
-			this.errorLine(`Job [${jobInfo.name}] failed:`, jobInfo.error);
+			this.errorLine(`Job [${jobInfo.name}] failed:`, String(jobInfo.error));
 		}
 	}
 }

@@ -1,20 +1,20 @@
 import ChatService from "@token-ring/chat/ChatService";
 import clipboardy from "clipboardy";
+import type { Registry } from "@token-ring/registry";
 
-/**
- * Command description for help display
- * @type {string}
- */
-export const description =
+// Command description for help display
+export const description: string =
 	"/paste - Paste text from the clipboard into the chat.";
 
 /**
  * Executes the paste command to read and display clipboard content
- * @param {string} remainder - Any remaining text after the command (unused)
- * @param {import('@token-ring/registry').Registry} registry - The service registry
- * @returns {Promise<void>}
+ * @param _remainder Any remaining text after the command (unused)
+ * @param registry The service registry
  */
-export async function execute(_remainder, registry) {
+export async function execute(
+	_remainder: string,
+	registry: Registry,
+): Promise<void> {
 	const chatService = registry.requireFirstServiceByType(ChatService);
 
 	try {
@@ -27,17 +27,15 @@ export async function execute(_remainder, registry) {
 		// For simplicity, just output the pasted text as a system line
 		chatService.systemLine("Pasted text from clipboard:");
 		chatService.systemLine(text);
-	} catch (err) {
-		chatService.errorLine(
-			`Failed to read from clipboard: ${err.message || err}`,
-		);
+	} catch (err: unknown) {
+		const e = err as { message?: string };
+		chatService.errorLine(`Failed to read from clipboard: ${e?.message || err}`);
 	}
 }
 
 /**
  * Returns help information for the paste command
- * @returns {Array<string>} Help text for the command
  */
-export function help() {
+export function help(): Array<string> {
 	return ["/paste - Paste text from the clipboard into the chat."];
 }
