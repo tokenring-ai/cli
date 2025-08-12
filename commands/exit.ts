@@ -10,10 +10,7 @@ export const description: string = "/exit - Exit the application.";
  * @param registry The service registry
  */
 export function execute(_args: string, registry: Registry): void {
-	// The JS version used registry.services.getFirstServiceByType
-	// Preserve that logic to avoid behavior changes
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const replService = (registry as any).services?.getFirstServiceByType?.(
+	const replService = registry.getFirstServiceByType(
 		REPLService,
 	);
 	if (replService) {

@@ -83,6 +83,7 @@ vi.mock("chalk", async () => {
 			yellow: vi.fn((text) => text),
 			green: vi.fn((text) => text),
 			dim: vi.fn((text) => text),
+			cyan: vi.fn((text) => text),
 		},
 	};
 });
@@ -225,6 +226,7 @@ describe("CLI Package Integration Tests", () => {
 
 		it("should inject prompts into queue", async () => {
 			const testPrompt = "test prompt";
+			// noinspection ES6MissingAwait
 			replService.injectPrompt(testPrompt);
 			expect(replService.promptQueue).toContain(testPrompt);
 		});
@@ -458,7 +460,7 @@ describe("CLI Package Integration Tests", () => {
 			expect(exports).toHaveProperty("version");
 
 			expect(exports.name).toBe("@token-ring/cli");
-			expect(exports.description).toBe("TokenRing Coder Application");
+			expect(exports.description).toBe("TokenRing CLI");
 			expect(exports.version).toBe("0.1.0");
 		});
 	});

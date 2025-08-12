@@ -94,29 +94,54 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
   /**
    * Asks the user to select items from a tree structure using a REPL interface.
    */
-  async askForTreeSelection({
+  async askForSingleTreeSelection({
     message,
     tree,
-    multiple = false,
     allowCancel = true,
     initialSelection,
     loop = false,
   }: {
     message?: string;
     tree: TreeLeaf;
-    multiple?: boolean;
     allowCancel?: boolean;
     initialSelection?: string | Array<string>;
     loop?: boolean;
-  }): Promise<string | Array<string>> {
+  }): Promise<string> {
     return await treeSelector({
       message: message ?? "",
-      tree: tree as any,
-      multiple: multiple as any,
+      tree: tree,
+      multiple: false,
       allowCancel: allowCancel as any,
       loop,
       pageSize: 20,
       ...(initialSelection && { initialSelection }),
-    }) as any;
+    }) ;
   }
+
+    /**
+     * Asks the user to select items from a tree structure using a REPL interface.
+     */
+    async askForMultipleTreeSelection({
+                                        message,
+                                        tree,
+                                        allowCancel = true,
+                                        initialSelection,
+                                        loop = false,
+                                    }: {
+        message?: string;
+        tree: TreeLeaf;
+        allowCancel?: boolean;
+        initialSelection?: string | Array<string>;
+        loop?: boolean;
+    }): Promise<string[]> {
+        return await treeSelector({
+            message: message ?? "",
+            tree: tree,
+            multiple: true,
+            allowCancel: allowCancel as any,
+            loop,
+            pageSize: 20,
+            ...(initialSelection && { initialSelection }),
+        }) ;
+    }
 }

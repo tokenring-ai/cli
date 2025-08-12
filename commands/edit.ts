@@ -56,9 +56,8 @@ export async function execute(remainder: string, registry: Registry): Promise<vo
 
 /**
  * Returns help information for the edit command
- * @param _chatService The chat service instance (unused)
  */
-export function help(_chatService: unknown): Array<string> {
+export function help(): Array<string> {
 	return [
 		"/edit - Open your editor to write a prompt.",
 		"  - With no arguments: Opens editor with blank prompt",

@@ -83,6 +83,20 @@ export default class REPLService extends Service {
     private unsubscribe: (() => void) | null = null;
 
     /**
+     * History storage for command history
+     */
+    private historyStorage: HistoryStorage | undefined;
+
+    /**
+     * Creates a new REPLService instance
+     * @param options - Configuration options
+     */
+    constructor({ historyStorage }: { historyStorage?: HistoryStorage } = {}) {
+        super();
+        this.historyStorage = historyStorage;
+    }
+
+    /**
      * Stops the REPL service
      * @param _registry - The service registry
      * @returns {Promise<void>}
@@ -141,7 +155,8 @@ export default class REPLService extends Service {
      * @private
      */
     private async mainLoop(chatService: ChatService, registry: Registry): Promise<void> {
-        const historyStorage = await registry.getFirstServiceByType(HistoryStorage);
+        // Use the historyStorage provided in constructor or get it from the registry
+        const historyStorage = this.historyStorage || await registry.getFirstServiceByType(HistoryStorage);
         while (true) {
             try {
                 this.out.printHorizontalLine();
