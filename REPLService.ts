@@ -1,4 +1,5 @@
 import ChatService from "@token-ring/chat/ChatService";
+import HistoryStorage from "@token-ring/chat/HistoryStorage";
 import { runCommand } from "@token-ring/chat/runCommand";
 import commandPrompt from "@token-ring/inquirer-command-prompt";
 import { Service, Registry } from "@token-ring/registry";
@@ -83,7 +84,7 @@ export default class REPLService extends Service {
 
     /**
      * Stops the REPL service
-     * @param registry - The service registry
+     * @param _registry - The service registry
      * @returns {Promise<void>}
      */
     async stop(_registry: Registry): Promise<void> {
@@ -140,6 +141,7 @@ export default class REPLService extends Service {
      * @private
      */
     private async mainLoop(chatService: ChatService, registry: Registry): Promise<void> {
+        const historyStorage = await registry.getFirstServiceByType(HistoryStorage);
         while (true) {
             try {
                 this.out.printHorizontalLine();
@@ -162,6 +164,7 @@ export default class REPLService extends Service {
                         },
                         message: chalk.yellowBright(">"),
                         autoCompletion: this.availableCommands,
+                        historyHandler: historyStorage,
                     },
                     {
                         signal: this.mainInputAbortController.signal,
