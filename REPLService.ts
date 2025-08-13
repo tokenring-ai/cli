@@ -91,7 +91,7 @@ export default class REPLService extends Service {
      * Creates a new REPLService instance
      * @param options - Configuration options
      */
-    constructor({ historyStorage }: { historyStorage?: HistoryStorage } = {}) {
+    constructor({historyStorage}: { historyStorage?: HistoryStorage } = {}) {
         super();
         this.historyStorage = historyStorage;
     }
@@ -144,7 +144,12 @@ export default class REPLService extends Service {
         process.on("SIGINT", () => this.handleGlobalSIGINT(chatService));
 
         // noinspection ES6MissingAwait
-        this.mainLoop(chatService, registry);
+        this.mainLoop(chatService, registry)
+        .then(() => process.exit(0))
+        .catch(err => {
+            console.error("Error in main loop:", err);
+            process.exit(1);
+        });
     }
 
     /**
@@ -156,26 +161,31 @@ export default class REPLService extends Service {
      */
     private async mainLoop(chatService: ChatService, registry: Registry): Promise<void> {
         // Use the historyStorage provided in constructor or get it from the registry
-        const historyStorage = this.historyStorage || await registry.getFirstServiceByType(HistoryStorage);
-        while (true) {
-            try {
-                this.out.printHorizontalLine();
+        const historyStorage = this.historyStorage || registry.getFirstServiceByType(HistoryStorage);
+        while (! this.shouldExit) {
+            this.out.printHorizontalLine();
 
-                // Handle any queued prompts
-                while (this.promptQueue.length > 0) {
-                    const prompt = this.promptQueue.shift();
-                    if (prompt !== undefined) {
-                        await this.handleInput(prompt, chatService, registry);
-                    }
+            // Handle any queued prompts
+            while (this.promptQueue.length > 0) {
+                const prompt = this.promptQueue.shift();
+                if (prompt !== undefined) {
+                    await this.handleInput(prompt, chatService, registry);
                 }
+            }
 
-                // Always create a fresh AbortController for each prompt
-                this.mainInputAbortController = new AbortController();
+            // Always create a fresh AbortController for each prompt
+            this.mainInputAbortController = new AbortController();
 
+            let emptyPrompt = true;
+            try {
                 const userInput = await commandPrompt(
                     {
                         theme: {
                             prefix: chalk.yellowBright("user"),
+                        },
+                        transformer: (input: string) => {
+                            if (input.length > 0) { emptyPrompt = false; }
+                            return input;
                         },
                         message: chalk.yellowBright(">"),
                         autoCompletion: this.availableCommands,
@@ -191,46 +201,16 @@ export default class REPLService extends Service {
 
                 await this.handleInput(userInput, chatService, registry);
             } catch (e) {
-                const wasMainInputAborted =
-                    this.mainInputAbortController?.signal.aborted;
-
-                // Always reset the controller after an error
-                this.mainInputAbortController = null;
-
-                if (wasMainInputAborted) {
-                    if (this.promptQueue.length === 0) {
-                        this.out.warningLine("[Input cancelled by user]");
-                        const ongoingOpAbortController = chatService.getAbortController();
-                        if (
-                            ongoingOpAbortController &&
-                            !ongoingOpAbortController.signal.aborted
-                        ) {
-                            this.out.warningLine(
-                                "Attempting to cancel ongoing AI operation (if any)...",
-                            );
-                            ongoingOpAbortController.abort();
-                        }
-                    }
-                    continue;
+                if (emptyPrompt) {
+                    this.out.systemLine("\nExiting application.");
+                    this.shouldExit = true;
                 } else {
-                    this.out.errorLine(
-                        "An unexpected error occurred with the main input prompt:",
-                        e as Error,
-                    );
+                    this.out.warningLine("[Input cancelled by user]");
                 }
             }
-
-            if (this.shouldExit) {
-                break;
-            }
         }
-
-        this.out.systemLine("Exiting REPL mode.");
-        if (this.unsubscribe) {
-            this.unsubscribe();
-        }
-        process.exit(0);
     }
+
 
     /**
      * Handles user input processing
