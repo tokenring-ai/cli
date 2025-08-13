@@ -1,8 +1,8 @@
 import ChatService from "@token-ring/chat/ChatService";
 import HistoryStorage from "@token-ring/chat/HistoryStorage";
-import { runCommand } from "@token-ring/chat/runCommand";
+import {runCommand} from "@token-ring/chat/runCommand";
 import commandPrompt from "@token-ring/inquirer-command-prompt";
-import { Service, Registry } from "@token-ring/registry";
+import {Registry, Service} from "@token-ring/registry";
 import chalk from "chalk";
 import REPLOutputFormatter from "./utility/REPLOutputFormatter.js";
 
@@ -85,7 +85,7 @@ export default class REPLService extends Service {
     /**
      * History storage for command history
      */
-    private historyStorage: HistoryStorage | undefined;
+    private readonly historyStorage: HistoryStorage | undefined;
 
     /**
      * Creates a new REPLService instance

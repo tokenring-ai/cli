@@ -1,6 +1,6 @@
-import { editor } from "@inquirer/prompts";
+import {editor} from "@inquirer/prompts";
 import REPLService from "../REPLService.ts";
-import type { Registry } from "@token-ring/registry";
+import type {Registry} from "@token-ring/registry";
 import {abandon} from "@token-ring/utility/abandon";
 
 // Command description for help display

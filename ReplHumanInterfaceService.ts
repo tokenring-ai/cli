@@ -1,9 +1,9 @@
 // Combined TypeScript implementation for ReplHumanInterfaceService
 // Keeping ESM imports with .ts extensions
-import { confirm } from "@inquirer/prompts";
-import { HumanInterfaceService } from "@token-ring/chat";
-import type { TreeLeaf } from "@token-ring/chat/HumanInterfaceService";
-import { treeSelector } from "@token-ring/inquirer-tree-selector";
+import {confirm} from "@inquirer/prompts";
+import {HumanInterfaceService} from "@token-ring/chat";
+import type {TreeLeaf} from "@token-ring/chat/HumanInterfaceService";
+import {treeSelector} from "@token-ring/inquirer-tree-selector";
 import inquirer from "inquirer";
 import open from "open";
 

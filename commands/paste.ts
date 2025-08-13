@@ -1,6 +1,6 @@
 import ChatService from "@token-ring/chat/ChatService";
 import clipboardy from "clipboardy";
-import type { Registry } from "@token-ring/registry";
+import type {Registry} from "@token-ring/registry";
 
 // Command description for help display
 export const description: string =

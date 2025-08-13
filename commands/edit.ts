@@ -2,8 +2,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import ChatService from "@token-ring/chat/ChatService";
-import { execa } from "execa";
-import type { Registry } from "@token-ring/registry";
+import {execa} from "execa";
+import type {Registry} from "@token-ring/registry";
 
 function getDefaultEditor(): string {
 	return process.env.EDITOR || (process.platform === "win32" ? "notepad" : "vi");

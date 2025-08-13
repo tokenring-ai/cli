@@ -1,5 +1,5 @@
 import REPLService from "../REPLService.ts";
-import type { Registry } from "@token-ring/registry";
+import type {Registry} from "@token-ring/registry";
 
 // Command description for help display
 export const description: string = "/exit - Exit the application.";
