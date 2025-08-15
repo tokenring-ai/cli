@@ -237,6 +237,8 @@ export default class REPLService extends Service {
                 remainder = processedInput;
             }
 
+            remainder ??= '';
+
             await runCommand(commandName, remainder, registry);
         } catch (err) {
             const abortSignal = chatService.getAbortSignal();
