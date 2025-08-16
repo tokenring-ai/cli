@@ -15,9 +15,9 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
     "Provides a REPL interface for asking the user for a selection from a list of items.";
 
   async askForConfirmation({
-    message,
-    default: defaultValue,
-  }: {
+                             message,
+                             default: defaultValue,
+                           }: {
     message: string;
     default: boolean;
   }): Promise<boolean> {
@@ -35,13 +35,13 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
    * Asks the user to select an item from a list using a REPL interface.
    */
   async askForSelection({
-    title,
-    items,
-  }: {
+                          title,
+                          items,
+                        }: {
     title: string;
     items: string[];
   }): Promise<string> {
-    const { selection } = await inquirer.prompt<{ selection: string }>([
+    const {selection} = await inquirer.prompt<{ selection: string }>([
       {
         type: "list",
         name: "selection",
@@ -58,7 +58,7 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
    * Asks the user a question and allows them to type in a multi-line answer using a REPL interface.
    */
   async ask(question: string): Promise<string> {
-    const { answer } = await inquirer.prompt<{ answer: string }>({
+    const {answer} = await inquirer.prompt<{ answer: string }>({
       type: "editor",
       name: "answer",
       message: question,
@@ -70,15 +70,15 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
    * Asks the user to select multiple items from a list using a REPL interface.
    */
   async askForMultipleSelections({
-    title,
-    items,
-    message,
-  }: {
+                                   title,
+                                   items,
+                                   message,
+                                 }: {
     title: string;
     items: string[];
     message?: string;
   }): Promise<string[]> {
-    const { selections } = await inquirer.prompt<{ selections: string[] }>([
+    const {selections} = await inquirer.prompt<{ selections: string[] }>([
       {
         type: "checkbox",
         name: "selections",
@@ -95,12 +95,12 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
    * Asks the user to select items from a tree structure using a REPL interface.
    */
   async askForSingleTreeSelection({
-    message,
-    tree,
-    allowCancel = true,
-    initialSelection,
-    loop = false,
-  }: {
+                                    message,
+                                    tree,
+                                    allowCancel = true,
+                                    initialSelection,
+                                    loop = false,
+                                  }: {
     message?: string;
     tree: TreeLeaf;
     allowCancel?: boolean;
@@ -114,34 +114,34 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
       allowCancel: allowCancel as any,
       loop,
       pageSize: 20,
-      ...(initialSelection && { initialSelection }),
-    }) ;
+      ...(initialSelection && {initialSelection}),
+    });
   }
 
-    /**
-     * Asks the user to select items from a tree structure using a REPL interface.
-     */
-    async askForMultipleTreeSelection({
-                                        message,
-                                        tree,
-                                        allowCancel = true,
-                                        initialSelection,
-                                        loop = false,
+  /**
+   * Asks the user to select items from a tree structure using a REPL interface.
+   */
+  async askForMultipleTreeSelection({
+                                      message,
+                                      tree,
+                                      allowCancel = true,
+                                      initialSelection,
+                                      loop = false,
                                     }: {
-        message?: string;
-        tree: TreeLeaf;
-        allowCancel?: boolean;
-        initialSelection?: string | Array<string>;
-        loop?: boolean;
-    }): Promise<string[]> {
-        return await treeSelector({
-            message: message ?? "",
-            tree: tree,
-            multiple: true,
-            allowCancel: allowCancel as any,
-            loop,
-            pageSize: 20,
-            ...(initialSelection && { initialSelection }),
-        }) ;
-    }
+    message?: string;
+    tree: TreeLeaf;
+    allowCancel?: boolean;
+    initialSelection?: string | Array<string>;
+    loop?: boolean;
+  }): Promise<string[]> {
+    return await treeSelector({
+      message: message ?? "",
+      tree: tree,
+      multiple: true,
+      allowCancel: allowCancel as any,
+      loop,
+      pageSize: 20,
+      ...(initialSelection && {initialSelection}),
+    });
+  }
 }

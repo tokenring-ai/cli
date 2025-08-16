@@ -5,5 +5,5 @@ export const version = packageJSON.version;
 export const description = packageJSON.description;
 
 export * as chatCommands from "./chatCommands.ts";
-export { default as REPLService } from "./REPLService.ts";
-export { default as ReplHumanInterfaceService } from "./ReplHumanInterfaceService.ts";
+export {default as REPLService} from "./REPLService.ts";
+export {default as ReplHumanInterfaceService} from "./ReplHumanInterfaceService.ts";
