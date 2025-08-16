@@ -230,14 +230,11 @@ export default class REPLService extends Service {
         try {
             chatService.resetAbortController();
 
-            let [, commandName, remainder] =
-            processedInput.match(/^\/(\w+)\s*(.*)?$/) ?? [];
-            if (!commandName) {
-                commandName = "chat";
-                remainder = processedInput;
-            }
-
-            remainder ??= '';
+            let commandName = "chat";
+            let remainder = processedInput.replace(/^\s*\/(\S*)/, (_unused, matchedCommandName) => {
+                commandName = matchedCommandName;
+                return "";
+            }).trim();
 
             await runCommand(commandName, remainder, registry);
         } catch (err) {
