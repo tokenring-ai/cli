@@ -1,5 +1,3 @@
-// Combined TypeScript implementation for ReplHumanInterfaceService
-// Keeping ESM imports with .ts extensions
 import {confirm} from "@inquirer/prompts";
 import {HumanInterfaceService} from "@token-ring/chat";
 import type {TreeLeaf} from "@token-ring/chat/HumanInterfaceService";
@@ -8,9 +6,7 @@ import inquirer from "inquirer";
 import open from "open";
 
 export default class ReplHumanInterfaceService extends HumanInterfaceService {
-  // Override base to provide a more specific identifier, but keep type compatible
-  // Using any to avoid constraint mismatch across packages
-  name: any = "ReplHumanInterfaceService";
+  name: string = "ReplHumanInterfaceService";
   description: string =
     "Provides a REPL interface for asking the user for a selection from a list of items.";
 
