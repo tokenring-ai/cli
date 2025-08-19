@@ -8,7 +8,6 @@ import REPLOutputFormatter from "./utility/REPLOutputFormatter.js";
 
 /**
  * REPL (Read-Eval-Print Loop) service for interactive command-line interface
- * @extends {Service}
  */
 export default class REPLService extends Service {
   /**
@@ -72,13 +71,11 @@ export default class REPLService extends Service {
 
   /**
    * Flag for handling SIGINT double-press
-   * @private
    */
   private sigintPending: boolean = false;
 
   /**
    * Unsubscribe function for chat service
-   * @private
    */
   private unsubscribe: (() => void) | null = null;
 
@@ -89,7 +86,6 @@ export default class REPLService extends Service {
 
   /**
    * Creates a new REPLService instance
-   * @param options - Configuration options
    */
   constructor({historyStorage}: { historyStorage?: HistoryStorage } = {}) {
     super();
@@ -98,8 +94,6 @@ export default class REPLService extends Service {
 
   /**
    * Stops the REPL service
-   * @param _registry - The service registry
-   * @returns {Promise<void>}
    */
   async stop(_registry: Registry): Promise<void> {
     this.out.systemLine("Shutting down REPL.");
@@ -110,8 +104,6 @@ export default class REPLService extends Service {
 
   /**
    * Starts the REPL service
-   * @param registry - The service registry
-   * @returns {Promise<void>}
    */
   async start(registry: Registry): Promise<void> {
     const chatService = registry.requireFirstServiceByType(ChatService);
@@ -154,8 +146,6 @@ export default class REPLService extends Service {
 
   /**
    * Injects a prompt into the processing queue
-   * @param prompt - The prompt to inject
-   * @returns {Promise<void>}
    */
   async injectPrompt(prompt: string): Promise<void> {
     this.promptQueue.push(prompt);
@@ -170,8 +160,6 @@ export default class REPLService extends Service {
 
   /**
    * Updates the list of available commands for autocompletion
-   * @param newCommands - Array of command strings
-   * @returns {void}
    */
   updateCommands(newCommands: string[]): void {
     this.availableCommands = [...newCommands];
@@ -179,8 +167,6 @@ export default class REPLService extends Service {
 
   /**
    * Adds a single command to the available commands list
-   * @param command - The command to add
-   * @returns {void}
    */
   addCommand(command: string): void {
     if (!this.availableCommands.includes(command)) {
@@ -190,10 +176,6 @@ export default class REPLService extends Service {
 
   /**
    * Main REPL loop
-   * @param chatService - The chat service instance
-   * @param registry - The service registry
-   * @returns {Promise<void>}
-   * @private
    */
   private async mainLoop(chatService: ChatService, registry: Registry): Promise<void> {
     // Use the historyStorage provided in constructor or get it from the registry
@@ -251,11 +233,6 @@ export default class REPLService extends Service {
 
   /**
    * Handles user input processing
-   * @param line - The user input line
-   * @param chatService - The chat service instance
-   * @param registry - The service registry
-   * @returns {Promise<void>}
-   * @private
    */
   private async handleInput(line: string, chatService: ChatService, registry: Registry): Promise<void> {
     this.inputSoFar = "";
@@ -288,9 +265,6 @@ export default class REPLService extends Service {
 
   /**
    * Handles global SIGINT (Ctrl+C) signals
-   * @param chatService - The chat service instance
-   * @returns {void}
-   * @private
    */
   private handleGlobalSIGINT(chatService: ChatService): void {
     if (this.sigintPending) {

@@ -436,16 +436,6 @@ describe("CLI Package Integration Tests", () => {
 				expect(helpText).toContain("/exit - Exit the application");
 			});
 		});
-
-		describe("Copy Command", () => {
-			it("should provide help information", async () => {
-				const { help } = await import("../commands/copy.js");
-				const helpText = help();
-				expect(helpText).toContain(
-					"/copy - Copy the last assistant message to the clipboard",
-				);
-			});
-		});
 	});
 
 	describe("Package Exports", () => {

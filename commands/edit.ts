@@ -14,8 +14,6 @@ export const description: string = "/edit - Open your editor to write a prompt."
 
 /**
  * Executes the edit command to open an editor for prompt creation
- * @param remainder Initial text to populate the editor with
- * @param registry The service registry
  */
 export async function execute(remainder: string, registry: Registry): Promise<void> {
   const chatService = registry.requireFirstServiceByType(ChatService);
@@ -57,6 +55,7 @@ export async function execute(remainder: string, registry: Registry): Promise<vo
 /**
  * Returns help information for the edit command
  */
+// noinspection JSUnusedGlobalSymbols
 export function help(): Array<string> {
   return [
     "/edit - Open your editor to write a prompt.",

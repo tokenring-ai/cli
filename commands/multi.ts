@@ -9,8 +9,6 @@ export const description: string =
 
 /**
  * Executes the multi command to open an editor for multiline input
- * @param _args Any arguments provided (unused)
- * @param registry The service registry
  */
 export async function execute(_args: string, registry: Registry): Promise<void> {
   const replService = registry.requireFirstServiceByType(REPLService);
@@ -31,6 +29,7 @@ export async function execute(_args: string, registry: Registry): Promise<void> 
 /**
  * Returns help information for the multi command
  */
+// noinspection JSUnusedGlobalSymbols
 export function help(): Array<string> {
   return [
     "/multi - Opens an editor for multiline input.",

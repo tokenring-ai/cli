@@ -93,21 +93,19 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
   async askForSingleTreeSelection({
                                     message,
                                     tree,
-                                    allowCancel = true,
                                     initialSelection,
                                     loop = false,
                                   }: {
     message?: string;
     tree: TreeLeaf;
-    allowCancel?: boolean;
     initialSelection?: string | Array<string>;
     loop?: boolean;
-  }): Promise<string> {
+  }): Promise<string | null> {
     return await treeSelector({
       message: message ?? "",
       tree: tree,
       multiple: false,
-      allowCancel: allowCancel as any,
+      allowCancel: true,
       loop,
       pageSize: 20,
       ...(initialSelection && {initialSelection}),
@@ -120,21 +118,19 @@ export default class ReplHumanInterfaceService extends HumanInterfaceService {
   async askForMultipleTreeSelection({
                                       message,
                                       tree,
-                                      allowCancel = true,
                                       initialSelection,
                                       loop = false,
                                     }: {
     message?: string;
     tree: TreeLeaf;
-    allowCancel?: boolean;
     initialSelection?: string | Array<string>;
     loop?: boolean;
-  }): Promise<string[]> {
+  }): Promise<string[] | null> {
     return await treeSelector({
       message: message ?? "",
       tree: tree,
       multiple: true,
-      allowCancel: allowCancel as any,
+      allowCancel: true,
       loop,
       pageSize: 20,
       ...(initialSelection && {initialSelection}),
