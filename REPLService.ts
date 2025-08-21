@@ -69,10 +69,8 @@ export default class REPLService extends Service {
     "/instructions",
   ];
 
-  /**
-   * Flag for handling SIGINT double-press
-   */
-  private sigintPending: boolean = false;
+
+  private registry!: Registry;
 
   /**
    * Unsubscribe function for chat service
@@ -106,6 +104,8 @@ export default class REPLService extends Service {
    * Starts the REPL service
    */
   async start(registry: Registry): Promise<void> {
+    this.registry = registry;
+
     const chatService = registry.requireFirstServiceByType(ChatService);
 
     this.unsubscribe = chatService.subscribe(this.out);
@@ -261,34 +261,21 @@ export default class REPLService extends Service {
     }
 
     chatService.clearAbortController();
+    this.out.doneWaiting();
   }
 
   /**
    * Handles global SIGINT (Ctrl+C) signals
    */
   private handleGlobalSIGINT(chatService: ChatService): void {
-    if (this.sigintPending) {
-      this.out.systemLine("\nSIGINT received twice. Exiting REPL.");
-      if (this.unsubscribe) this.unsubscribe();
-      process.exit(0);
-    }
-
-    this.sigintPending = true;
-    setTimeout(() => (this.sigintPending = false), 2000);
-
     if (this.mainInputAbortController) {
       this.out.warningLine("\n[Cancelling input operation]");
       this.mainInputAbortController.abort();
-      return;
+    } else if (chatService.getAbortController) {
+      this.out.warningLine("\n[Cancelling chat operation]");
+      chatService.getAbortController()?.abort()
+    } else {
+      this.out.warningLine("\n[Couldn't find operation to cancel]");
     }
-
-    const abortController = chatService.getAbortController?.();
-    if (abortController && !abortController.signal.aborted) {
-      this.out.warningLine("\n[Cancelling current chat operation]");
-      abortController.abort();
-      return;
-    }
-
-    this.out.systemLine("\n(Press Ctrl-C again to exit)");
   }
 }
