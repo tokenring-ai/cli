@@ -1,281 +1,258 @@
-import ChatService from "@token-ring/chat/ChatService";
-import HistoryStorage from "@token-ring/chat/HistoryStorage";
-import {runCommand} from "@token-ring/chat/runCommand";
-import commandPrompt from "@token-ring/inquirer-command-prompt";
-import {Registry, Service} from "@token-ring/registry";
+import {select} from '@inquirer/prompts';
+import Agent from "@tokenring-ai/agent/Agent";
+import {AgentEvents} from "@tokenring-ai/agent/AgentEvents";
+import AgentTeam from "@tokenring-ai/agent/AgentTeam";
+import {TokenRingService} from "@tokenring-ai/agent/types";
 import chalk from "chalk";
-import REPLOutputFormatter from "./utility/REPLOutputFormatter.js";
+import ora, {Ora} from "ora";
+import {
+  ask,
+  askForCommand,
+  askForConfirmation,
+  askForMultipleSelections,
+  askForMultipleTreeSelection,
+  askForSelection,
+  askForSingleTreeSelection,
+  CancellationToken,
+  ExitToken,
+  openWebPage
+} from "./REPLInput.js";
 
 /**
  * REPL (Read-Eval-Print Loop) service for interactive command-line interface
  */
-export default class REPLService extends Service {
-  /**
-   * Service name identifier
-   */
+export default class REPLService implements TokenRingService {
   name = "REPLService";
-
-  /**
-   * Service description
-   */
   description = "Provides REPL functionality";
 
-  /**
-   * Output formatter for REPL display
-   */
-  out: REPLOutputFormatter = new REPLOutputFormatter();
+  private shouldExit = false;
+  private promptQueue: string[] = [];
+  private mainInputAbortController: AbortController = new AbortController();
+  private availableCommands: string[] = [];
 
-  /**
-   * Flag indicating if a prompt is currently active
-   */
-  isPromptActive: boolean = false;
-
-  /**
-   * Flag to control REPL exit
-   */
-  shouldExit: boolean = false;
-
-  /**
-   * Accumulated input buffer
-   */
-  inputSoFar: string = "";
-
-  /**
-   * Abort controller for current operation
-   */
-  abortController: AbortController | null = null;
-
-  /**
-   * Queue for pending prompts
-   */
-  promptQueue: string[] = [];
-
-  /**
-   * Abort controller for main input
-   */
-  mainInputAbortController: AbortController | null = new AbortController();
-
-  /**
-   * Available commands for autocompletion
-   */
-  availableCommands: string[] = [
-    "/help",
-    "/quit",
-    "/exit",
-    "/multi",
-    "/clear",
-    "/history",
-    "/model",
-    "/instructions",
-  ];
-
-
-  private registry!: Registry;
-
-  /**
-   * Unsubscribe function for chat service
-   */
-  private unsubscribe: (() => void) | null = null;
-
-  /**
-   * History storage for command history
-   */
-  private readonly historyStorage: HistoryStorage | undefined;
+  private readonly agentManager: AgentTeam;
 
   /**
    * Creates a new REPLService instance
    */
-  constructor({historyStorage}: { historyStorage?: HistoryStorage } = {}) {
-    super();
-    this.historyStorage = historyStorage;
+  constructor(agentManager: AgentTeam) {
+    this.agentManager = agentManager;
   }
 
-  /**
-   * Stops the REPL service
-   */
-  async stop(_registry: Registry): Promise<void> {
-    this.out.systemLine("Shutting down REPL.");
-    if (this.unsubscribe) {
-      this.unsubscribe();
-    }
-  }
 
-  /**
-   * Starts the REPL service
-   */
-  async start(registry: Registry): Promise<void> {
-    this.registry = registry;
+  async run(): Promise<void> {
+    while (!this.shouldExit) {
+      try {
+        const agent = await this.selectOrCreateAgent();
+        if (!agent) {
+          this.shouldExit = true;
+          break;
+        }
 
-    const chatService = registry.requireFirstServiceByType(ChatService);
-
-    this.unsubscribe = chatService.subscribe(this.out);
-
-    this.out.systemLine(
-      "Entering chat mode. Type your questions and hit Enter. Commands start with /. Type /quit to quit, or /help for a list of commands.",
-    );
-    this.out.systemLine("(Tip: For multi-line input, try the /multi command.)");
-    this.out.systemLine("(Use ↑/↓ arrow keys to navigate command history)");
-
-    // Populate availableCommands from the registry
-    if (registry?.chatCommands) {
-      const allCommandsObject = registry.chatCommands.getCommands();
-      const commandNames = Object.keys(allCommandsObject).map(
-        (name) => `/${name}`,
-      );
-      this.updateCommands(commandNames);
-      this.out.systemLine(
-        `Loaded ${commandNames.length} commands for autocompletion.`,
-      );
-    } else {
-      this.out.warningLine(
-        "Chat command registry not found. Autocompletion may be limited to defaults.",
-      );
+        await this.runAgentLoop(agent);
+      } catch (error) {
+        console.error(`Error in REPL: ${error}`);
+      }
     }
 
-    // Add global SIGINT handler
-    process.on("SIGINT", () => this.handleGlobalSIGINT(chatService));
-
-    // noinspection ES6MissingAwait
-    this.mainLoop(chatService, registry)
-      .then(() => process.exit(0))
-      .catch(err => {
-        console.error("Error in main loop:", err);
-        process.exit(1);
-      });
+    console.log("Goodbye!");
   }
 
-  /**
-   * Injects a prompt into the processing queue
-   */
   async injectPrompt(prompt: string): Promise<void> {
     this.promptQueue.push(prompt);
-
-    if (
-      this.mainInputAbortController &&
-      !this.mainInputAbortController.signal.aborted
-    ) {
+    if (this.mainInputAbortController && !this.mainInputAbortController.signal.aborted) {
       this.mainInputAbortController.abort();
     }
   }
 
-  /**
-   * Updates the list of available commands for autocompletion
-   */
-  updateCommands(newCommands: string[]): void {
-    this.availableCommands = [...newCommands];
+  private async selectOrCreateAgent(): Promise<Agent | null> {
+    const choices: { name: string; value: (() => Promise<Agent>) | null }[] = [];
+
+    for (const agent of this.agentManager.getAgents()) {
+      choices.push({
+        value: async () => {
+          console.log(`Connected to agent: ${agent.name}`);
+          return agent;
+        },
+        name: `Connect to: ${agent.options.name} (${agent.id.slice(0, 8)})`
+      });
+    }
+
+    const agentConfigs = this.agentManager.getAgentConfigs();
+    for (const type in agentConfigs) {
+      const agentConfig = agentConfigs[type];
+      choices.push({
+        value: async () => {
+          console.log(`Starting new agent: ${agentConfig.name}`);
+          const agent = await this.agentManager.createAgent(type);
+          console.log(`Agent ${agent.id} started`);
+          return agent;
+        },
+        name: `Create a new ${agentConfig.name}`
+      });
+    }
+
+    choices.push({name: "Exit", value: null});
+
+    const result = await select({
+      message: "Select an existing agent to connect to, or create a new one:",
+      choices: choices
+    });
+
+    return result ? await result() : null;
   }
 
-  /**
-   * Adds a single command to the available commands list
-   */
-  addCommand(command: string): void {
-    if (!this.availableCommands.includes(command)) {
-      this.availableCommands.push(command);
-    }
-  }
-
-  /**
-   * Main REPL loop
-   */
-  private async mainLoop(chatService: ChatService, registry: Registry): Promise<void> {
-    // Use the historyStorage provided in constructor or get it from the registry
-    const historyStorage = this.historyStorage || registry.getFirstServiceByType(HistoryStorage);
-    while (!this.shouldExit) {
-      this.out.printHorizontalLine();
-
-      // Handle any queued prompts
-      while (this.promptQueue.length > 0) {
-        const prompt = this.promptQueue.shift();
-        if (prompt !== undefined) {
-          await this.handleInput(prompt, chatService, registry);
-        }
-      }
-
-      // Always create a fresh AbortController for each prompt
-      this.mainInputAbortController = new AbortController();
-
-      let emptyPrompt = true;
-      try {
-        const userInput = await commandPrompt(
-          {
-            theme: {
-              prefix: chalk.yellowBright("user"),
-            },
-            transformer: (input: string) => {
-              if (input.length > 0) {
-                emptyPrompt = false;
-              }
-              return input;
-            },
-            message: chalk.yellowBright(">"),
-            autoCompletion: this.availableCommands,
-            historyHandler: historyStorage,
-          },
-          {
-            signal: this.mainInputAbortController.signal,
-          },
-        );
-
-        // Clear the controller after successful prompt
-        this.mainInputAbortController = null;
-
-        await this.handleInput(userInput, chatService, registry);
-      } catch (e) {
-        if (emptyPrompt) {
-          this.out.systemLine("\nExiting application.");
-          this.shouldExit = true;
-        } else {
-          this.out.warningLine("[Input cancelled by user]");
-        }
-      }
-    }
-  }
-
-  /**
-   * Handles user input processing
-   */
-  private async handleInput(line: string, chatService: ChatService, registry: Registry): Promise<void> {
-    this.inputSoFar = "";
-    let processedInput = (line ?? "").trim();
-    if (processedInput === "") {
-      processedInput = "/help";
-    }
+  private async runAgentLoop(agent: Agent): Promise<void> {
+    // Setup commands
+    const commandNames = agent.team.chatCommands.getAllItemNames().map(cmd => `/${cmd}`);
+    this.availableCommands = [...commandNames, '/switch'];
 
     try {
-      chatService.resetAbortController();
+      // Run main loop until agent exits
+      await this.mainLoop(agent);
+    } finally {
+      console.log("Agent session ended.");
+    }
+  }
 
-      let commandName = "chat";
-      let remainder = processedInput.replace(/^\s*\/(\S*)/, (_unused, matchedCommandName) => {
-        commandName = matchedCommandName;
-        return "";
-      }).trim();
+  private async mainLoop(agent: Agent): Promise<void> {
+    let lastWriteHadNewline = true;
+    let currentOutputType: string = "chat";
+    let spinner: Ora | null = null;
 
-      await runCommand(commandName, remainder, registry);
-    } catch (err) {
-      const abortSignal = chatService.getAbortSignal();
-      if (abortSignal?.aborted) {
-        this.out.errorLine("[Operation cancelled by user]");
-      } else {
-        this.out.errorLine("[Error while processing request] ", err as Error);
+    function stopSpinner() {
+      if (spinner) {
+        spinner.stop();
+        spinner = null;
       }
     }
 
-    chatService.clearAbortController();
-    this.out.doneWaiting();
+    function ensureNewline() {
+      if (!lastWriteHadNewline) {
+        console.log();
+        lastWriteHadNewline = true;
+      }
+    }
+
+    function printHorizontalLine() {
+      ensureNewline();
+      const lineChar = "─";
+      const lineWidth = process.stdout.columns ? Math.floor(process.stdout.columns * 0.8) : 60;
+      console.log(chalk.dim(lineChar.repeat(lineWidth)));
+      lastWriteHadNewline = true;
+    }
+
+    function writeOutput(content: string, type: "chat" | "reasoning") {
+      stopSpinner();
+
+      if (type !== currentOutputType) {
+        printHorizontalLine();
+        currentOutputType = type;
+      }
+
+      const color = type === "chat" ? chalk.green : chalk.yellow;
+      process.stdout.write(color(content));
+      lastWriteHadNewline = content.endsWith("\n");
+    }
+
+    console.log(chalk.yellow("Type your questions and hit Enter. Commands start with /. Type /switch to change agents, /quit or /exit to return to agent selection."));
+    console.log(chalk.yellow("(Use ↑/↓ arrow keys to navigate command history)"));
+
+
+    for await (const event of agent.events(this.mainInputAbortController.signal)) {
+      switch (event.type) {
+        case 'output.chat':
+          writeOutput(event.data.content, "chat");
+          break;
+        case 'output.reasoning':
+          writeOutput(event.data.content, "reasoning");
+          break;
+        case 'output.system': {
+          stopSpinner();
+          ensureNewline();
+          const color = event.data.level === 'error' ? chalk.red :
+            event.data.level === 'warning' ? chalk.yellow : chalk.blue;
+          console.log(color(event.data.message));
+          lastWriteHadNewline = true;
+          break;
+        }
+        case 'state.busy':
+          spinner = ora(event.data.message);
+          spinner.start();
+          lastWriteHadNewline = true;
+          break;
+        case 'state.notBusy':
+          stopSpinner();
+          break;
+        case 'state.idle':
+          if (!await this.gatherInput(agent)) {
+            console.log("\nReturning to agent selection.");
+            return;
+          }
+          break;
+        case 'human.request':
+          await this.handleHumanRequest(event.data, agent);
+          break;
+      }
+    }
+    stopSpinner();
   }
 
-  /**
-   * Handles global SIGINT (Ctrl+C) signals
-   */
-  private handleGlobalSIGINT(chatService: ChatService): void {
-    if (this.mainInputAbortController) {
-      this.out.warningLine("\n[Cancelling input operation]");
-      this.mainInputAbortController.abort();
-    } else if (chatService.getAbortController) {
-      this.out.warningLine("\n[Cancelling chat operation]");
-      chatService.getAbortController()?.abort()
-    } else {
-      this.out.warningLine("\n[Couldn't find operation to cancel]");
+  private async gatherInput(agent: Agent): Promise<boolean> {
+    // Handle any queued prompts
+    if (this.promptQueue.length > 0) {
+      const prompt = this.promptQueue.shift() as string;
+      agent.handleInput({message: prompt});
+      return true;
     }
+
+    const userInput = await askForCommand({
+      autoCompletion: this.availableCommands,
+    });
+
+    if (userInput === '/switch' || userInput === ExitToken) {
+      console.log("\nReturning to agent selection.");
+      return false;
+    }
+
+    if (userInput === CancellationToken) {
+      agent.systemMessage("[Input cancelled by user]", 'warning');
+      return this.gatherInput(agent);
+    }
+
+    agent.handleInput({message: userInput});
+    return true;
+  }
+
+  private async handleHumanRequest({request, sequence}: AgentEvents["human.request"], agent: Agent) {
+    let result: any;
+
+    switch (request.type) {
+      case "ask":
+        result = await ask(request);
+        break;
+      case "askForConfirmation":
+        result = await askForConfirmation(request);
+        break;
+      case "askForMultipleTreeSelection":
+        result = await askForMultipleTreeSelection(request);
+        break;
+      case "askForSingleTreeSelection":
+        result = await askForSingleTreeSelection(request);
+        break;
+      case "openWebPage":
+        result = await openWebPage(request);
+        break;
+      case "askForSelection":
+        result = await askForSelection(request);
+        break;
+      case "askForMultipleSelections":
+        result = await askForMultipleSelections(request);
+        break;
+      default:
+        throw new Error(`Unknown HumanInterfaceRequest type: ${(request as any)?.type}`);
+    }
+
+    agent.sendHumanResponse(sequence, result);
   }
 }

@@ -1,6 +1,6 @@
 import {editor} from "@inquirer/prompts";
-import type {Registry} from "@token-ring/registry";
-import {abandon} from "@token-ring/utility/abandon";
+import {Agent} from "@tokenring-ai/agent";
+import {abandon} from "@tokenring-ai/utility/abandon";
 import REPLService from "../REPLService.ts";
 
 // Command description for help display
@@ -10,8 +10,8 @@ export const description: string =
 /**
  * Executes the multi command to open an editor for multiline input
  */
-export async function execute(_args: string, registry: Registry): Promise<void> {
-  const replService = registry.requireFirstServiceByType(REPLService);
+export async function execute(_args: string, agent: Agent): Promise<void> {
+  const replService = agent.requireFirstServiceByType(REPLService);
 
   const prompt = await editor({
     message: "Enter your multiline text (save and close editor to submit):",

@@ -1,5 +1,4 @@
-import ChatService from "@token-ring/chat/ChatService";
-import type {Registry} from "@token-ring/registry";
+import Agent from "@tokenring-ai/agent/Agent";
 import {execa} from "execa";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -15,8 +14,7 @@ export const description: string = "/edit - Open your editor to write a prompt."
 /**
  * Executes the edit command to open an editor for prompt creation
  */
-export async function execute(remainder: string, registry: Registry): Promise<void> {
-  const chatService = registry.requireFirstServiceByType(ChatService);
+export async function execute(remainder: string, agent: Agent): Promise<void> {
 
   // Create a temp file for editing
   const tmpFile = path.join(os.tmpdir(), `aider_edit_${Date.now()}.txt`);
@@ -28,7 +26,7 @@ export async function execute(remainder: string, registry: Registry): Promise<vo
     await execa(editor, [tmpFile], {stdio: "inherit"});
   } catch (error: unknown) {
     const err = error as { shortMessage?: string; message?: string };
-    chatService.errorLine(`Editor process failed: ${err.shortMessage || err.message}`);
+    agent.errorLine(`Editor process failed: ${err.shortMessage || err.message}`);
     try {
       await fs.unlink(tmpFile);
     } catch {
@@ -41,8 +39,8 @@ export async function execute(remainder: string, registry: Registry): Promise<vo
   const editedContent = await fs.readFile(tmpFile, "utf8");
 
   // Output the edited content as a system line
-  chatService.systemLine("Edited prompt:");
-  chatService.systemLine(editedContent);
+  agent.infoLine("Edited prompt:");
+  agent.infoLine(editedContent);
 
   // Clean up the temporary file
   try {
