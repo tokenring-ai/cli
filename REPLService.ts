@@ -201,7 +201,7 @@ export default class REPLService implements TokenRingService {
   private async gatherInput(agent: Agent): Promise<boolean> {
     // Handle any queued prompts
     if (this.promptQueue.length > 0) {
-      const prompt = this.promptQueue.shift() as string;
+      const prompt = this.promptQueue.shift()!;
       agent.handleInput({message: prompt});
       return true;
     }
