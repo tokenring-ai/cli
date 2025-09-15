@@ -96,7 +96,8 @@ export default class REPLService implements TokenRingService {
 
     const result = await select({
       message: "Select an existing agent to connect to, or create a new one:",
-      choices: choices
+      choices: choices,
+      loop: false,
     });
 
     return result ? await result() : null;
