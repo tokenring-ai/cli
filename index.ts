@@ -10,4 +10,4 @@ export const packageInfo: TokenRingPackage = {
   chatCommands
 };
 
-export {default as REPLService} from "./REPLService.ts";
+export {default as REPLService} from "./agentCLI.ts";

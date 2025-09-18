@@ -2,7 +2,7 @@ import {select} from '@inquirer/prompts';
 import Agent from "@tokenring-ai/agent/Agent";
 import {AgentEvents} from "@tokenring-ai/agent/AgentEvents";
 import AgentTeam from "@tokenring-ai/agent/AgentTeam";
-import {TokenRingService} from "@tokenring-ai/agent/types";
+import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
 import chalk from "chalk";
 import ora, {Ora} from "ora";
 import {
@@ -16,24 +16,21 @@ import {
   CancellationToken,
   ExitToken,
   openWebPage
-} from "./REPLInput.js";
+} from "./inputHandlers.js";
 
 /**
- * REPL (Read-Eval-Print Loop) service for interactive command-line interface
+ * AgentCLI is a command-line interface for interacting with an AgentTeam.
  */
-export default class REPLService implements TokenRingService {
-  name = "REPLService";
-  description = "Provides REPL functionality";
-
+export default class AgentCLI {
   private shouldExit = false;
-  private promptQueue: string[] = [];
   private mainInputAbortController: AbortController = new AbortController();
   private availableCommands: string[] = [];
 
   private readonly agentManager: AgentTeam;
 
   /**
-   * Creates a new REPLService instance
+   * Creates a new AgentCLI instance.
+   * @param agentManager The AgentTeam instance to manage agents.
    */
   constructor(agentManager: AgentTeam) {
     this.agentManager = agentManager;
@@ -56,13 +53,6 @@ export default class REPLService implements TokenRingService {
     }
 
     console.log("Goodbye!");
-  }
-
-  async injectPrompt(prompt: string): Promise<void> {
-    this.promptQueue.push(prompt);
-    if (this.mainInputAbortController && !this.mainInputAbortController.signal.aborted) {
-      this.mainInputAbortController.abort();
-    }
   }
 
   private async selectOrCreateAgent(): Promise<Agent | null> {
@@ -200,16 +190,13 @@ export default class REPLService implements TokenRingService {
   }
 
   private async gatherInput(agent: Agent): Promise<boolean> {
-    // Handle any queued prompts
-    if (this.promptQueue.length > 0) {
-      const prompt = this.promptQueue.shift()!;
-      agent.handleInput({message: prompt});
-      return true;
-    }
+    const history = agent.getState(CommandHistoryState).commands;
 
     const userInput = await askForCommand({
       autoCompletion: this.availableCommands,
+      history
     });
+
 
     if (userInput === '/switch' || userInput === ExitToken) {
       console.log("\nReturning to agent selection.");

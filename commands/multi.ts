@@ -1,7 +1,7 @@
 import {editor} from "@inquirer/prompts";
 import {Agent} from "@tokenring-ai/agent";
 import {abandon} from "@tokenring-ai/utility/abandon";
-import REPLService from "../REPLService.ts";
+import AgentCLI from "../agentCLI.ts";
 
 // Command description for help display
 export const description: string =
@@ -11,9 +11,7 @@ export const description: string =
  * Executes the multi command to open an editor for multiline input
  */
 export async function execute(_args: string, agent: Agent): Promise<void> {
-  const replService = agent.requireFirstServiceByType(REPLService);
-
-  const prompt = await editor({
+  const message = await editor({
     message: "Enter your multiline text (save and close editor to submit):",
     // Preserve original option from JS implementation
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -21,8 +19,8 @@ export async function execute(_args: string, agent: Agent): Promise<void> {
     waitForUseInput: false,
   });
 
-  if (prompt) {
-    abandon(replService.injectPrompt(prompt));
+  if (message) {
+    agent.handleInput({ message});
   }
 }
 

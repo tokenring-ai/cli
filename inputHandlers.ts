@@ -38,7 +38,8 @@ export async function askForCommand(options: AskForCommandOptions): Promise<stri
           return input;
         },
         message: chalk.yellowBright(">"),
-        autoCompletion: options.autoCompletion
+        autoCompletion: options.autoCompletion,
+        history: options.history,
       },
       {
         signal: abortController.signal,
