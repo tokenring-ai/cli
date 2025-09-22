@@ -4,7 +4,7 @@ export const description = "/exit - Exit the current agent" as const;
 
 export async function execute(_remainder: string | undefined, agent: Agent): Promise<void> {
   agent.infoLine("Exiting agent...");
-  await agent.team.deleteAgent(agent);
+  agent.requestExit();
 }
 
 export function help(): string[] {

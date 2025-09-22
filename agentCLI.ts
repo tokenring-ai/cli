@@ -69,8 +69,13 @@ export default class AgentCLI {
     }
 
     const agentConfigs = this.agentManager.getAgentConfigs();
-    for (const type in agentConfigs) {
-      const agentConfig = agentConfigs[type];
+    const sortedConfigs = Object.entries(agentConfigs).sort((a, b) => {
+      if (a[1].type === b[1].type) return a[1].name.localeCompare(b[1].name);
+
+      return a[1].type === 'interactive' ? -1 : 1;
+    })
+
+    for (const [type, agentConfig] of sortedConfigs) {
       choices.push({
         value: async () => {
           console.log(`Starting new agent: ${agentConfig.name}`);
@@ -78,14 +83,14 @@ export default class AgentCLI {
           console.log(`Agent ${agent.id} started`);
           return agent;
         },
-        name: `Create a new ${agentConfig.name}`
+        name: `${agentConfig.name} (${agentConfig.type === 'interactive' ? 'general purpose' : 'specialized'})`
       });
     }
 
     choices.push({name: "Exit", value: null});
 
     const result = await select({
-      message: "Select an existing agent to connect to, or create a new one:",
+      message: "Select a running agent to connect to, or create a new one:",
       choices: choices,
       loop: false,
     });
@@ -175,6 +180,10 @@ export default class AgentCLI {
         case 'state.notBusy':
           stopSpinner();
           break;
+        case 'state.exit':
+          console.log("\nAgent exited. Returning to agent selection.");
+          await agent.team.deleteAgent(agent);
+          return;
         case 'state.idle':
           if (!await this.gatherInput(agent)) {
             console.log("\nReturning to agent selection.");
