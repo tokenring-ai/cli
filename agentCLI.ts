@@ -154,7 +154,7 @@ export default class AgentCLI {
     console.log(chalk.yellow("Type your questions and hit Enter. Commands start with /. Type /switch to change agents, /quit or /exit to return to agent selection."));
     console.log(chalk.yellow("(Use ↑/↓ arrow keys to navigate command history)"));
 
-
+    let suppressNextInput = false;
     for await (const event of agent.events(this.mainInputAbortController.signal)) {
       switch (event.type) {
         case 'output.chat':
@@ -184,8 +184,20 @@ export default class AgentCLI {
           console.log("\nAgent exited. Returning to agent selection.");
           await agent.team.deleteAgent(agent);
           return;
+        case 'input.received':
+          if (suppressNextInput) {
+            suppressNextInput = false;
+            break;
+          }
+
+          ensureNewline();
+          console.log(chalk.cyan(`> ${event.data.message}`));
+          lastWriteHadNewline = true;
+          break;
         case 'state.idle':
-          if (!await this.gatherInput(agent)) {
+          if (await this.gatherInput(agent)) {
+            suppressNextInput = true;
+          } else {
             console.log("\nReturning to agent selection.");
             return;
           }
