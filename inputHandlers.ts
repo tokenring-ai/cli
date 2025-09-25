@@ -14,17 +14,12 @@ import chalk from "chalk";
 import inquirer from "inquirer";
 import open from "open";
 
-let abortController = new AbortController();
-
-process.on("SIGINT", () => abortController.abort());
-
 export const CancellationToken = Symbol("CancellationToken");
 export const ExitToken = Symbol("ExitToken");
 
-export async function askForCommand(options: AskForCommandOptions): Promise<string | typeof ExitToken | typeof CancellationToken> {
-  if (abortController.signal.aborted) abortController = new AbortController();
-
+export async function askForCommand(options: AskForCommandOptions, signal: AbortSignal): Promise<string | typeof ExitToken | typeof CancellationToken> {
   let emptyPrompt = true;
+  
   try {
     return await commandPrompt(
       {
@@ -42,7 +37,7 @@ export async function askForCommand(options: AskForCommandOptions): Promise<stri
         history: options.history,
       },
       {
-        signal: abortController.signal,
+        signal,
       },
     );
   } catch (e) {
@@ -51,8 +46,8 @@ export async function askForCommand(options: AskForCommandOptions): Promise<stri
   }
 }
 
-export async function askForConfirmation(options: AskForConfirmationOptions) {
-  return confirm(options);
+export async function askForConfirmation(options: AskForConfirmationOptions, signal: AbortSignal) {
+  return confirm(options, { signal });
 }
 
 export async function openWebPage({url}: OpenWebPageRequest): Promise<void> {
@@ -64,8 +59,8 @@ export async function openWebPage({url}: OpenWebPageRequest): Promise<void> {
  */
 export async function askForSelection({
                                         title,
-                                        items,
-                                      }: AskForSelectionOptions): Promise<string> {
+                                        items
+                                      }: AskForSelectionOptions, signal: AbortSignal): Promise<string> {
   const {selection} = await inquirer.prompt<{ selection: string }>([
     {
       type: "list",
@@ -74,7 +69,7 @@ export async function askForSelection({
       choices: items,
       loop: false,
     },
-  ]);
+  ], { signal });
 
   return selection;
 }
@@ -82,12 +77,12 @@ export async function askForSelection({
 /**
  * Asks the user a question and allows them to type in a multi-line answer using a REPL interface.
  */
-export async function ask({question}: AskRequest): Promise<string> {
+export async function ask({question}: AskRequest, signal: AbortSignal): Promise<string> {
   const {answer} = await inquirer.prompt<{ answer: string }>({
     type: "editor",
     name: "answer",
     message: question,
-  });
+  }, { signal });
   return answer;
 }
 
@@ -97,8 +92,8 @@ export async function ask({question}: AskRequest): Promise<string> {
 export async function askForMultipleSelections({
                                                  title,
                                                  items,
-                                                 message,
-                                               }: AskForMultipleSelectionOptions): Promise<string[]> {
+                                                 message
+                                               }: AskForMultipleSelectionOptions, signal: AbortSignal): Promise<string[]> {
   const {selections} = await inquirer.prompt<{ selections: string[] }>([
     {
       type: "checkbox",
@@ -107,7 +102,7 @@ export async function askForMultipleSelections({
       choices: Array.from(items),
       loop: false,
     },
-  ]);
+  ], { signal });
 
   return selections;
 }
@@ -119,8 +114,8 @@ export async function askForSingleTreeSelection({
                                                   message,
                                                   tree,
                                                   initialSelection,
-                                                  loop = false,
-                                                }: AskForSingleTreeSelectionOptions): Promise<string | null> {
+                                                  loop = false
+                                                }: AskForSingleTreeSelectionOptions, signal: AbortSignal): Promise<string | null> {
   return await treeSelector({
     message: message ?? "",
     tree: tree,
@@ -129,7 +124,7 @@ export async function askForSingleTreeSelection({
     loop,
     pageSize: 20,
     ...(initialSelection && {initialSelection}),
-  });
+  }, { signal });
 }
 
 /**
@@ -139,8 +134,8 @@ export async function askForMultipleTreeSelection({
                                                     message,
                                                     tree,
                                                     initialSelection,
-                                                    loop = false,
-                                                  }: AskForMultipleTreeSelectionOptions): Promise<string[] | null> {
+                                                    loop = false
+                                                  }: AskForMultipleTreeSelectionOptions, signal: AbortSignal): Promise<string[] | null> {
   return await treeSelector({
     message: message ?? "",
     tree: tree,
@@ -149,7 +144,7 @@ export async function askForMultipleTreeSelection({
     loop,
     pageSize: 20,
     ...(initialSelection && {initialSelection: Array.from(initialSelection)}),
-  });
+  }, { signal });
 }
 
 

@@ -4,6 +4,7 @@ import {AgentEvents} from "@tokenring-ai/agent/AgentEvents";
 import AgentTeam from "@tokenring-ai/agent/AgentTeam";
 import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
 import chalk from "chalk";
+import * as process from "node:process";
 import ora, {Ora} from "ora";
 import {
   ask,
@@ -17,14 +18,30 @@ import {
   ExitToken,
   openWebPage
 } from "./inputHandlers.js";
+import {
+  setupCtrlTHandler,
+  cleanupCtrlTHandler,
+  CtrlTToken,
+  CreateAgentToken,
+  NextAgentToken,
+  PrevAgentToken,
+  AgentSelectorToken,
+  ExitAgentToken,
+  DetachAgentToken
+} from "./ctrlTHandler.js";
 
 /**
  * AgentCLI is a command-line interface for interacting with an AgentTeam.
  */
 export default class AgentCLI {
   private shouldExit = false;
-  private mainInputAbortController: AbortController = new AbortController();
+  private inputAbortController: AbortController | undefined;
+  private eventLoopDisconnectController: AbortController | undefined;
+  private agentCancelController: AbortController | undefined;
   private availableCommands: string[] = [];
+  private pendingCtrlTAction: symbol | null = null;
+  private currentAgent: Agent | null = null;
+
 
   private readonly agentManager: AgentTeam;
 
@@ -38,6 +55,19 @@ export default class AgentCLI {
 
 
   async run(): Promise<void> {
+    process.on("SIGINT", () => {
+      if (this.agentCancelController) {
+        this.agentCancelController.abort();
+      } else if (this.inputAbortController) {
+        this.inputAbortController.abort();
+      } else if (this.eventLoopDisconnectController) {
+        this.eventLoopDisconnectController.abort();
+      } else {
+        console.log("Ctrl-C pressed. Exiting...");
+        process.exit(0);
+      }
+    });
+
     while (!this.shouldExit) {
       try {
         const agent = await this.selectOrCreateAgent();
@@ -99,14 +129,19 @@ export default class AgentCLI {
   }
 
   private async runAgentLoop(agent: Agent): Promise<void> {
-    // Setup commands
+    this.currentAgent = agent;
     const commandNames = agent.team.chatCommands.getAllItemNames().map(cmd => `/${cmd}`);
     this.availableCommands = [...commandNames, '/switch'];
 
+    setupCtrlTHandler((token) => {
+      this.pendingCtrlTAction = token;
+    });
+
     try {
-      // Run main loop until agent exits
       await this.mainLoop(agent);
     } finally {
+      cleanupCtrlTHandler();
+      this.currentAgent = null;
       console.log("Agent session ended.");
     }
   }
@@ -152,72 +187,85 @@ export default class AgentCLI {
     }
 
     console.log(chalk.yellow("Type your questions and hit Enter. Commands start with /. Type /switch to change agents, /quit or /exit to return to agent selection."));
-    console.log(chalk.yellow("(Use ↑/↓ arrow keys to navigate command history)"));
+    console.log(chalk.yellow("(Use ↑/↓ arrow keys to navigate command history, Ctrl-T for shortcuts)"));
 
     let suppressNextInput = false;
-    for await (const event of agent.events(this.mainInputAbortController.signal)) {
-      switch (event.type) {
-        case 'output.chat':
-          writeOutput(event.data.content, "chat");
-          break;
-        case 'output.reasoning':
-          writeOutput(event.data.content, "reasoning");
-          break;
-        case 'output.system': {
-          stopSpinner();
-          ensureNewline();
-          const color = event.data.level === 'error' ? chalk.red :
-            event.data.level === 'warning' ? chalk.yellow : chalk.blue;
-          console.log(color(event.data.message));
-          lastWriteHadNewline = true;
-          break;
-        }
-        case 'state.busy':
-          spinner = ora(event.data.message);
-          spinner.start();
-          lastWriteHadNewline = true;
-          break;
-        case 'state.notBusy':
-          stopSpinner();
-          break;
-        case 'state.exit':
-          console.log("\nAgent exited. Returning to agent selection.");
-          await agent.team.deleteAgent(agent);
-          return;
-        case 'input.received':
-          if (suppressNextInput) {
-            suppressNextInput = false;
+    try {
+      this.eventLoopDisconnectController = new AbortController();
+      for await (const event of agent.events(this.eventLoopDisconnectController.signal)) {
+        switch (event.type) {
+          case 'output.chat':
+            writeOutput(event.data.content, "chat");
+            break;
+          case 'output.reasoning':
+            writeOutput(event.data.content, "reasoning");
+            break;
+          case 'output.system': {
+            stopSpinner();
+            ensureNewline();
+            const color = event.data.level === 'error' ? chalk.red :
+              event.data.level === 'warning' ? chalk.yellow : chalk.blue;
+            console.log(color(event.data.message));
+            lastWriteHadNewline = true;
             break;
           }
-
-          ensureNewline();
-          console.log(chalk.cyan(`> ${event.data.message}`));
-          lastWriteHadNewline = true;
-          break;
-        case 'state.idle':
-          if (await this.gatherInput(agent)) {
-            suppressNextInput = true;
-          } else {
-            console.log("\nReturning to agent selection.");
+          case 'state.busy':
+            spinner = ora(event.data.message);
+            spinner.start();
+            lastWriteHadNewline = true;
+            break;
+          case 'state.notBusy':
+            stopSpinner();
+            break;
+          case 'state.exit':
+            console.log("\nAgent exited. Returning to agent selection.");
+            await agent.team.deleteAgent(agent);
             return;
-          }
-          break;
-        case 'human.request':
-          await this.handleHumanRequest(event.data, agent);
-          break;
+          case 'input.received':
+            if (suppressNextInput) {
+              suppressNextInput = false;
+              break;
+            }
+
+            ensureNewline();
+            console.log(chalk.cyan(`> ${event.data.message}`));
+            lastWriteHadNewline = true;
+            break;
+          case 'state.idle':
+            this.agentCancelController = undefined;
+            if (await this.gatherInput(agent)) {
+              suppressNextInput = true;
+            } else {
+              console.log("\nReturning to agent selection.");
+              return;
+            }
+            break;
+          case 'human.request':
+            await this.handleHumanRequest(event.data, agent);
+            break;
+        }
       }
+      stopSpinner();
+    } finally {
+      this.eventLoopDisconnectController = undefined;
     }
-    stopSpinner();
   }
 
   private async gatherInput(agent: Agent): Promise<boolean> {
+    if (this.pendingCtrlTAction) {
+      const action = this.pendingCtrlTAction;
+      this.pendingCtrlTAction = null;
+      return await this.handleCtrlTAction(action, agent);
+    }
+
     const history = agent.getState(CommandHistoryState).commands;
+
+    this.inputAbortController = new AbortController();
 
     const userInput = await askForCommand({
       autoCompletion: this.availableCommands,
       history
-    });
-
+    }, this.inputAbortController.signal);
 
     if (userInput === '/switch' || userInput === ExitToken) {
       console.log("\nReturning to agent selection.");
@@ -236,32 +284,116 @@ export default class AgentCLI {
   private async handleHumanRequest({request, sequence}: AgentEvents["human.request"], agent: Agent) {
     let result: any;
 
-    switch (request.type) {
-      case "ask":
-        result = await ask(request);
-        break;
-      case "askForConfirmation":
-        result = await askForConfirmation(request);
-        break;
-      case "askForMultipleTreeSelection":
-        result = await askForMultipleTreeSelection(request);
-        break;
-      case "askForSingleTreeSelection":
-        result = await askForSingleTreeSelection(request);
-        break;
-      case "openWebPage":
-        result = await openWebPage(request);
-        break;
-      case "askForSelection":
-        result = await askForSelection(request);
-        break;
-      case "askForMultipleSelections":
-        result = await askForMultipleSelections(request);
-        break;
-      default:
-        throw new Error(`Unknown HumanInterfaceRequest type: ${(request as any)?.type}`);
-    }
+    try {
+      const {signal} = this.inputAbortController = new AbortController()
 
+      switch (request.type) {
+        case "ask":
+          result = await ask(request, signal);
+          break;
+        case "askForConfirmation":
+          result = await askForConfirmation(request, signal);
+          break;
+        case "askForMultipleTreeSelection":
+          result = await askForMultipleTreeSelection(request, signal);
+          break;
+        case "askForSingleTreeSelection":
+          result = await askForSingleTreeSelection(request, signal);
+          break;
+        case "openWebPage":
+          result = await openWebPage(request);
+          break;
+        case "askForSelection":
+          result = await askForSelection(request, signal);
+          break;
+        case "askForMultipleSelections":
+          result = await askForMultipleSelections(request, signal);
+          break;
+        default:
+          throw new Error(`Unknown HumanInterfaceRequest type: ${(request as any)?.type}`);
+      }
+    } finally {
+      this.inputAbortController = undefined;
+    }
     agent.sendHumanResponse(sequence, result);
+  }
+
+  private showCtrlTHelp(agent: Agent): void {
+    agent.infoLine("Ctrl-T shortcuts:");
+    agent.infoLine("  Ctrl-T     - Show this help");
+    agent.infoLine("  Ctrl-T c   - Create new agent (same type as current)");
+    agent.infoLine("  Ctrl-T n   - Switch to next running agent");
+    agent.infoLine("  Ctrl-T p   - Switch to previous running agent");
+    agent.infoLine("  Ctrl-T s   - Return to agent selector");
+    agent.infoLine("  Ctrl-T x   - Exit current agent");
+    agent.infoLine("  Ctrl-T d   - Detach from agent (keeps running)");
+  }
+
+  private async createAgentAsCurrent(currentAgent: Agent): Promise<void> {
+    const agentType = currentAgent.options.type;
+    console.log(`\nCreating new ${agentType} agent...`);
+    const newAgent = await this.agentManager.createAgent(agentType);
+    console.log(`New agent ${newAgent.id} created. Switching to it.`);
+    await this.runAgentLoop(newAgent);
+  }
+
+  private async switchToNextAgent(): Promise<boolean> {
+    const runningAgents = this.agentManager.getAgents();
+    if (runningAgents.length <= 1) {
+      console.log("\nNo other agents running.");
+      return true;
+    }
+    
+    const currentIndex = runningAgents.findIndex(a => a.id === this.currentAgent?.id);
+    const nextIndex = (currentIndex + 1) % runningAgents.length;
+    const nextAgent = runningAgents[nextIndex];
+    console.log(`\nSwitching to agent: ${nextAgent.name} (${nextAgent.id.slice(0, 8)})`);
+    await this.runAgentLoop(nextAgent);
+    return false;
+  }
+
+  private async switchToPrevAgent(): Promise<boolean> {
+    const runningAgents = this.agentManager.getAgents();
+    if (runningAgents.length <= 1) {
+      console.log("\nNo other agents running.");
+      return true;
+    }
+    
+    const currentIndex = runningAgents.findIndex(a => a.id === this.currentAgent?.id);
+    const prevIndex = currentIndex <= 0 ? runningAgents.length - 1 : currentIndex - 1;
+    const prevAgent = runningAgents[prevIndex];
+    console.log(`\nSwitching to agent: ${prevAgent.name} (${prevAgent.id.slice(0, 8)})`);
+    await this.runAgentLoop(prevAgent);
+    return false;
+  }
+
+  private async handleCtrlTAction(action: symbol, agent: Agent): Promise<boolean> {
+    if (action === CtrlTToken) {
+      this.showCtrlTHelp(agent);
+      return this.gatherInput(agent);
+    }
+    if (action === CreateAgentToken) {
+      await this.createAgentAsCurrent(agent);
+      return this.gatherInput(agent);
+    }
+    if (action === NextAgentToken) {
+      return await this.switchToNextAgent();
+    }
+    if (action === PrevAgentToken) {
+      return await this.switchToPrevAgent();
+    }
+    if (action === AgentSelectorToken) {
+      console.log("\nReturning to agent selection.");
+      return false;
+    }
+    if (action === ExitAgentToken) {
+      agent.requestExit();
+      return true;
+    }
+    if (action === DetachAgentToken) {
+      console.log("\nDetaching from agent. Agent continues running.");
+      return false;
+    }
+    return true;
   }
 }
