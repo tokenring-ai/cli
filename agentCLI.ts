@@ -14,6 +14,7 @@ import {
   askForMultipleTreeSelection,
   askForSelection,
   askForSingleTreeSelection,
+  askForPassword,
   CancellationToken,
   ExitToken,
   openWebPage
@@ -308,6 +309,9 @@ export default class AgentCLI {
           break;
         case "askForMultipleSelections":
           result = await askForMultipleSelections(request, signal);
+          break;
+        case "askForPassword":
+          result = await askForPassword(request, signal);
           break;
         default:
           throw new Error(`Unknown HumanInterfaceRequest type: ${(request as any)?.type}`);

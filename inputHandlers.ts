@@ -1,4 +1,5 @@
-import {confirm} from "@inquirer/prompts";
+import {confirm, editor, password, select} from "@inquirer/prompts";
+import {select as selectPro} from "inquirer-select-pro";
 import {
   AskForCommandOptions,
   AskForConfirmationOptions,
@@ -7,11 +8,10 @@ import {
   AskForSelectionOptions,
   AskForSingleTreeSelectionOptions,
 } from "@tokenring-ai/agent/HumanInterfaceProvider";
-import {AskRequest, OpenWebPageRequest} from "@tokenring-ai/agent/HumanInterfaceRequest";
+import {AskForPasswordOptions, AskRequest, OpenWebPageRequest} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import commandPrompt from "@tokenring-ai/inquirer-command-prompt";
 import {treeSelector} from "@tokenring-ai/inquirer-tree-selector";
 import chalk from "chalk";
-import inquirer from "inquirer";
 import open from "open";
 
 export const CancellationToken = Symbol("CancellationToken");
@@ -50,6 +50,10 @@ export async function askForConfirmation(options: AskForConfirmationOptions, sig
   return confirm(options, { signal });
 }
 
+export async function askForPassword(options: AskForPasswordOptions, signal: AbortSignal) {
+  return password(options, { signal})
+}
+
 export async function openWebPage({url}: OpenWebPageRequest): Promise<void> {
   await open(url);
 }
@@ -58,53 +62,35 @@ export async function openWebPage({url}: OpenWebPageRequest): Promise<void> {
  * Asks the user to select an item from a list using a REPL interface.
  */
 export async function askForSelection({
-                                        title,
-                                        items
+                                        message,
+                                        choices
                                       }: AskForSelectionOptions, signal: AbortSignal): Promise<string> {
-  const {selection} = await inquirer.prompt<{ selection: string }>([
-    {
-      type: "list",
-      name: "selection",
-      message: title,
-      choices: items,
-      loop: false,
-    },
-  ], { signal });
-
-  return selection;
+  return select({
+    message,
+    choices,
+    loop: false
+  }, {signal});
 }
 
 /**
  * Asks the user a question and allows them to type in a multi-line answer using a REPL interface.
  */
-export async function ask({question}: AskRequest, signal: AbortSignal): Promise<string> {
-  const {answer} = await inquirer.prompt<{ answer: string }>({
-    type: "editor",
-    name: "answer",
-    message: question,
-  }, { signal });
-  return answer;
+export async function ask(options: AskRequest, signal: AbortSignal): Promise<string> {
+  return editor(options, {signal});
 }
 
 /**
  * Asks the user to select multiple items from a list using a REPL interface.
  */
 export async function askForMultipleSelections({
-                                                 title,
-                                                 items,
+                                                 options,
                                                  message
                                                }: AskForMultipleSelectionOptions, signal: AbortSignal): Promise<string[]> {
-  const {selections} = await inquirer.prompt<{ selections: string[] }>([
-    {
-      type: "checkbox",
-      name: "selections",
-      message: message || title,
-      choices: Array.from(items),
-      loop: false,
-    },
-  ], { signal });
-
-  return selections;
+  return selectPro({
+    message,
+    options,
+    loop: false
+  }, {signal});
 }
 
 /**
