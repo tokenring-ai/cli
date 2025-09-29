@@ -120,11 +120,15 @@ export default class AgentCLI {
 
     choices.push({name: "Exit", value: null});
 
+    this.inputAbortController = new AbortController();
+
     const result = await select({
       message: "Select a running agent to connect to, or create a new one:",
-      choices: choices,
+      choices,
       loop: false,
-    });
+    }, { signal: this.inputAbortController?.signal});
+
+    this.inputAbortController = undefined;
 
     return result ? await result() : null;
   }
