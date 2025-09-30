@@ -1,58 +1,75 @@
-import readline from 'readline';
-
-export const CtrlTToken = Symbol("CtrlTToken");
-export const CreateAgentToken = Symbol("CreateAgentToken");
-export const NextAgentToken = Symbol("NextAgentToken");
-export const PrevAgentToken = Symbol("PrevAgentToken");
-export const AgentSelectorToken = Symbol("AgentSelectorToken");
-export const ExitAgentToken = Symbol("ExitAgentToken");
-export const DetachAgentToken = Symbol("DetachAgentToken");
-
-type CtrlTCallback = (token: symbol) => void;
-
-let ctrlTPressed = false;
-let callback: CtrlTCallback | null = null;
-export function setupCtrlTHandler(onCtrlT: CtrlTCallback) {
-  callback = onCtrlT;
-  
-  if (process.stdin.isTTY) {
-    process.stdin.setRawMode(true);
-    process.stdin.on('data', handleKeypress);
-  }
+/** Enum describing all Ctrl-T actions */
+export enum CtrlTAction {
+  ShowHelp = "showHelp",
+  CreateAgent = "createAgent",
+  NextAgent = "nextAgent",
+  PrevAgent = "prevAgent",
+  OpenSelector = "openSelector",
+  ExitAgent = "exitAgent",
+  DetachAgent = "detachAgent",
 }
 
-export function cleanupCtrlTHandler() {
-  if (process.stdin.isTTY) {
-    process.stdin.setRawMode(false);
-    process.stdin.off('data', handleKeypress);
-  }
-  callback = null;
-}
+type Listener = (action: CtrlTAction) => void;
 
-function handleKeypress(data: Buffer) {
-  const key = data.toString();
-  
-  // Ctrl-T is ASCII 20 (0x14)
-  if (key === '\x14') {
-    if (ctrlTPressed) {
-      ctrlTPressed = false;
-      callback?.(CtrlTToken);
+export class CtrlTHandler {
+  private pressed = false;
+  private listeners = new Set<Listener>();
+  private boundKeypress = this.handleKeypress.bind(this);
+
+  constructor() {
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+      process.stdin.on('data', this.boundKeypress);
+    }
+  }
+
+  /** Register a listener for Ctrl-T actions */
+  addListener(fn: Listener) {
+    this.listeners.add(fn);
+  }
+
+  /** Unregister a previously added listener */
+  removeListener(fn: Listener) {
+    this.listeners.delete(fn);
+  }
+
+  /** Clean up the raw stdin listener */
+  dispose() {
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+      process.stdin.off('data', this.boundKeypress);
+    }
+    this.listeners.clear();
+  }
+
+  private emit(action: CtrlTAction) {
+    for (const fn of this.listeners) fn(action);
+  }
+
+  private handleKeypress(data: Buffer) {
+    const key = data.toString();
+    if (key === '\x14') { // Ctrl-T
+      if (this.pressed) {
+        this.pressed = false;
+        this.emit(CtrlTAction.ShowHelp);
+        return;
+      }
+      this.pressed = true;
       return;
     }
-    ctrlTPressed = true;
-    return;
-  }
-  
-  if (ctrlTPressed) {
-    ctrlTPressed = false;
-    
-    switch (key) {
-      case 'c': callback?.(CreateAgentToken); break;
-      case 'n': callback?.(NextAgentToken); break;
-      case 'p': callback?.(PrevAgentToken); break;
-      case 's': callback?.(AgentSelectorToken); break;
-      case 'x': callback?.(ExitAgentToken); break;
-      case 'd': callback?.(DetachAgentToken); break;
+    if (this.pressed) {
+      this.pressed = false;
+      switch (key) {
+        case 'c': this.emit(CtrlTAction.CreateAgent); break;
+        case 'n': this.emit(CtrlTAction.NextAgent); break;
+        case 'p': this.emit(CtrlTAction.PrevAgent); break;
+        case 's': this.emit(CtrlTAction.OpenSelector); break;
+        case 'x': this.emit(CtrlTAction.ExitAgent); break;
+        case 'd': this.emit(CtrlTAction.DetachAgent); break;
+      }
     }
   }
 }
+
+// Backwards compatibility – a default singleton used throughout the codebase
+export const ctrlTHandler = new CtrlTHandler();
