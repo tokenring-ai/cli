@@ -7,7 +7,7 @@ import {
   AskForMultipleTreeSelectionOptions,
   AskForSelectionOptions,
   AskForSingleTreeSelectionOptions,
-} from "@tokenring-ai/agent/HumanInterfaceProvider";
+} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import {AskForPasswordOptions, AskRequest, OpenWebPageRequest} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import commandPrompt from "@tokenring-ai/inquirer-command-prompt";
 import {treeSelector} from "@tokenring-ai/inquirer-tree-selector";

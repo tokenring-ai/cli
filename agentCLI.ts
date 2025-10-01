@@ -13,6 +13,7 @@ import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState
 import chalk from "chalk";
 import * as process from "node:process";
 import ora, {Ora} from "ora";
+import * as readline from "node:readline";
 import {
   ask,
   askForCommand,
@@ -35,7 +36,7 @@ export default class AgentCLI {
   private shouldExit = false;
   private inputAbortController: AbortController | undefined;
   private eventLoopDisconnectController: AbortController | undefined;
-  private agentCancelController: AbortController | undefined;
+
   private availableCommands: string[] = [];
   private pendingCtrlTAction: CtrlTAction | null = null;
   private currentAgent: Agent | null = null;
@@ -54,8 +55,8 @@ export default class AgentCLI {
 
   async run(): Promise<void> {
     process.on("SIGINT", () => {
-      if (this.agentCancelController) {
-        this.agentCancelController.abort();
+      if (this.currentAgent) {
+        this.currentAgent.requestAbort('User pressed Ctrl-C');
       } else if (this.inputAbortController) {
         this.inputAbortController.abort();
       } else if (this.eventLoopDisconnectController) {
@@ -65,6 +66,23 @@ export default class AgentCLI {
         process.exit(0);
       }
     });
+
+    // Enable keypress events
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+      readline.emitKeypressEvents(process.stdin);
+      
+      // Handle escape key to cancel operations
+      process.stdin.on('keypress', (str, key) => {
+        if (key && key.name === 'escape') {
+          if (this.currentAgent) {
+            this.currentAgent.requestAbort('User pressed escape');
+          } else if (this.inputAbortController) {
+            this.inputAbortController.abort();
+          }
+        }
+      });
+    }
 
     while (!this.shouldExit) {
       try {
@@ -188,7 +206,7 @@ export default class AgentCLI {
     }
 
     console.log(chalk.yellow("Type your questions and hit Enter. Commands start with /. Type /switch to change agents, /quit or /exit to return to agent selection."));
-    console.log(chalk.yellow("(Use ↑/↓ arrow keys to navigate command history, Ctrl-T for shortcuts)"));
+    console.log(chalk.yellow("(Use ↑/↓ arrow keys to navigate command history, Ctrl-T for shortcuts, Esc to cancel)"));
 
     let suppressNextInput = false;
     try {
@@ -233,7 +251,6 @@ export default class AgentCLI {
             lastWriteHadNewline = true;
             break;
           case 'state.idle':
-            this.agentCancelController = undefined;
             if (await this.gatherInput(agent)) {
               suppressNextInput = true;
             } else {
