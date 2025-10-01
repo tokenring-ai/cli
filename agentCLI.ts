@@ -26,17 +26,7 @@ import {
   ExitToken,
   openWebPage
 } from "./inputHandlers.js";
-import {
-  setupCtrlTHandler,
-  cleanupCtrlTHandler,
-  CtrlTToken,
-  CreateAgentToken,
-  NextAgentToken,
-  PrevAgentToken,
-  AgentSelectorToken,
-  ExitAgentToken,
-  DetachAgentToken
-} from "./ctrlTHandler.js";
+import { ctrlTHandler, CtrlTAction } from "./ctrlTHandler.js";
 
 /**
  * AgentCLI is a command-line interface for interacting with an AgentTeam.
@@ -47,7 +37,7 @@ export default class AgentCLI {
   private eventLoopDisconnectController: AbortController | undefined;
   private agentCancelController: AbortController | undefined;
   private availableCommands: string[] = [];
-  private pendingCtrlTAction: symbol | null = null;
+  private pendingCtrlTAction: CtrlTAction | null = null;
   private currentAgent: Agent | null = null;
 
 
@@ -145,14 +135,13 @@ export default class AgentCLI {
     const commandNames = agent.team.chatCommands.getAllItemNames().map(cmd => `/${cmd}`);
     this.availableCommands = [...commandNames, '/switch'];
 
-    setupCtrlTHandler((token) => {
-      this.pendingCtrlTAction = token;
-    });
+    const listener = (action: CtrlTAction) => { this.pendingCtrlTAction = action; };
+    ctrlTHandler.addListener(listener);
 
     try {
       await this.mainLoop(agent);
     } finally {
-      cleanupCtrlTHandler();
+      ctrlTHandler.removeListener(listener);
       this.currentAgent = null;
       console.log("Agent session ended.");
     }
@@ -383,33 +372,29 @@ export default class AgentCLI {
     return false;
   }
 
-  private async handleCtrlTAction(action: symbol, agent: Agent): Promise<boolean> {
-    if (action === CtrlTToken) {
-      this.showCtrlTHelp(agent);
-      return this.gatherInput(agent);
+  private async handleCtrlTAction(action: CtrlTAction, agent: Agent): Promise<boolean> {
+    switch (action) {
+      case CtrlTAction.ShowHelp:
+        this.showCtrlTHelp(agent);
+        return this.gatherInput(agent);
+      case CtrlTAction.CreateAgent:
+        await this.createAgentAsCurrent(agent);
+        return this.gatherInput(agent);
+      case CtrlTAction.NextAgent:
+        return await this.switchToNextAgent();
+      case CtrlTAction.PrevAgent:
+        return await this.switchToPrevAgent();
+      case CtrlTAction.OpenSelector:
+        console.log("\nReturning to agent selection.");
+        return false;
+      case CtrlTAction.ExitAgent:
+        agent.requestExit();
+        return true;
+      case CtrlTAction.DetachAgent:
+        console.log("\nDetaching from agent. Agent continues running.");
+        return false;
+      default:
+        return true;
     }
-    if (action === CreateAgentToken) {
-      await this.createAgentAsCurrent(agent);
-      return this.gatherInput(agent);
-    }
-    if (action === NextAgentToken) {
-      return await this.switchToNextAgent();
-    }
-    if (action === PrevAgentToken) {
-      return await this.switchToPrevAgent();
-    }
-    if (action === AgentSelectorToken) {
-      console.log("\nReturning to agent selection.");
-      return false;
-    }
-    if (action === ExitAgentToken) {
-      agent.requestExit();
-      return true;
-    }
-    if (action === DetachAgentToken) {
-      console.log("\nDetaching from agent. Agent continues running.");
-      return false;
-    }
-    return true;
   }
 }
