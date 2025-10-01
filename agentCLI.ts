@@ -2,6 +2,13 @@ import {select} from '@inquirer/prompts';
 import Agent from "@tokenring-ai/agent/Agent";
 import {AgentEvents} from "@tokenring-ai/agent/AgentEvents";
 import AgentTeam from "@tokenring-ai/agent/AgentTeam";
+import {
+  AskForConfirmationRequest, AskForMultipleSelectionsRequest, AskForMultipleTreeSelectionRequest, AskForPasswordOptions,
+  AskForSelectionRequest, AskForSingleTreeSelectionRequest,
+  AskRequest,
+  HumanInterfaceRequest,
+  HumanInterfaceResponse, OpenWebPageRequest
+} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
 import chalk from "chalk";
 import * as process from "node:process";
@@ -286,36 +293,37 @@ export default class AgentCLI {
     return true;
   }
 
-  private async handleHumanRequest({request, sequence}: AgentEvents["human.request"], agent: Agent) {
-    let result: any;
+  private async handleHumanRequest<T extends keyof HumanInterfaceResponse>(
+    {request, sequence}: { request: HumanInterfaceRequest & { type: T }, sequence: number}, agent: Agent) {
+    let result: HumanInterfaceResponse[T];
 
     try {
       const {signal} = this.inputAbortController = new AbortController()
 
       switch (request.type) {
         case "ask":
-          result = await ask(request, signal);
+          result = await ask(request as AskRequest, signal) as HumanInterfaceResponse[T];
           break;
         case "askForConfirmation":
-          result = await askForConfirmation(request, signal);
+          result = await askForConfirmation(request as AskForConfirmationRequest, signal) as HumanInterfaceResponse[T];
           break;
         case "askForMultipleTreeSelection":
-          result = await askForMultipleTreeSelection(request, signal);
+          result = await askForMultipleTreeSelection(request as AskForMultipleTreeSelectionRequest, signal) as HumanInterfaceResponse[T];
           break;
         case "askForSingleTreeSelection":
-          result = await askForSingleTreeSelection(request, signal);
+          result = await askForSingleTreeSelection(request as AskForSingleTreeSelectionRequest, signal) as HumanInterfaceResponse[T];
           break;
         case "openWebPage":
-          result = await openWebPage(request);
+          result = await openWebPage(request as OpenWebPageRequest) as HumanInterfaceResponse[T];
           break;
         case "askForSelection":
-          result = await askForSelection(request, signal);
+          result = await askForSelection(request as AskForSelectionRequest, signal) as HumanInterfaceResponse[T];
           break;
         case "askForMultipleSelections":
-          result = await askForMultipleSelections(request, signal);
+          result = await askForMultipleSelections(request as AskForMultipleSelectionsRequest, signal) as HumanInterfaceResponse[T];
           break;
         case "askForPassword":
-          result = await askForPassword(request, signal);
+          result = await askForPassword(request as AskForPasswordOptions, signal) as HumanInterfaceResponse[T];
           break;
         default:
           throw new Error(`Unknown HumanInterfaceRequest type: ${(request as any)?.type}`);
