@@ -1,3 +1,4 @@
+import {AgentCommandService} from "@tokenring-ai/agent";
 import Agent from "@tokenring-ai/agent/Agent";
 
 export const description = "/help - Show this help message" as const;
@@ -5,7 +6,8 @@ export const description = "/help - Show this help message" as const;
 export async function execute(_remainder: string | undefined, agent: Agent): Promise<void> {
   agent.infoLine("Available chat commands:");
 
-  const commands = agent.team.chatCommands.getAllItems();
+  const agentCommandService = agent.requireServiceByType(AgentCommandService);
+  const commands = agentCommandService.getCommands();
 
   for (const [cmdName, commandInstance] of Object.entries(commands)) {
     if (cmdName === "help") continue;
