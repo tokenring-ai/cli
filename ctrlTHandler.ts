@@ -60,12 +60,24 @@ export class CtrlTHandler {
     if (this.pressed) {
       this.pressed = false;
       switch (key) {
-        case 'c': this.emit(CtrlTAction.CreateAgent); break;
-        case 'n': this.emit(CtrlTAction.NextAgent); break;
-        case 'p': this.emit(CtrlTAction.PrevAgent); break;
-        case 's': this.emit(CtrlTAction.OpenSelector); break;
-        case 'x': this.emit(CtrlTAction.ExitAgent); break;
-        case 'd': this.emit(CtrlTAction.DetachAgent); break;
+        case 'c':
+          this.emit(CtrlTAction.CreateAgent);
+          break;
+        case 'n':
+          this.emit(CtrlTAction.NextAgent);
+          break;
+        case 'p':
+          this.emit(CtrlTAction.PrevAgent);
+          break;
+        case 's':
+          this.emit(CtrlTAction.OpenSelector);
+          break;
+        case 'x':
+          this.emit(CtrlTAction.ExitAgent);
+          break;
+        case 'd':
+          this.emit(CtrlTAction.DetachAgent);
+          break;
       }
     }
   }

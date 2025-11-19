@@ -1,17 +1,19 @@
 import {confirm, editor, password, select} from "@inquirer/prompts";
-import {select as selectPro} from "inquirer-select-pro";
 import {
   AskForCommandOptions,
   AskForConfirmationOptions,
   AskForMultipleSelectionOptions,
   AskForMultipleTreeSelectionOptions,
+  AskForPasswordOptions,
   AskForSelectionOptions,
   AskForSingleTreeSelectionOptions,
+  AskRequest,
+  OpenWebPageRequest,
 } from "@tokenring-ai/agent/HumanInterfaceRequest";
-import {AskForPasswordOptions, AskRequest, OpenWebPageRequest} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import commandPrompt from "@tokenring-ai/inquirer-command-prompt";
 import {treeSelector} from "@tokenring-ai/inquirer-tree-selector";
 import chalk from "chalk";
+import {select as selectPro} from "inquirer-select-pro";
 import open from "open";
 
 export const CancellationToken = Symbol("CancellationToken");
@@ -19,7 +21,7 @@ export const ExitToken = Symbol("ExitToken");
 
 export async function askForCommand(options: AskForCommandOptions, signal: AbortSignal): Promise<string | typeof ExitToken | typeof CancellationToken> {
   let emptyPrompt = true;
-  
+
   try {
     return await commandPrompt(
       {
@@ -47,11 +49,11 @@ export async function askForCommand(options: AskForCommandOptions, signal: Abort
 }
 
 export async function askForConfirmation(options: AskForConfirmationOptions, signal: AbortSignal) {
-  return confirm(options, { signal });
+  return confirm(options, {signal});
 }
 
 export async function askForPassword(options: AskForPasswordOptions, signal: AbortSignal) {
-  return password(options, { signal})
+  return password(options, {signal})
 }
 
 export async function openWebPage({url}: OpenWebPageRequest): Promise<void> {
@@ -110,7 +112,7 @@ export async function askForSingleTreeSelection({
     loop,
     pageSize: 20,
     ...(initialSelection && {initialSelection}),
-  }, { signal });
+  }, {signal});
 }
 
 /**
@@ -130,7 +132,7 @@ export async function askForMultipleTreeSelection({
     loop,
     pageSize: 20,
     ...(initialSelection && {initialSelection: Array.from(initialSelection)}),
-  }, { signal });
+  }, {signal});
 }
 
 

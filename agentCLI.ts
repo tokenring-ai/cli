@@ -86,7 +86,7 @@ export default class AgentCLI {
     if (process.stdin.isTTY) {
       process.stdin.setRawMode(false);
       readline.emitKeypressEvents(process.stdin);
-      
+
       // Handle escape key to cancel operations
       process.stdin.on('keypress', (str, key) => {
         if (key && key.name === 'escape') {
@@ -157,7 +157,7 @@ export default class AgentCLI {
       message: "Select a running agent to connect to, or create a new one:",
       choices,
       loop: false,
-    }, { signal: this.inputAbortController?.signal});
+    }, {signal: this.inputAbortController?.signal});
 
     this.inputAbortController = undefined;
 
@@ -172,7 +172,9 @@ export default class AgentCLI {
     const commandNames = agentCommandService.getCommandNames().map(cmd => `/${cmd}`);
     this.availableCommands = [...commandNames, '/switch'];
 
-    const listener = (action: CtrlTAction) => { this.pendingCtrlTAction = action; };
+    const listener = (action: CtrlTAction) => {
+      this.pendingCtrlTAction = action;
+    };
     ctrlTHandler.addListener(listener);
 
     try {
@@ -319,7 +321,7 @@ export default class AgentCLI {
   }
 
   private async handleHumanRequest<T extends keyof HumanInterfaceResponse>(
-    {request, sequence}: { request: HumanInterfaceRequest & { type: T }, sequence: number}, agent: Agent) {
+    {request, sequence}: { request: HumanInterfaceRequest & { type: T }, sequence: number }, agent: Agent) {
     let result: HumanInterfaceResponse[T];
 
     try {
@@ -383,7 +385,7 @@ export default class AgentCLI {
       console.log("\nNo other agents running.");
       return true;
     }
-    
+
     const currentIndex = runningAgents.findIndex(a => a.id === this.currentAgent?.id);
     const nextIndex = (currentIndex + 1) % runningAgents.length;
     const nextAgent = runningAgents[nextIndex];
@@ -398,7 +400,7 @@ export default class AgentCLI {
       console.log("\nNo other agents running.");
       return true;
     }
-    
+
     const currentIndex = runningAgents.findIndex(a => a.id === this.currentAgent?.id);
     const prevIndex = currentIndex <= 0 ? runningAgents.length - 1 : currentIndex - 1;
     const prevAgent = runningAgents[prevIndex];

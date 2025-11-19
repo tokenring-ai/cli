@@ -1,7 +1,5 @@
 import {editor} from "@inquirer/prompts";
 import {Agent} from "@tokenring-ai/agent";
-import {abandon} from "@tokenring-ai/utility/abandon";
-import AgentCLI from "../agentCLI.ts";
 
 // Command description for help display
 export const description: string =
@@ -20,7 +18,7 @@ export async function execute(_args: string, agent: Agent): Promise<void> {
   });
 
   if (message) {
-    agent.handleInput({ message});
+    agent.handleInput({message});
   }
 }
 
