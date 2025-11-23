@@ -1,14 +1,15 @@
 import {editor} from "@inquirer/prompts";
 import {Agent} from "@tokenring-ai/agent";
+import {TokenRingAgentCommand} from "@tokenring-ai/agent/types";
 
 // Command description for help display
-export const description: string =
+const description: string =
   "Opens an editor for multiline input. The entered text will be processed as the next input to the AI.";
 
 /**
  * Executes the multi command to open an editor for multiline input
  */
-export async function execute(_args: string, agent: Agent): Promise<void> {
+async function execute(_args: string, agent: Agent): Promise<void> {
   const message = await editor({
     message: "Enter your multiline text (save and close editor to submit):",
     // Preserve original option from JS implementation
@@ -34,3 +35,8 @@ export function help(): Array<string> {
     "  - If you cancel or provide empty input, nothing will be sent",
   ];
 }
+export default {
+  description,
+  execute,
+  help,
+} as TokenRingAgentCommand

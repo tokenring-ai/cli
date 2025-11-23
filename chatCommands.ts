@@ -1,5 +1,5 @@
-export * as edit from "./commands/edit.ts";
-export * as multi from "./commands/multi.ts";
-export * as exit from "./commands/exit.ts";
-export * as help from "./commands/help.ts";
-export * as quit from "./commands/quit.ts";
+export {default as edit} from "./commands/edit.ts";
+export {default as multi} from "./commands/multi.ts";
+export {default as exit} from "./commands/exit.ts";
+export {default as help} from "./commands/help.ts";
+export {default as quit} from "./commands/quit.ts";

@@ -1,9 +1,10 @@
 import {AgentCommandService} from "@tokenring-ai/agent";
 import Agent from "@tokenring-ai/agent/Agent";
+import {TokenRingAgentCommand} from "@tokenring-ai/agent/types";
 
-export const description = "/help - Show this help message" as const;
+const description = "/help - Show this help message" as const;
 
-export async function execute(_remainder: string | undefined, agent: Agent): Promise<void> {
+async function execute(_remainder: string | undefined, agent: Agent): Promise<void> {
   agent.infoLine("Available chat commands:");
 
   const agentCommandService = agent.requireServiceByType(AgentCommandService);
@@ -34,3 +35,8 @@ export async function execute(_remainder: string | undefined, agent: Agent): Pro
 export function help(): string[] {
   return ["/help - Show this help message"];
 }
+export default {
+  description,
+  execute,
+  help,
+} as TokenRingAgentCommand

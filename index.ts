@@ -1,4 +1,6 @@
-import {AgentCommandService, AgentTeam, TokenRingPackage} from "@tokenring-ai/agent";
+import {AgentCommandService} from "@tokenring-ai/agent";
+import TokenRingApp from "@tokenring-ai/app";
+import {TokenRingPlugin} from "@tokenring-ai/app";
 
 import * as chatCommands from "./chatCommands.ts";
 import packageJSON from './package.json' with {type: 'json'};
@@ -7,11 +9,11 @@ export default {
   name: packageJSON.name,
   version: packageJSON.version,
   description: packageJSON.description,
-  install(agentTeam: AgentTeam) {
-    agentTeam.waitForService(AgentCommandService, agentCommandService =>
+  install(app: TokenRingApp) {
+    app.waitForService(AgentCommandService, agentCommandService =>
       agentCommandService.addAgentCommands(chatCommands)
     );
   }
-} as TokenRingPackage;
+} as TokenRingPlugin;
 
 export {default as REPLService} from "./agentCLI.ts";

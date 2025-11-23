@@ -1,7 +1,14 @@
-export const description = "/quit - Quit the current agent" as const;
+import {TokenRingAgentCommand} from "@tokenring-ai/agent/types";
 
-export {execute} from "./exit.ts";
+const description = "/quit - Quit the current agent" as const;
+
+import {execute} from "./exit.ts";
 
 export function help(): string[] {
   return ["/quit - Quit the current agent and return to agent selection"];
 }
+export default {
+  description,
+  execute,
+  help,
+} as TokenRingAgentCommand

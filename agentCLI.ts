@@ -1,7 +1,8 @@
 import {select} from '@inquirer/prompts';
-import {AgentCommandService, AgentConfigService} from "@tokenring-ai/agent";
+import {AgentCommandService} from "@tokenring-ai/agent";
 import Agent from "@tokenring-ai/agent/Agent";
-import AgentTeam from "@tokenring-ai/agent/AgentTeam";
+import AgentManager from "@tokenring-ai/agent/services/AgentManager";
+import TokenRingApp from "@tokenring-ai/app";
 import {
   AskForConfirmationRequest,
   AskForMultipleSelectionsRequest,
@@ -34,9 +35,10 @@ import {
   ExitToken,
   openWebPage
 } from "./inputHandlers.js";
+import {setTimeout} from "node:timers/promises";
 
 /**
- * AgentCLI is a command-line interface for interacting with an AgentTeam.
+ * AgentCLI is a command-line interface for interacting with an TokenRingApp.
  */
 export default class AgentCLI {
   private shouldExit = false;
@@ -48,26 +50,20 @@ export default class AgentCLI {
   private currentAgent: Agent | null = null;
 
 
-  private readonly agentTeam: AgentTeam;
+  private readonly app: TokenRingApp;
+  private readonly agentManager: AgentManager;
 
   /**
    * Creates a new AgentCLI instance.
-   * @param agentManager The AgentTeam instance to manage agents.
+   * @param app The TokenRingApp instance to manage agents.
    */
-  constructor(agentManager: AgentTeam) {
-    this.agentTeam = agentManager;
+  constructor(app: TokenRingApp) {
+    this.app = app;
+    this.agentManager = app.requireService(AgentManager);
   }
 
 
   async run(): Promise<void> {
-    // Listen to team events
-    this.agentTeam.events.on('serviceOutput', (message: string) => {
-      console.log(chalk.blue(`[Team] ${message}`));
-    });
-
-    this.agentTeam.events.on('serviceError', (message: string) => {
-      console.log(chalk.red(`[Team Error] ${message}`));
-    });
 
     process.on("SIGINT", () => {
       if (this.currentAgent) {
@@ -100,16 +96,17 @@ export default class AgentCLI {
     }
 
     while (!this.shouldExit) {
-      try {
         const agent = await this.selectOrCreateAgent();
         if (!agent) {
           this.shouldExit = true;
           break;
         }
 
+      try {
         await this.runAgentLoop(agent);
       } catch (error) {
-        console.error(`Error in REPL: ${error}`);
+        console.error("Error while running agent loop", error);
+        await setTimeout( 1000);
       }
     }
 
@@ -119,18 +116,17 @@ export default class AgentCLI {
   private async selectOrCreateAgent(): Promise<Agent | null> {
     const choices: { name: string; value: (() => Promise<Agent>) | null }[] = [];
 
-    for (const agent of this.agentTeam.getAgents()) {
+    for (const agent of this.agentManager.getAgents()) {
       choices.push({
         value: async () => {
           console.log(`Connected to agent: ${agent.name}`);
           return agent;
         },
-        name: `Connect to: ${agent.options.name} (${formatAgentId(agent.id)})`
+        name: `Connect to: ${agent.config.name} (${formatAgentId(agent.id)})`
       });
     }
 
-    const agentConfigService = this.agentTeam.requireService(AgentConfigService);
-    const agentConfigs = agentConfigService.getAgentConfigs();
+    const agentConfigs = this.agentManager.getAgentConfigs();
     const sortedConfigs = Object.entries(agentConfigs).sort((a, b) => {
       if (a[1].type === b[1].type) return a[1].name.localeCompare(b[1].name);
 
@@ -141,7 +137,7 @@ export default class AgentCLI {
       choices.push({
         value: async () => {
           console.log(`Starting new agent: ${agentConfig.name}`);
-          const agent = await agentConfigService.spawnAgent(type, this.agentTeam);
+          const agent = await this.agentManager.spawnAgent(type);
           console.log(`Agent ${agent.id} started`);
           return agent;
         },
@@ -259,7 +255,7 @@ export default class AgentCLI {
             break;
           case 'state.exit':
             console.log("\nAgent exited. Returning to agent selection.");
-            await agent.team.deleteAgent(agent);
+            await this.agentManager.deleteAgent(agent);
             return;
           case 'input.received':
             if (suppressNextInput) {
@@ -373,14 +369,14 @@ export default class AgentCLI {
   }
 
   private async createAgentAsCurrent(currentAgent: Agent): Promise<void> {
-    console.log(`\nCreating new ${currentAgent.options.type} agent...`);
-    const newAgent = await this.agentTeam.createAgent(currentAgent.options);
+    console.log(`\nCreating new ${currentAgent.config.type} agent...`);
+    const newAgent = await this.agentManager.createAgent(currentAgent.config);
     console.log(`New agent ${newAgent.id} created. Switching to it.`);
     await this.runAgentLoop(newAgent);
   }
 
   private async switchToNextAgent(): Promise<boolean> {
-    const runningAgents = this.agentTeam.getAgents();
+    const runningAgents = this.agentManager.getAgents();
     if (runningAgents.length <= 1) {
       console.log("\nNo other agents running.");
       return true;
@@ -395,7 +391,7 @@ export default class AgentCLI {
   }
 
   private async switchToPrevAgent(): Promise<boolean> {
-    const runningAgents = this.agentTeam.getAgents();
+    const runningAgents = this.agentManager.getAgents();
     if (runningAgents.length <= 1) {
       console.log("\nNo other agents running.");
       return true;

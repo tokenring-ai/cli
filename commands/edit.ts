@@ -1,4 +1,5 @@
 import Agent from "@tokenring-ai/agent/Agent";
+import {TokenRingAgentCommand} from "@tokenring-ai/agent/types";
 import {execa} from "execa";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -9,12 +10,12 @@ function getDefaultEditor(): string {
 }
 
 // Command description for help display
-export const description: string = "/edit - Open your editor to write a prompt.";
+const description: string = "/edit - Open your editor to write a prompt.";
 
 /**
  * Executes the edit command to open an editor for prompt creation
  */
-export async function execute(remainder: string, agent: Agent): Promise<void> {
+async function execute(remainder: string, agent: Agent): Promise<void> {
 
   // Create a temp file for editing
   const tmpFile = path.join(os.tmpdir(), `aider_edit_${Date.now()}.txt`);
@@ -61,3 +62,8 @@ export function help(): Array<string> {
     "  - With text: Opens editor with provided text as starting point",
   ];
 }
+export default {
+  description,
+  execute,
+  help,
+} as TokenRingAgentCommand
