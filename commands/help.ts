@@ -32,7 +32,7 @@ async function execute(_remainder: string | undefined, agent: Agent): Promise<vo
 }
 
 // noinspection JSUnusedGlobalSymbols
-export function help(): string[] {
+function help(): string[] {
   return ["/help - Show this help message"];
 }
 export default {

@@ -55,7 +55,7 @@ async function execute(remainder: string, agent: Agent): Promise<void> {
  * Returns help information for the edit command
  */
 // noinspection JSUnusedGlobalSymbols
-export function help(): Array<string> {
+function help(): Array<string> {
   return [
     "/edit - Open your editor to write a prompt.",
     "  - With no arguments: Opens editor with blank prompt",

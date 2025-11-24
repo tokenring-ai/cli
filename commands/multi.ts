@@ -27,7 +27,7 @@ async function execute(_args: string, agent: Agent): Promise<void> {
  * Returns help information for the multi command
  */
 // noinspection JSUnusedGlobalSymbols
-export function help(): Array<string> {
+function help(): Array<string> {
   return [
     "/multi - Opens an editor for multiline input.",
     "  - Opens an interactive editor where you can write multiline text",

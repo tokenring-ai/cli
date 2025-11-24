@@ -8,7 +8,7 @@ export async function execute(_remainder: string | undefined, agent: Agent): Pro
   agent.requestExit();
 }
 
-export function help(): string[] {
+function help(): string[] {
   return ["/exit - Exit the current agent and return to agent selection"];
 }
 export default {
