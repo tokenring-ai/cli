@@ -17,10 +17,12 @@ import {
 } from "@tokenring-ai/agent/HumanInterfaceRequest";
 import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
 import {formatAgentId} from "@tokenring-ai/agent/util/formatAgentId";
-import chalk from "chalk";
+import {TokenRingService} from "@tokenring-ai/app/types";
+import chalk, {ChalkInstance} from "chalk";
 import * as process from "node:process";
 import * as readline from "node:readline";
 import ora, {Ora} from "ora";
+import {z} from "zod";
 import {CtrlTAction, ctrlTHandler} from "./ctrlTHandler.js";
 import {
   ask,
@@ -37,10 +39,19 @@ import {
 } from "./inputHandlers.js";
 import {setTimeout} from "node:timers/promises";
 
+
+export const CLIConfigSchema = z.object({
+  banner: z.string().optional().default("Welcome to TokenRing CLI"),
+  bannerColor: z.string().optional().default("cyan"),
+})
+
 /**
  * AgentCLI is a command-line interface for interacting with an TokenRingApp.
  */
-export default class AgentCLI {
+export default class AgentCLIService implements TokenRingService {
+  name = "AgentCLI";
+  description = "Command-line interface for interacting with agents";
+
   private shouldExit = false;
   private inputAbortController: AbortController | undefined;
   private eventLoopDisconnectController: AbortController | undefined;
@@ -52,18 +63,25 @@ export default class AgentCLI {
 
   private readonly app: TokenRingApp;
   private readonly agentManager: AgentManager;
+  private readonly config: z.infer<typeof CLIConfigSchema>;
 
   /**
    * Creates a new AgentCLI instance.
    * @param app The TokenRingApp instance to manage agents.
+   * @param config The configuration for the CLI.
    */
-  constructor(app: TokenRingApp) {
+  constructor(app: TokenRingApp, config: z.infer<typeof CLIConfigSchema>) {
     this.app = app;
+    this.config = config;
     this.agentManager = app.requireService(AgentManager);
   }
 
 
-  async run(): Promise<void> {
+  async start(): Promise<void> {
+    if (this.config.banner) {
+      const color = chalk[this.config.bannerColor as keyof ChalkInstance] as typeof chalk.cyan ?? chalk.cyan;
+      console.log(color(this.config.banner));
+    }
 
     process.on("SIGINT", () => {
       if (this.currentAgent) {
