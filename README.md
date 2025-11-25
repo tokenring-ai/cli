@@ -1,236 +1,303 @@
-# CLI Package Documentation
+# @tokenring-ai/cli
+
+A comprehensive command-line interface for interacting with TokenRing AI agents. This package provides an interactive REPL (Read-Eval-Print Loop) experience for managing AI agents, executing commands, and handling human interface requests.
 
 ## Overview
 
-The `@tokenring-ai/cli` package provides a Read-Eval-Print Loop (REPL) service for interactive command-line interaction
-with TokenRing AI agents. It enables users to select or create agents, send chat inputs, execute built-in commands (
-e.g., `/help`, `/edit`), and handle human interface requests such as confirmations, selections, and multiline inputs.
-The package integrates with the `@tokenring-ai/agent` core to manage agent teams, process events (e.g., chat output,
-reasoning, system messages), and provide a seamless CLI experience using libraries like Inquirer.js for prompts and
-Chalk for colored output.
+The `@tokenring-ai/cli` package serves as the primary CLI entry point for the TokenRing AI system. It enables users to:
 
-This package serves as the CLI entry point for the TokenRing AI system, allowing developers and users to interact with
-AI agents in a terminal environment. It supports agent lifecycle management (create, connect, exit), real-time event
-streaming, and customizable chat commands.
+- **Agent Management**: Select from running agents or create new ones
+- **Interactive Chat**: Communicate with AI agents through a terminal interface
+- **Built-in Commands**: Execute slash-prefixed commands like `/help`, `/edit`, `/multi`
+- **Human Interface Requests**: Handle confirmations, selections, password prompts, and more
+- **Keyboard Shortcuts**: Use Ctrl-T for quick actions and navigation
+- **Real-time Events**: Stream agent outputs (chat, reasoning, system messages)
 
-## Installation/Setup
+## Installation
 
-This package is part of the TokenRing AI monorepo. To build and use it:
+This package is part of the TokenRing AI monorepo. To install and use:
 
-1. Ensure Node.js (v18+) and npm are installed.
-2. Install dependencies: `npm install` (run from the project root, as this package uses workspace dependencies).
-3. Build the package: `npm run build` (compiles TypeScript to JavaScript in `dist/`).
-4. For development: Use `npm run dev` if configured, or run tests with `npm test`.
+```bash
+# Install dependencies
+npm install
 
-Key dependencies (from `package.json`):
+# Build the package
+npm run build
 
-- `@tokenring-ai/agent`: Core agent management.
-- `@inquirer/prompts`: Interactive CLI prompts.
-- `chalk`: Terminal styling.
-- `ora`: Spinners for loading states.
+# Run tests
+npm test
+```
 
-To run the REPL: Import and instantiate `REPLService` with an `AgentTeam` instance, then call `run()`.
+### Dependencies
 
-Environment variables:
+- **Core**: `@tokenring-ai/agent`, `@tokenring-ai/app`, `@tokenring-ai/utility`
+- **CLI Prompts**: `@inquirer/prompts`, `@tokenring-ai/inquirer-command-prompt`, `@tokenring-ai/inquirer-tree-selector`
+- **Utilities**: `chalk`, `ora`, `execa`, `open`
+- **Development**: `typescript`, `vitest`
 
-- `EDITOR`: Specifies the default editor for `/edit` command (defaults to `vi` on Unix, `notepad` on Windows).
+### Environment Variables
 
-## Package Structure
+- `EDITOR`: Default editor for `/edit` command (defaults to `vi` on Unix, `notepad` on Windows)
 
-The package is organized as follows:
+## Usage
 
-- **index.ts**: Main entry point. Exports `packageInfo` (package metadata and chat commands) and `REPLService`.
-- **REPLService.ts**: Core REPL implementation. Handles the main loop, agent selection, input gathering, and event
-  processing.
-- **REPLInput.ts**: Utility functions for human interface interactions (e.g., `askForCommand`, `askForSelection`).
-- **chatCommands.ts**: Exports all available chat commands for integration with agents.
-- **commands/**: Directory containing individual command modules:
- - `help.ts`: Displays available commands.
- - `exit.ts` / `quit.ts`: Exits the current agent session.
- - `multi.ts`: Opens an editor for multiline input.
- - `edit.ts`: Opens a system editor for prompt editing.
-- **package.json**: Defines metadata, dependencies, scripts (build/test), and exports.
-- **tsconfig.json** / **vitest.config.js**: TypeScript and testing configurations.
-- **LICENSE**: MIT license.
+### Basic Usage
 
-Directories are auto-created as needed; the structure focuses on modularity for easy extension of commands.
+```typescript
+import TokenRingApp from "@tokenring-ai/app";
+import cliPlugin from "@tokenring-ai/cli";
 
-## Core Components
+// Create and configure the app
+const app = new TokenRingApp();
+app.install(cliPlugin);
 
-### REPLService
+// Start the CLI
+await app.start();
+```
 
-The `REPLService` class implements `TokenRingService` and manages the interactive CLI loop.
+### Plugin Integration
 
-- **Description**: Orchestrates agent selection/creation, runs the main event loop for agent interactions, handles
-  inputs/commands, and processes agent events (chat, reasoning, system messages, busy/idle states). It uses spinners for
-  loading and colors output for clarity.
+The CLI is designed as a TokenRing plugin that integrates seamlessly with the main application:
 
-- **Key Methods**:
- - `constructor(agentManager: AgentTeam)`: Initializes with an agent team.
- - `run(): Promise<void>`: Starts the REPL loop. Selects agents and runs sessions until exit.
- - `injectPrompt(prompt: string): Promise<void>`: Queues a prompt to interrupt and inject into the current session (
-   useful for multiline or external inputs).
- - `selectOrCreateAgent(): Promise<Agent | null>` (private): Prompts user to connect to existing agents or create new
-   ones.
- - `runAgentLoop(agent: Agent): Promise<void>` (private): Sets up commands and runs the agent-specific loop.
- - `mainLoop(agent: Agent): Promise<void>` (private): Processes agent events and gathers user input.
- - `gatherInput(agent: Agent): Promise<boolean>` (private): Collects user commands/inputs, handles special tokens like
-   `/switch` or cancellation.
- - `handleHumanRequest(data: AgentEvents['human.request'], agent: Agent)` (private): Delegates to REPLInput functions
-   for confirmations, selections, etc.
+```typescript
+export default {
+  name: "@tokenring-ai/cli",
+  version: "0.1.0", 
+  description: "TokenRing CLI",
+  install(app: TokenRingApp) {
+    app.waitForService(AgentCommandService, agentCommandService =>
+      agentCommandService.addAgentCommands(chatCommands)
+    );
+    const config = app.getConfigSlice('cli', CLIConfigSchema);
+    app.addServices(new AgentCLIService(app, config));
+  },
+} as TokenRingPlugin;
+```
 
-- **Interactions**: Listens to agent events via `agent.events(signal)`. Outputs are written with color-coding (green for
-  chat, yellow for reasoning). Commands are prefixed with `/` and auto-completed.
+## Configuration
 
-### REPLInput
+### CLI Configuration Schema
 
-Provides prompt utilities for human-AI interactions, implementing `HumanInterfaceProvider` patterns.
+```typescript
+export const CLIConfigSchema = z.object({
+  banner: z.string().optional().default("Welcome to TokenRing CLI"),
+  bannerColor: z.string().optional().default("cyan"),
+});
+```
 
-- **Description**: Handles various input types using Inquirer.js, including command-line editing, selections, and
-  editors. Supports cancellation via Ctrl+C.
+### Configuration Options
 
-- **Key Functions**:
- - `askForCommand(options: AskForCommandOptions): Promise<string | ExitToken | CancellationToken>`: Gets user input with
-   auto-completion for commands.
-  - Parameters: `options.autoCompletion` (array of command strings).
-  - Example:
-    ```typescript
-    const input = await askForCommand({ autoCompletion: ['/help', '/exit'] });
-    if (input === ExitToken) { /* handle exit */ }
-    ```
- - `ask({ question }: AskRequest): Promise<string>`: Multi-line editor prompt.
- - `askForConfirmation(options: AskForConfirmationOptions): Promise<boolean>`: Yes/no confirmation.
- - `askForSelection({ title, items }: AskForSelectionOptions): Promise<string>`: Single list selection.
- - `askForMultipleSelections({ title, items, message }: AskForMultipleSelectionOptions): Promise<string[]>`: Multiple
-   checkbox selections.
- -
- `askForSingleTreeSelection({ message, tree, initialSelection, loop }: AskForSingleTreeSelectionOptions): Promise<string | null>`:
- Tree-based single selection.
- -
- `askForMultipleTreeSelection({ message, tree, initialSelection, loop }: AskForMultipleTreeSelectionOptions): Promise<string[] | null>`:
- Tree-based multiple selection.
- - `openWebPage({ url }: OpenWebPageRequest): Promise<void>`: Opens URL in default browser.
+- **banner**: Welcome message displayed on startup
+- **bannerColor**: Color for the banner (uses Chalk color names)
 
-- **Interactions**: Called by `REPLService.handleHumanRequest` when agents request user input.
+## Core Features
 
-### Chat Commands
+### Agent Selection & Management
 
-Exported via `chatCommands.ts` for agent integration. Commands are slash-prefixed and executed in agent context.
+- Connect to existing running agents
+- Create new agents of various types
+- Switch between running agents
+- Exit or detach from agents
 
-- **Description**: Modular commands that agents can invoke. Each has an `execute` function and optional `help()` for
-  documentation.
+### Interactive Commands
 
-- **Key Commands**:
- - **help**: Lists all available commands with descriptions.
-  - `execute(remainder: string, agent: Agent)`: Prints command help.
-  - Help: `["/help - Show this help message"]`
- - **exit** / **quit**: Ends current agent session and returns to selection.
-  - `execute(remainder: string, agent: Agent)`: Deletes agent and logs exit.
-  - Help: `["/exit - Exit the current agent and return to agent selection"]`
- - **multi**: Opens Inquirer editor for multiline input, injects result as prompt.
-  - `execute(args: string, agent: Agent)`: Uses `@inquirer/prompts/editor`.
-  - Help: Multi-line description of editor usage.
- - **edit**: Opens system editor (via `EDITOR` env) on temp file with optional initial text, displays result.
-  - `execute(remainder: string, agent: Agent)`: Creates temp file, runs editor, reads and shows output.
-  - Help:
-    `["/edit - Open your editor to write a prompt.", "  - With no arguments: Opens editor with blank prompt", "  - With text: Opens editor with provided text as starting point"]`
+| Command | Description | Usage |
+|---------|-------------|-------|
+| `/help` | Show available commands | `/help` |
+| `/exit` | Exit current agent | `/exit` |
+| `/quit` | Quit current agent | `/quit` |
+| `/multi` | Open editor for multiline input | `/multi` |
+| `/edit` | Open system editor for prompt | `/edit [text]` |
 
-- **Interactions**: Commands are discovered via `agent.team.chatCommands.getAllItemNames()`. Executed when user types
-  `/command`.
+### Keyboard Shortcuts
 
-### Overall Architecture
+**Ctrl-T Actions:**
+- `Ctrl-T` - Show help for shortcuts
+- `Ctrl-T c` - Create new agent (same type as current)
+- `Ctrl-T n` - Switch to next running agent
+- `Ctrl-T p` - Switch to previous running agent
+- `Ctrl-T s` - Return to agent selector
+- `Ctrl-T x` - Exit current agent
+- `Ctrl-T d` - Detach from agent (keeps running)
 
-- **Entry Point**: `REPLService.run()` starts the loop.
-- **Dependencies**: Relies on `@tokenring-ai/agent` for `Agent` and `AgentTeam`.
-- **Event Handling**: Streams events like `output.chat`, `state.idle` to update UI and prompt input.
-- **Error Handling**: Catches errors in loops, logs via `console.error` or agent system messages. Commands handle
-  specific failures (e.g., editor process errors).
-- **Exports/Imports**: Public: `REPLService`, `packageInfo`. Imports agent types and utilities.
+**General:**
+- `↑/↓` - Navigate command history
+- `Esc` - Cancel current operation
+- `Ctrl-C` - Exit or abort current operation
 
-## Usage Examples
+### Human Interface Requests
 
-1. **Basic REPL Setup and Run**:
-   ```typescript
-   import AgentTeam from '@tokenring-ai/agent/AgentTeam';
-   import REPLService from '@tokenring-ai/cli';
+The CLI handles various types of human interface requests:
 
-   const team = new AgentTeam(/* config */);
-   const repl = new REPLService(team);
-   await repl.run();  // Starts interactive CLI
-   ```
-
-2. **Injecting a Prompt Programmatically**:
-   ```typescript
-   // During a session, inject a prompt
-   await repl.injectPrompt("Analyze this code: [code snippet]");
-   // Interrupts current input and sends to agent
-   ```
-
-3. **Custom Command Integration**:
-   ```typescript
-   // In agent setup, add custom commands to chatCommands
-   import * as customCmd from './my-command';
-   // Then in packageInfo: { ...chatCommands, myCmd: customCmd }
-   // User can now type /myCmd in REPL
-   ```
-
-## Configuration Options
-
-- **Commands**: Extend by adding modules to `commands/` and exporting in `chatCommands.ts`.
-- **Prompts**: Customize via Inquirer options in `REPLInput.ts` (e.g., themes, pageSize).
-- **Output Styling**: Colors and spinners configurable via Chalk/Ora.
-- **Editor**: Set `EDITOR` env var for `/edit` (e.g., `export EDITOR=code` for VS Code).
-- **Auto-completion**: Dynamically populated from available commands.
-
-No formal config file; relies on env vars and agent configs.
+- **Ask**: Open editor for multi-line responses
+- **Confirm**: Yes/no prompts
+- **Selection**: Single choice from list
+- **Multiple Selection**: Choose multiple items
+- **Tree Selection**: Navigate hierarchical structures
+- **Password**: Secure input prompts
+- **Open Web Page**: Launch URLs in browser
 
 ## API Reference
 
-- **REPLService**:
- - `new REPLService(agentManager: AgentTeam)`
- - `run(): Promise<void>`
- - `injectPrompt(prompt: string): Promise<void>`
+### AgentCLIService
 
-- **REPLInput** (utils):
- - `askForCommand(options: { autoCompletion?: string[] }): Promise<string | Symbol>`
- - `ask(question: string): Promise<string>`
- - `askForConfirmation(options: { message: string; default?: boolean }): Promise<boolean>`
- - `askForSelection(options: { title: string; items: string[] }): Promise<string>`
- - `askForMultipleSelections(options: { title: string; items: string[]; message?: string }): Promise<string[]>`
- - `askForSingleTreeSelection(options: AskForSingleTreeSelectionOptions): Promise<string | null>`
- - `askForMultipleTreeSelection(options: AskForMultipleTreeSelectionOptions): Promise<string[] | null>`
- - `openWebPage(url: string): Promise<void>`
+Main service class implementing the CLI functionality.
 
-- **Chat Commands** (per module):
- - `execute(remainder?: string, agent: Agent): Promise<void>`
- - `help?(): string[]` (optional)
+```typescript
+export default class AgentCLIService implements TokenRingService {
+  constructor(app: TokenRingApp, config: z.infer<typeof CLIConfigSchema>)
+  async start(): Promise<void>
+}
+```
 
-- **packageInfo: TokenRingPackage**:
- - `{ name: string; version: string; description: string; chatCommands: Record<string, any> }`
+### Input Handlers
 
-## Dependencies
+Utility functions for handling different types of user input:
 
-External (from `package.json`):
+```typescript
+// Command input with auto-completion
+askForCommand(options: AskForCommandOptions, signal: AbortSignal): Promise<string | ExitToken | CancellationToken>
 
-- `@tokenring-ai/agent@0.1.0`, `@tokenring-ai/ai-client@0.1.0`, `@tokenring-ai/utility@0.1.0`
-- `@inquirer/prompts@^7.8.2`, `inquirer@^12.9.2`
-- `chalk@^5.5.0`, `ora@^8.2.0`
-- `@tokenring-ai/inquirer-command-prompt@2.0.0`, `@tokenring-ai/inquirer-tree-selector@2.0.0`
-- `open`, `execa@^9.6.0`, `fs/promises` (Node built-in)
-- Dev: `vitest@^3.2.4`, `typescript@^5.9.2`
+// Multi-line editor input
+ask(options: AskRequest, signal: AbortSignal): Promise<string>
 
-Internal workspace deps like `@dotenvx/dotenvx`, `@dqbd/tiktoken` may be used indirectly.
+// Confirmation prompts
+askForConfirmation(options: AskForConfirmationOptions, signal: AbortSignal): Promise<boolean>
 
-## Contributing/Notes
+// Selection prompts
+askForSelection(options: AskForSelectionOptions, signal: AbortSignal): Promise<string>
+askForMultipleSelections(options: AskForMultipleSelectionOptions, signal: AbortSignal): Promise<string[]>
 
-- **Testing**: Run `npm test` with Vitest. Focus on unit tests for commands and integration tests for REPL loops.
-- **Building**: `npm run build` uses tsconfig.json for compilation.
-- **Extensions**: Add new commands by creating `.ts` files in `commands/` with `execute` and optional `help`. Export in
-  `chatCommands.ts`.
-- **Limitations**: Not fully sandboxed; shell commands (e.g., in `edit`) use `execa` with inherit stdio. Binary files
-  skipped in searches. Max 50 results for file searches if using tools.
-- **Best Practices**: Code follows TypeScript strict mode. Error handling is basic (console/agent logs); consider adding
-  more robust logging.
-- **License**: MIT (see LICENSE).
+// Tree-based selection
+askForSingleTreeSelection(options: AskForSingleTreeSelectionOptions, signal: AbortSignal): Promise<string | null>
+askForMultipleTreeSelection(options: AskForMultipleTreeSelectionOptions, signal: AbortSignal): Promise<string[] | null>
 
-This documentation is based on the current codebase (v0.1.0). For updates, refer to source files.
+// Password input
+askForPassword(options: AskForPasswordOptions, signal: AbortSignal): Promise<string>
+
+// Web page opening
+openWebPage(options: OpenWebPageRequest): Promise<void>
+```
+
+### Chat Commands
+
+Built-in commands that can be executed within agent sessions:
+
+```typescript
+// Each command exports:
+{
+  description: string;
+  execute(args: string, agent: Agent): Promise<void>;
+  help(): string[];
+}
+```
+
+## Package Structure
+
+```
+pkg/cli/
+├── index.ts                 # Main entry point and plugin definition
+├── AgentCLIService.ts       # Core CLI service implementation
+├── inputHandlers.ts         # Human interface request handlers
+├── chatCommands.ts          # Command exports
+├── ctrlTHandler.ts          # Ctrl-T keyboard shortcut handler
+├── commands/                # Individual command implementations
+│   ├── help.ts
+│   ├── exit.ts
+│   ├── quit.ts
+│   ├── multi.ts
+│   └── edit.ts
+├── package.json
+├── tsconfig.json
+├── vitest.config.js
+└── README.md
+```
+
+## Event Handling
+
+The CLI processes various agent events in real-time:
+
+- **output.chat**: Chat messages (green color)
+- **output.reasoning**: Agent reasoning (yellow color)
+- **output.system**: System messages with levels (error/warning/info)
+- **state.busy**: Loading states with spinners
+- **state.idle**: Ready for user input
+- **state.exit**: Agent exit notifications
+- **input.received**: Echo user input
+- **human.request**: Handle interactive prompts
+
+## Examples
+
+### Basic Agent Interaction
+
+```typescript
+// 1. Start the CLI
+await app.start();
+
+// 2. Select or create an agent
+// CLI will show agent selection menu
+
+// 3. Chat with the agent
+// Type your questions and press Enter
+
+// 4. Use commands
+/help          # Show available commands
+/edit          # Open editor for prompt
+/multi         # Open multiline editor
+/exit          # Return to agent selection
+```
+
+### Custom Command Integration
+
+```typescript
+// Add custom commands to chatCommands.ts
+export const customCommand = {
+  description: "/custom - Execute custom functionality",
+  async execute(args: string, agent: Agent): Promise<void> {
+    agent.handleInput({message: `Custom command: ${args}`});
+  },
+  help(): string[] {
+    return ["/custom - Execute custom functionality"];
+  }
+};
+```
+
+## Development
+
+### Building
+
+```bash
+npm run build
+```
+
+### Testing
+
+```bash
+npm test
+```
+
+### Adding New Commands
+
+1. Create a new file in `commands/` directory
+2. Implement the command interface:
+   ```typescript
+   export default {
+     description: string,
+     execute(args: string, agent: Agent): Promise<void>,
+     help(): string[]
+   } as TokenRingAgentCommand;
+   ```
+3. Export the command in `chatCommands.ts`
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Contributing
+
+1. Follow TypeScript best practices
+2. Add appropriate error handling
+3. Include tests for new functionality
+4. Update documentation as needed
+
+This CLI package provides a robust, extensible interface for interacting with TokenRing AI agents, featuring real-time event processing, comprehensive command support, and intuitive user interactions.
