@@ -1,25 +1,17 @@
-import {confirm, editor, password, select} from "@inquirer/prompts";
-import {
-  AskForCommandOptions,
-  AskForConfirmationOptions,
-  AskForMultipleSelectionOptions,
-  AskForMultipleTreeSelectionOptions,
-  AskForPasswordOptions,
-  AskForSelectionOptions,
-  AskForSingleTreeSelectionOptions,
-  AskRequest,
-  OpenWebPageRequest,
-} from "@tokenring-ai/agent/HumanInterfaceRequest";
+import {confirm, editor, password} from "@inquirer/prompts";
+import {HumanInterfaceRequestFor} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import commandPrompt from "@tokenring-ai/inquirer-command-prompt";
 import {treeSelector} from "@tokenring-ai/inquirer-tree-selector";
 import chalk from "chalk";
-import {select as selectPro} from "inquirer-select-pro";
 import open from "open";
 
 export const CancellationToken = Symbol("CancellationToken");
 export const ExitToken = Symbol("ExitToken");
 
-export async function askForCommand(options: AskForCommandOptions, signal: AbortSignal): Promise<string | typeof ExitToken | typeof CancellationToken> {
+export async function askForCommand(options: {
+  autoCompletion?: string[],
+  history?: string[]
+}, signal: AbortSignal): Promise<string | typeof ExitToken | typeof CancellationToken> {
   let emptyPrompt = true;
 
   try {
@@ -48,51 +40,23 @@ export async function askForCommand(options: AskForCommandOptions, signal: Abort
   }
 }
 
-export async function askForConfirmation(options: AskForConfirmationOptions, signal: AbortSignal) {
+export async function askForConfirmation(options: HumanInterfaceRequestFor<"askForConfirmation">, signal: AbortSignal) {
   return confirm(options, {signal});
 }
 
-export async function askForPassword(options: AskForPasswordOptions, signal: AbortSignal) {
-  return password(options, {signal})
+export async function askForPassword(options: HumanInterfaceRequestFor<"askForPassword">, signal: AbortSignal) {
+  return password(options, {signal});
 }
 
-export async function openWebPage({url}: OpenWebPageRequest): Promise<void> {
+export async function openWebPage({url}: HumanInterfaceRequestFor<"openWebPage">): Promise<boolean> {
   await open(url);
+  return true;
 }
-
-/**
- * Asks the user to select an item from a list using a REPL interface.
- */
-export async function askForSelection({
-                                        message,
-                                        choices
-                                      }: AskForSelectionOptions, signal: AbortSignal): Promise<string> {
-  return select({
-    message,
-    choices,
-    loop: false
-  }, {signal});
-}
-
 /**
  * Asks the user a question and allows them to type in a multi-line answer using a REPL interface.
  */
-export async function ask(options: AskRequest, signal: AbortSignal): Promise<string> {
+export async function askForText(options: HumanInterfaceRequestFor<"askForText">, signal: AbortSignal): Promise<string> {
   return editor(options, {signal});
-}
-
-/**
- * Asks the user to select multiple items from a list using a REPL interface.
- */
-export async function askForMultipleSelections({
-                                                 options,
-                                                 message
-                                               }: AskForMultipleSelectionOptions, signal: AbortSignal): Promise<string[]> {
-  return selectPro({
-    message,
-    options,
-    loop: false
-  }, {signal});
 }
 
 /**
@@ -103,7 +67,7 @@ export async function askForSingleTreeSelection({
                                                   tree,
                                                   initialSelection,
                                                   loop = false
-                                                }: AskForSingleTreeSelectionOptions, signal: AbortSignal): Promise<string | null> {
+                                                }: HumanInterfaceRequestFor<"askForSingleTreeSelection">, signal: AbortSignal): Promise<string | null> {
   return await treeSelector({
     message: message ?? "",
     tree: tree,
@@ -123,7 +87,7 @@ export async function askForMultipleTreeSelection({
                                                     tree,
                                                     initialSelection,
                                                     loop = false
-                                                  }: AskForMultipleTreeSelectionOptions, signal: AbortSignal): Promise<string[] | null> {
+                                                  }: HumanInterfaceRequestFor<"askForMultipleTreeSelection">, signal: AbortSignal): Promise<string[] | null> {
   return await treeSelector({
     message: message ?? "",
     tree: tree,

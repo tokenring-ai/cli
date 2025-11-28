@@ -1,9 +1,8 @@
 import {AgentCommandService} from "@tokenring-ai/agent";
-import TokenRingApp from "@tokenring-ai/app";
-import {TokenRingPlugin} from "@tokenring-ai/app";
-import AgentCLIService, {CLIConfigSchema} from "./AgentCLIService.ts";
+import TokenRingApp, {TokenRingPlugin} from "@tokenring-ai/app";
+import AgentCLI, {CLIConfigSchema} from "./AgentCLI.ts";
 
-import * as chatCommands from "./chatCommands.ts";
+import chatCommands from "./chatCommands.ts";
 import packageJSON from './package.json' with {type: 'json'};
 
 
@@ -16,8 +15,8 @@ export default {
       agentCommandService.addAgentCommands(chatCommands)
     );
     const config = app.getConfigSlice('cli', CLIConfigSchema);
-    app.addServices(new AgentCLIService(app, config));
+    app.addServices(new AgentCLI(app, config));
   },
 } as TokenRingPlugin;
 
-export {default as REPLService} from "./AgentCLIService.ts";
+export {default as AgentCLI, CLIConfigSchema} from "./AgentCLI.ts";

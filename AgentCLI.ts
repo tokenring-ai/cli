@@ -1,43 +1,30 @@
 import {select} from '@inquirer/prompts';
 import {AgentCommandService} from "@tokenring-ai/agent";
 import Agent from "@tokenring-ai/agent/Agent";
+import {HumanInterfaceRequest, HumanInterfaceResponseFor,} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import AgentManager from "@tokenring-ai/agent/services/AgentManager";
-import TokenRingApp from "@tokenring-ai/app";
-import {
-  AskForConfirmationRequest,
-  AskForMultipleSelectionsRequest,
-  AskForMultipleTreeSelectionRequest,
-  AskForPasswordOptions,
-  AskForSelectionRequest,
-  AskForSingleTreeSelectionRequest,
-  AskRequest,
-  HumanInterfaceRequest,
-  HumanInterfaceResponse,
-  OpenWebPageRequest
-} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
 import {formatAgentId} from "@tokenring-ai/agent/util/formatAgentId";
+import TokenRingApp from "@tokenring-ai/app";
 import {TokenRingService} from "@tokenring-ai/app/types";
 import chalk, {ChalkInstance} from "chalk";
 import * as process from "node:process";
 import * as readline from "node:readline";
+import {setTimeout} from "node:timers/promises";
 import ora, {Ora} from "ora";
 import {z} from "zod";
 import {CtrlTAction, ctrlTHandler} from "./ctrlTHandler.js";
 import {
-  ask,
   askForCommand,
   askForConfirmation,
-  askForMultipleSelections,
   askForMultipleTreeSelection,
   askForPassword,
-  askForSelection,
   askForSingleTreeSelection,
+  askForText,
   CancellationToken,
   ExitToken,
   openWebPage
 } from "./inputHandlers.js";
-import {setTimeout} from "node:timers/promises";
 
 
 export const CLIConfigSchema = z.object({
@@ -48,7 +35,7 @@ export const CLIConfigSchema = z.object({
 /**
  * AgentCLI is a command-line interface for interacting with an TokenRingApp.
  */
-export default class AgentCLIService implements TokenRingService {
+export default class AgentCLI implements TokenRingService {
   name = "AgentCLI";
   description = "Command-line interface for interacting with agents";
 
@@ -62,7 +49,7 @@ export default class AgentCLIService implements TokenRingService {
 
 
   private readonly app: TokenRingApp;
-  private readonly agentManager: AgentManager;
+  private agentManager!: AgentManager;
   private readonly config: z.infer<typeof CLIConfigSchema>;
 
   /**
@@ -73,11 +60,12 @@ export default class AgentCLIService implements TokenRingService {
   constructor(app: TokenRingApp, config: z.infer<typeof CLIConfigSchema>) {
     this.app = app;
     this.config = config;
-    this.agentManager = app.requireService(AgentManager);
   }
 
 
   async start(): Promise<void> {
+    this.agentManager = this.app.requireService(AgentManager);
+
     if (this.config.banner) {
       const color = chalk[this.config.bannerColor as keyof ChalkInstance] as typeof chalk.cyan ?? chalk.cyan;
       console.log(color(this.config.banner));
@@ -334,37 +322,31 @@ export default class AgentCLIService implements TokenRingService {
     return true;
   }
 
-  private async handleHumanRequest<T extends keyof HumanInterfaceResponse>(
-    {request, sequence}: { request: HumanInterfaceRequest & { type: T }, sequence: number }, agent: Agent) {
-    let result: HumanInterfaceResponse[T];
+  private async handleHumanRequest(
+    {request, sequence}: { request: HumanInterfaceRequest, sequence: number }, agent: Agent) {
+    let result: HumanInterfaceResponseFor<typeof request.type>;
 
     try {
       const {signal} = this.inputAbortController = new AbortController()
 
       switch (request.type) {
-        case "ask":
-          result = await ask(request as AskRequest, signal) as HumanInterfaceResponse[T];
+        case "askForText":
+          result = await askForText(request, signal);
           break;
         case "askForConfirmation":
-          result = await askForConfirmation(request as AskForConfirmationRequest, signal) as HumanInterfaceResponse[T];
+          result = await askForConfirmation(request, signal);
           break;
         case "askForMultipleTreeSelection":
-          result = await askForMultipleTreeSelection(request as AskForMultipleTreeSelectionRequest, signal) as HumanInterfaceResponse[T];
+          result = await askForMultipleTreeSelection(request, signal);
           break;
         case "askForSingleTreeSelection":
-          result = await askForSingleTreeSelection(request as AskForSingleTreeSelectionRequest, signal) as HumanInterfaceResponse[T];
+          result = await askForSingleTreeSelection(request, signal);
           break;
         case "openWebPage":
-          result = await openWebPage(request as OpenWebPageRequest) as HumanInterfaceResponse[T];
-          break;
-        case "askForSelection":
-          result = await askForSelection(request as AskForSelectionRequest, signal) as HumanInterfaceResponse[T];
-          break;
-        case "askForMultipleSelections":
-          result = await askForMultipleSelections(request as AskForMultipleSelectionsRequest, signal) as HumanInterfaceResponse[T];
+          result = await openWebPage(request);
           break;
         case "askForPassword":
-          result = await askForPassword(request as AskForPasswordOptions, signal) as HumanInterfaceResponse[T];
+          result = await askForPassword(request, signal);
           break;
         default:
           throw new Error(`Unknown HumanInterfaceRequest type: ${(request as any)?.type}`);

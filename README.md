@@ -101,13 +101,13 @@ export const CLIConfigSchema = z.object({
 
 ### Interactive Commands
 
-| Command | Description | Usage |
-|---------|-------------|-------|
-| `/help` | Show available commands | `/help` |
-| `/exit` | Exit current agent | `/exit` |
-| `/quit` | Quit current agent | `/quit` |
-| `/multi` | Open editor for multiline input | `/multi` |
-| `/edit` | Open system editor for prompt | `/edit [text]` |
+| Command  | Description                     | Usage          |
+|----------|---------------------------------|----------------|
+| `/help`  | Show available commands         | `/help`        |
+| `/exit`  | Exit current agent              | `/exit`        |
+| `/quit`  | Quit current agent              | `/quit`        |
+| `/multi` | Open editor for multiline input | `/multi`       |
+| `/edit`  | Open system editor for prompt   | `/edit [text]` |
 
 ### Keyboard Shortcuts
 
