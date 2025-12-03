@@ -41,6 +41,12 @@ export async function askForCommand(options: {
 }
 
 export async function askForConfirmation(options: HumanInterfaceRequestFor<"askForConfirmation">, signal: AbortSignal) {
+  if (options.timeout && options.timeout > 0) {
+    return Promise.race([
+      confirm(options, {signal}),
+      new Promise<boolean>(resolve => setTimeout(() => resolve(options.default ?? false), options.timeout! * 1000))
+    ]);
+  }
   return confirm(options, {signal});
 }
 

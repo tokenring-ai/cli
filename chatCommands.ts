@@ -1,5 +1,5 @@
-import {default as edit} from "./commands/edit.ts";
-import {default as multi} from "./commands/multi.ts";
+import edit from "./commands/edit.ts";
+import multi from "./commands/multi.ts";
 
 export default {
   edit,
