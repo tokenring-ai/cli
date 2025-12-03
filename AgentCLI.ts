@@ -14,7 +14,6 @@ import * as readline from "node:readline";
 import {setTimeout} from "node:timers/promises";
 import ora, {Ora} from "ora";
 import {z} from "zod";
-import {CtrlTAction, ctrlTHandler} from "./ctrlTHandler.js";
 import {
   askForCommand,
   askForConfirmation,
