@@ -136,11 +136,11 @@ export default class AgentCLI implements TokenRingService {
       return a[1].type === 'interactive' ? -1 : 1;
     })
 
-    for (const [type, agentConfig] of sortedConfigs) {
+    for (const [agentType, agentConfig] of sortedConfigs) {
       choices.push({
         value: async () => {
           console.log(`Starting new agent: ${agentConfig.name}`);
-          const agent = await this.agentManager.spawnAgent(type);
+          const agent = await this.agentManager.spawnAgent({ agentType, headless: false });
           console.log(`Agent ${agent.id} started`);
           return agent;
         },
