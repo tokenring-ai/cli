@@ -261,7 +261,7 @@ export default class AgentCLI implements TokenRingService {
 
         if (state.waitingOn && ! humanInputPromise) {
           this.humanInputAbortController = new AbortController();
-          this.handleHumanRequest(state.waitingOn.data, agent, this.humanInputAbortController.signal);
+          this.handleHumanRequest(state.waitingOn, agent, this.humanInputAbortController.signal);
         } else if (!state.waitingOn && humanInputPromise) {
           this.humanInputAbortController?.abort();
         }
@@ -269,33 +269,33 @@ export default class AgentCLI implements TokenRingService {
         for (const event of state.yieldEventsByCursor(this.eventCursor)) {
           switch (event.type) {
             case 'output.chat':
-              writeOutput(event.data.content, "chat");
+              writeOutput(event.content, "chat");
               break;
             case 'output.reasoning':
-              writeOutput(event.data.content, "reasoning");
+              writeOutput(event.content, "reasoning");
               break;
             case 'output.system': {
               stopSpinner();
               ensureNewline();
-              const color = event.data.level === 'error' ? chalk.red :
-                event.data.level === 'warning' ? chalk.yellow : chalk.blue;
-              console.log(color(event.data.message));
+              const color = event.level === 'error' ? chalk.red :
+                event.level === 'warning' ? chalk.yellow : chalk.blue;
+              console.log(color(event.message));
               lastWriteHadNewline = true;
               break;
             }
 
             case 'input.received':
               ensureNewline();
-              console.log(chalk.cyan(`> ${event.data.message}`));
+              console.log(chalk.cyan(`> ${event.message}`));
               lastWriteHadNewline = true;
               break;
             case 'input.handled':
-              if (event.data.status === 'error') {
-                console.log(chalk.red(event.data.message));
-              } else if (event.data.status === 'cancelled') {
-                console.log(chalk.yellow(event.data.message));
+              if (event.status === 'error') {
+                console.log(chalk.red(event.message));
+              } else if (event.status === 'cancelled') {
+                console.log(chalk.yellow(event.message));
               } else {
-                console.log(chalk.blue(event.data.message));
+                console.log(chalk.blue(event.message));
               }
               return;
           }
