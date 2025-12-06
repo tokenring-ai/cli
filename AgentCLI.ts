@@ -38,14 +38,8 @@ export default class AgentCLI implements TokenRingService {
   name = "AgentCLI";
   description = "Command-line interface for interacting with agents";
 
-  private shouldExit = false;
-  private inputAbortController: AbortController | undefined;
-  private humanInputAbortController: AbortController | undefined;
-  private eventLoopDisconnectController: AbortController = new AbortController();
-
+  private abortControllerStack: Array<AbortController> = [];
   private availableCommands: string[] = [];
-  private currentAgent: Agent | null = null;
-  private eventCursor: AgentEventCursor = { position: 0 };
 
   private readonly app: TokenRingApp;
   private agentManager!: AgentManager;
@@ -59,6 +53,14 @@ export default class AgentCLI implements TokenRingService {
   constructor(app: TokenRingApp, config: z.infer<typeof CLIConfigSchema>) {
     this.app = app;
     this.config = config;
+    process.on("SIGINT", () => {
+      if (this.abortControllerStack.length > 0) {
+        this.abortControllerStack[length -1].abort();
+      } else {
+        console.log("Ctrl-C pressed. Exiting...");
+        process.exit(0);
+      }
+    });
   }
 
   async start(): Promise<void> {
@@ -69,43 +71,13 @@ export default class AgentCLI implements TokenRingService {
       console.log(color(this.config.banner));
     }
 
-    process.on("SIGINT", () => {
-      if (this.currentAgent) {
-        this.currentAgent.requestAbort('User pressed Ctrl-C');
-      } else if (this.inputAbortController) {
-        this.inputAbortController.abort();
-      } else if (this.eventLoopDisconnectController) {
-        this.eventLoopDisconnectController.abort();
-      } else {
-        console.log("Ctrl-C pressed. Exiting...");
-        process.exit(0);
-      }
-    });
-
     // Enable keypress events
     if (process.stdin.isTTY) {
       process.stdin.setRawMode(false);
       readline.emitKeypressEvents(process.stdin);
-
-      // Handle escape key to cancel operations
-      process.stdin.on('keypress', (str, key) => {
-        if (key && key.name === 'escape') {
-          if (this.currentAgent) {
-            this.currentAgent.requestAbort('User pressed escape');
-          } else if (this.inputAbortController) {
-            this.inputAbortController.abort();
-          }
-        }
-      });
     }
 
-    while (!this.shouldExit) {
-      const agent = await this.selectOrCreateAgent();
-      if (!agent) {
-        this.shouldExit = true;
-        break;
-      }
-
+    for (let agent = await this.selectOrCreateAgent(); agent; agent = await this.selectOrCreateAgent()) {
       try {
         await this.runAgentLoop(agent);
       } catch (error) {
@@ -115,6 +87,7 @@ export default class AgentCLI implements TokenRingService {
     }
 
     console.log("Goodbye!");
+    process.exit(0);
   }
 
   private async selectOrCreateAgent(): Promise<Agent | null> {
@@ -140,7 +113,7 @@ export default class AgentCLI implements TokenRingService {
       choices.push({
         value: async () => {
           console.log(`Starting new agent: ${agentConfig.name}`);
-          const agent = await this.agentManager.spawnAgent({ agentType, headless: false });
+          const agent = await this.agentManager.spawnAgent({agentType, headless: false});
           console.log(`Agent ${agent.id} started`);
           return agent;
         },
@@ -150,49 +123,29 @@ export default class AgentCLI implements TokenRingService {
 
     choices.push({name: "Exit", value: null});
 
-    this.inputAbortController = new AbortController();
 
-    const result = await select({
-      message: "Select a running agent to connect to, or create a new one:",
-      choices,
-      loop: false,
-    }, {signal: this.inputAbortController?.signal});
+    try {
+      const result = await this.withAbortSignal(signal =>
+        select({
+          message: "Select a running agent to connect to, or create a new one:",
+          choices,
+          loop: false,
+        }, {signal})
+      );
 
-    this.inputAbortController = undefined;
-
-    return result ? await result() : null;
+      return result ? await result() : null;
+    } catch (e) {
+      return null;
+    }
   }
 
   private async runAgentLoop(agent: Agent): Promise<void> {
-    this.currentAgent = agent;
-    this.eventCursor = { position: 0 };
-
-    const agentCommandService = agent.requireServiceByType(AgentCommandService);
-
-    const commandNames = agentCommandService.getCommandNames().map(cmd => `/${cmd}`);
-    this.availableCommands = [...commandNames, '/switch'];
-
-    try {
-      await this.mainLoop(agent);
-    } finally {
-      this.currentAgent = null;
-      console.log("Agent session ended.");
-    }
-  }
-
-  private async mainLoop(agent: Agent): Promise<void> {
     let lastWriteHadNewline = true;
     let currentOutputType: string = "chat";
     let spinner: Ora | null = null;
+    let spinnerRunning = false;
     let currentInputPromise: Promise<string | typeof ExitToken> | null = null
-    let humanInputPromise: Promise<void> | null = null;
-
-    function stopSpinner() {
-      if (spinner) {
-        spinner.stop();
-        spinner = null;
-      }
-    }
+    let humanInputPromise: Promise<[id: string, reply: any]> | null = null;
 
     function ensureNewline() {
       if (!lastWriteHadNewline) {
@@ -210,8 +163,6 @@ export default class AgentCLI implements TokenRingService {
     }
 
     function writeOutput(content: string, type: "chat" | "reasoning") {
-      stopSpinner();
-
       if (type !== currentOutputType) {
         printHorizontalLine();
         currentOutputType = type;
@@ -222,90 +173,144 @@ export default class AgentCLI implements TokenRingService {
       lastWriteHadNewline = content.endsWith("\n");
     }
 
+    const agentCommandService = agent.requireServiceByType(AgentCommandService);
+
+    const availableCommands = agentCommandService.getCommandNames().map(cmd => `/${cmd}`);
+    availableCommands.push('/switch');
+
     console.log(chalk.yellow("Type your questions and hit Enter. Commands start with /. Type /switch to change agents, /quit or /exit to return to agent selection."));
     console.log(chalk.yellow("(Use ↑/↓ arrow keys to navigate command history, Ctrl-T for shortcuts, Esc to cancel)"));
 
-    this.eventLoopDisconnectController = new AbortController();
 
-    // Create a promise that resolves when the loop should exit
-    return await new Promise<void>((resolve) => {
-      // Subscribe to agent events
-      const unsubscribe = agent.subscribeState(AgentEventState, async (state) => {
-        if (state.busyWith) {
-          if (!spinner) {
+    try {
+      await this.withAbortSignal(async signal => {
+        const eventCursor: AgentEventCursor = {position: 0};
+
+        function cancelAgentOnEscapeKey(str: any, key: any) {
+          if (key && key.name === 'escape') {
+            agent.requestAbort('User pressed escape');
+          }
+        }
+
+        for await (const state of agent.subscribeStateAsync(AgentEventState, signal)) {
+          if (signal.aborted) break;
+
+          /**
+           * The pattern here is to cancel any currently running stuff before outputting content in the event loop,
+           * and to schedule any new stuff to run after the event loop has finished.
+           */
+
+          if (!state.busyWith && spinner) {
+            if (spinnerRunning) {
+              spinner.stop();
+              spinnerRunning = false;
+            }
+            spinner = null;
+          }
+
+          if (!state.idle && currentInputPromise) {
+            process.stdin.on('keypress', cancelAgentOnEscapeKey);
+
+            this.abortControllerStack[this.abortControllerStack.length - 1].abort();
+          }
+
+          if (!state.waitingOn && humanInputPromise) {
+            this.abortControllerStack[this.abortControllerStack.length - 1].abort();
+          }
+
+          for (const event of state.yieldEventsByCursor(eventCursor)) {
+            switch (event.type) {
+              case 'output.chat':
+                if (spinnerRunning) {
+                  spinner!.stop();
+                  spinnerRunning = false;
+                }
+
+                writeOutput(event.content, "chat");
+                break;
+              case 'output.reasoning':
+                if (spinnerRunning) {
+                  spinner!.stop();
+                  spinnerRunning = false;
+                }
+
+                writeOutput(event.content, "reasoning");
+                break;
+              case 'output.system': {
+                if (spinnerRunning) {
+                  spinner!.stop();
+                  spinnerRunning = false;
+                }
+
+                ensureNewline();
+                const color = event.level === 'error' ? chalk.red :
+                  event.level === 'warning' ? chalk.yellow : chalk.blue;
+                console.log(color(event.message));
+                lastWriteHadNewline = true;
+                break;
+              }
+              case 'input.received':
+                ensureNewline();
+                console.log(chalk.cyan(`> ${event.message}`));
+                lastWriteHadNewline = true;
+                break;
+            }
+          }
+
+          /**
+           * The pattern here is to start any new stuff after the event loop has finished.
+           * If any of this stuff needs to be cancelled, it will be cancelled before the event loop starts.
+           */
+
+          if (state.busyWith && !spinner) {
             spinner = ora(state.busyWith);
+            spinnerRunning = true;
             spinner.start();
           }
-        } else {
-          if (spinner) {
-            stopSpinner();
-          }
-        }
 
-        if (state.idle && ! currentInputPromise) {
-          this.inputAbortController = new AbortController();
-          currentInputPromise = this.gatherInput(agent, this.inputAbortController.signal);
+          if (state.idle && !currentInputPromise) {
+            process.stdin.off('keypress', cancelAgentOnEscapeKey);
 
-          currentInputPromise.then(message => {
+            const abortController = new AbortController();
+            this.abortControllerStack.push(abortController);
+
+            ensureNewline();
+
+            currentInputPromise = this.gatherInput(agent, abortController.signal);
+            currentInputPromise.finally(() => {
+              this.abortControllerStack.pop()!.abort();
+            }).then(message => {
               if (message === ExitToken) {
-                resolve();
+                this.abortControllerStack[this.abortControllerStack.length - 1].abort();
               } else {
-                agent.handleInput({ message });
+                agent.handleInput({message});
+                currentInputPromise = null;
               }
             });
-        } else if (!state.idle && currentInputPromise) {
-          this.inputAbortController?.abort();
-          currentInputPromise = null;
-          this.inputAbortController = undefined;
-        }
+          }
 
-        if (state.waitingOn && ! humanInputPromise) {
-          this.humanInputAbortController = new AbortController();
-          this.handleHumanRequest(state.waitingOn, agent, this.humanInputAbortController.signal);
-        } else if (!state.waitingOn && humanInputPromise) {
-          this.humanInputAbortController?.abort();
-        }
+          if (state.waitingOn && !humanInputPromise) {
+            const abortController = new AbortController();
+            this.abortControllerStack.push(abortController);
 
-        for (const event of state.yieldEventsByCursor(this.eventCursor)) {
-          switch (event.type) {
-            case 'output.chat':
-              writeOutput(event.content, "chat");
-              break;
-            case 'output.reasoning':
-              writeOutput(event.content, "reasoning");
-              break;
-            case 'output.system': {
-              stopSpinner();
-              ensureNewline();
-              const color = event.level === 'error' ? chalk.red :
-                event.level === 'warning' ? chalk.yellow : chalk.blue;
-              console.log(color(event.message));
-              lastWriteHadNewline = true;
-              break;
-            }
-
-            case 'input.received':
-              ensureNewline();
-              console.log(chalk.cyan(`> ${event.message}`));
-              lastWriteHadNewline = true;
-              break;
-            case 'input.handled':
-              if (event.status === 'error') {
-                console.log(chalk.red(event.message));
-              } else if (event.status === 'cancelled') {
-                console.log(chalk.yellow(event.message));
-              } else {
-                console.log(chalk.blue(event.message));
-              }
-              return;
+            humanInputPromise = this.handleHumanRequest(state.waitingOn, abortController.signal)
+            humanInputPromise.finally(() => {
+                this.abortControllerStack.pop()!.abort();
+              }).then(([id, response]) => {
+              agent.sendHumanResponse(id, response);
+              humanInputPromise = null;
+            });
           }
         }
       });
-      this.eventLoopDisconnectController.signal.addEventListener('abort', () => {
-        unsubscribe();
-        resolve();
-      });
-    });
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        console.log("Agent session aborted.");
+      } else {
+        console.error("Error while running agent loop", e);
+      }
+    }
+    printHorizontalLine();
   }
 
   private async gatherInput(agent: Agent, signal: AbortSignal): Promise<string | typeof ExitToken> {
@@ -316,13 +321,18 @@ export default class AgentCLI implements TokenRingService {
       history
     }, signal);
 
+
+    process.stdout.write('\x1b[2K'); // Clears the entire current line
+    process.stdout.write('\x1b[0G'); // Moves the cursor to the beginning of the line
+    process.stdout.write('\x1b[1A'); // Moves the cursor up one line
+    process.stdout.write('\x1b[2K'); // Clears the entire current line
+
     if (userInput === '/switch' || userInput === ExitToken) {
-      agent.systemMessage("Returning to agent selection.", "info");
       return ExitToken;
     }
 
     if (userInput === CancellationToken) {
-      agent.systemMessage("[Input cancelled by user]", 'warning');
+      console.log(chalk.yellow("[Input cancelled by user]", ));
       return this.gatherInput(agent, signal);
     }
 
@@ -330,31 +340,35 @@ export default class AgentCLI implements TokenRingService {
   }
 
   private async handleHumanRequest(
-    {request, id}: { request: HumanInterfaceRequest, id: string }, agent: Agent, signal: AbortSignal) {
-    let result: HumanInterfaceResponseFor<typeof request.type>;
+    {request, id}: { request: HumanInterfaceRequest, id: string },signal: AbortSignal) : Promise<[id: string, reply: any]> {
 
     switch (request.type) {
       case "askForText":
-        result = await askForText(request, signal);
-        break;
+        return [id, await askForText(request, signal)];
       case "askForConfirmation":
-        result = await askForConfirmation(request, signal);
-        break;
+        return [id, await askForConfirmation(request, signal)];
       case "askForMultipleTreeSelection":
-        result = await askForMultipleTreeSelection(request, signal);
-        break;
+        return [id, await askForMultipleTreeSelection(request, signal)];
       case "askForSingleTreeSelection":
-        result = await askForSingleTreeSelection(request, signal);
-        break;
+        return [id, await askForSingleTreeSelection(request, signal)];
       case "openWebPage":
-        result = await openWebPage(request);
-        break;
+        return [id, await openWebPage(request)];
       case "askForPassword":
-        result = await askForPassword(request, signal);
-        break;
+        return [id, await askForPassword(request, signal)];
       default:
         throw new Error(`Unknown HumanInterfaceRequest type: ${(request as any)?.type}`);
     }
-    agent.sendHumanResponse(id, result);
+  }
+
+  private async withAbortSignal<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const abortController = new AbortController();
+    this.abortControllerStack.push(abortController);
+
+    try {
+      return await fn(abortController.signal);
+    } finally {
+      abortController.abort();
+      this.abortControllerStack.pop();
+    }
   }
 }
