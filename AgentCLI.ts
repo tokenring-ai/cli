@@ -249,6 +249,18 @@ export default class AgentCLI implements TokenRingService {
                 lastWriteHadNewline = true;
                 break;
               }
+              case 'input.handled':
+                if (spinnerRunning) {
+                  spinner!.stop();
+                  spinnerRunning = false;
+                }
+
+                if (event.status === 'cancelled' || event.status === 'error') {
+                  ensureNewline();
+                  console.log(chalk.red(event.message));
+                  lastWriteHadNewline = true;
+                }
+                break;
               case 'input.received':
                 ensureNewline();
                 console.log(chalk.cyan(`> ${event.message}`));
