@@ -58,12 +58,12 @@ export default class AgentCLI implements TokenRingService {
         this.abortControllerStack[length -1].abort();
       } else {
         console.log("Ctrl-C pressed. Exiting...");
-        process.exit(0);
+        app.shutdown();
       }
     });
   }
 
-  async start(): Promise<void> {
+  async run(): Promise<void> {
     this.agentManager = this.app.requireService(AgentManager);
 
     if (this.config.banner) {
