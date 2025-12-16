@@ -5,8 +5,8 @@
   "dependencies": {
     "@tokenring-ai/app": "0.2.0",
     "@tokenring-ai/chat": "0.2.0",
-    "zod": "^4.1.13",
-    "@inquirer/prompts": "^8.0.2",
+    "zod": "catalog:",
+    "@inquirer/prompts": "^8.1.0",
     "@tokenring-ai/agent": "0.2.0",
     "@tokenring-ai/inquirer-command-prompt": "2.0.0",
     "@tokenring-ai/inquirer-tree-selector": "2.0.0",
@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "vitest": "^4.0.15",
-    "typescript": "^5.9.3"
+    "typescript": "catalog:"
   },
   "exports": {
     ".": "./index.ts",
