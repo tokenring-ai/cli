@@ -15,11 +15,15 @@
     "chalk": "^5.6.2",
     "inquirer-select-pro": "^1.0.0-alpha.9",
     "ora": "^9.0.0",
-    "open": "^11.0.0"
+    "open": "^11.0.0",
+    "@opentui/core": "^0.1.61",
+    "@opentui/react": "^0.1.61",
+    "react": "catalog:"
   },
   "devDependencies": {
     "vitest": "^4.0.15",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "@types/react": "catalog:"
   },
   "exports": {
     ".": "./index.ts",
@@ -28,7 +32,7 @@
   "types": "./dist-types/index.d.ts",
   "license": "MIT",
   "scripts": {
-    "build": "tsc -p tsconfig.tson",
+    "build": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
   "type": "module"

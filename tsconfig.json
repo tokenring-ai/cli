@@ -1,8 +1,8 @@
 {
  "compilerOptions": {
   "target": "ES2022",
-  "module": "NodeNext",
-  "moduleResolution": "NodeNext",
+  "module": "ESNext",
+  "moduleResolution": "bundler",
   "resolveJsonModule": true,
   "esModuleInterop": true,
   "skipLibCheck": true,
@@ -10,19 +10,21 @@
   "allowJs": true,
   "checkJs": true,
   "allowImportingTsExtensions": true,
+  "noEmit": true,
   "types": [
    "bun",
    "vitest"
   ],
-  "outDir": "dist",
-  "rootDir": "."
+  "rootDir": ".",
+  "jsx": "preserve",
+  "jsxImportSource": "@opentui/react"
  },
  "include": [
-  "**/*.ts"
+  "**/*.ts",
+  "**/*.tsx"
  ],
  "exclude": [
   "node_modules",
-  "dist-ts",
   "**/vitest.config.*"
  ]
 }

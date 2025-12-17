@@ -1,34 +1,37 @@
-import {select} from '@inquirer/prompts';
-import {AgentCommandService} from "@tokenring-ai/agent";
+import { AgentCommandService } from "@tokenring-ai/agent";
 import Agent from "@tokenring-ai/agent/Agent";
-import {HumanInterfaceRequest, HumanInterfaceResponseFor,} from "@tokenring-ai/agent/HumanInterfaceRequest";
+import { HumanInterfaceRequest,  } from "@tokenring-ai/agent/HumanInterfaceRequest";
 import AgentManager from "@tokenring-ai/agent/services/AgentManager";
-import {AgentEventCursor, AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
-import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
-import {formatAgentId} from "@tokenring-ai/agent/util/formatAgentId";
+import { AgentEventCursor, AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
+import { CommandHistoryState } from "@tokenring-ai/agent/state/commandHistoryState";
 import TokenRingApp from "@tokenring-ai/app";
-import {TokenRingService} from "@tokenring-ai/app/types";
-import chalk, {ChalkInstance} from "chalk";
+import { TokenRingService } from "@tokenring-ai/app/types";
+import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
+import chalk, { ChalkInstance } from "chalk";
 import * as process from "node:process";
 import * as readline from "node:readline";
-import {setTimeout} from "node:timers/promises";
-import ora, {Ora} from "ora";
-import {z} from "zod";
+import { setTimeout } from "node:timers/promises";
+import ora, { Ora } from "ora";
+import { z } from "zod";
 import {
   askForCommand,
-  askForConfirmation,
-  askForMultipleTreeSelection,
-  askForPassword,
-  askForSingleTreeSelection,
-  askForText,
   CancellationToken,
   ExitToken,
-  openWebPage
 } from "./inputHandlers.js";
+import { runOpenTUIScreen } from "./src/OpenTUIBridge.js";
+import AgentSelectionScreen from "./src/screens/AgentSelectionScreen.js";
+import ConfirmationScreen from "./src/screens/ConfirmationScreen.js";
+import PasswordScreen from "./src/screens/PasswordScreen.js";
+import TreeSelectionScreen from "./src/screens/TreeSelectionScreen.js";
+import WebPageScreen from "./src/screens/WebPageScreen.js";
+import AskScreen from "./src/screens/AskScreen.js";
+import { WebHostService } from "@tokenring-ai/web-host";
 
 export const CLIConfigSchema = z.object({
-  banner: z.string().optional().default("Welcome to TokenRing CLI"),
-  bannerColor: z.string().optional().default("cyan"),
+  bannerNarrow: z.string(),
+  bannerWide: z.string(),
+  bannerCompact: z.string(),
+  bannerColor: z.string().optional().default('cyan'),
 })
 
 /**
@@ -55,9 +58,9 @@ export default class AgentCLI implements TokenRingService {
     this.config = config;
     process.on("SIGINT", () => {
       if (this.abortControllerStack.length > 0) {
-        this.abortControllerStack[length -1].abort();
+        this.abortControllerStack[length - 1].abort();
       } else {
-        console.log("Ctrl-C pressed. Exiting...");
+        process.stdout.write("Ctrl-C pressed. Exiting...\n");
         app.shutdown();
       }
     });
@@ -66,10 +69,6 @@ export default class AgentCLI implements TokenRingService {
   async run(): Promise<void> {
     this.agentManager = this.app.requireService(AgentManager);
 
-    if (this.config.banner) {
-      const color = chalk[this.config.bannerColor as keyof ChalkInstance] as typeof chalk.cyan ?? chalk.cyan;
-      console.log(color(this.config.banner));
-    }
 
     // Enable keypress events
     if (process.stdin.isTTY) {
@@ -81,62 +80,21 @@ export default class AgentCLI implements TokenRingService {
       try {
         await this.runAgentLoop(agent);
       } catch (error) {
-        console.error("Error while running agent loop", error);
+        process.stderr.write(formatLogMessages(["Error while running agent loop", error as Error]));
         await setTimeout(1000);
       }
     }
 
-    console.log("Goodbye!");
+    process.stdout.write("Goodbye!");
     process.exit(0);
   }
 
   private async selectOrCreateAgent(): Promise<Agent | null> {
-    const choices: { name: string; value: (() => Promise<Agent>) | null }[] = [];
-
-    for (const agent of this.agentManager.getAgents()) {
-      choices.push({
-        value: async () => {
-          console.log(`Connected to agent: ${agent.name}`);
-          return agent;
-        },
-        name: `Connect to: ${agent.config.name} (${formatAgentId(agent.id)})`
-      });
-    }
-
-    const agentConfigs = this.agentManager.getAgentConfigs();
-    const sortedConfigs = Object.entries(agentConfigs).sort((a, b) => {
-      if (a[1].type === b[1].type) return a[1].name.localeCompare(b[1].name);
-      return a[1].type === 'interactive' ? -1 : 1;
-    })
-
-    for (const [agentType, agentConfig] of sortedConfigs) {
-      choices.push({
-        value: async () => {
-          console.log(`Starting new agent: ${agentConfig.name}`);
-          const agent = await this.agentManager.spawnAgent({agentType, headless: false});
-          console.log(`Agent ${agent.id} started`);
-          return agent;
-        },
-        name: `${agentConfig.name} (${agentConfig.type === 'interactive' ? 'general purpose' : 'specialized'})`
-      });
-    }
-
-    choices.push({name: "Exit", value: null});
-
-
-    try {
-      const result = await this.withAbortSignal(signal =>
-        select({
-          message: "Select a running agent to connect to, or create a new one:",
-          choices,
-          loop: false,
-        }, {signal})
-      );
-
-      return result ? await result() : null;
-    } catch (e) {
-      return null;
-    }
+    return runOpenTUIScreen(AgentSelectionScreen, {
+      agentManager: this.agentManager,
+      webHostService: this.app.getService(WebHostService),
+      banner: this.config.bannerWide,
+    });
   }
 
   private async runAgentLoop(agent: Agent): Promise<void> {
@@ -147,9 +105,13 @@ export default class AgentCLI implements TokenRingService {
     let currentInputPromise: Promise<string | typeof ExitToken> | null = null
     let humanInputPromise: Promise<[id: string, reply: any]> | null = null;
 
+    process.stdout.write('\x1b[2J\x1b[0f');
+    const color = chalk[this.config.bannerColor as keyof ChalkInstance] as typeof chalk.cyan ?? chalk.cyan;
+    process.stdout.write(color(this.config.bannerWide) + "\n");
+
     function ensureNewline() {
       if (!lastWriteHadNewline) {
-        console.log();
+        process.stdout.write("\n");
         lastWriteHadNewline = true;
       }
     }
@@ -158,7 +120,7 @@ export default class AgentCLI implements TokenRingService {
       ensureNewline();
       const lineChar = "─";
       const lineWidth = process.stdout.columns ? Math.floor(process.stdout.columns * 0.8) : 60;
-      console.log(chalk.dim(lineChar.repeat(lineWidth)));
+      process.stdout.write(chalk.dim(lineChar.repeat(lineWidth)) + "\n");
       lastWriteHadNewline = true;
     }
 
@@ -178,13 +140,13 @@ export default class AgentCLI implements TokenRingService {
     const availableCommands = agentCommandService.getCommandNames().map(cmd => `/${cmd}`);
     availableCommands.push('/switch');
 
-    console.log(chalk.yellow("Type your questions and hit Enter. Commands start with /. Type /switch to change agents, /quit or /exit to return to agent selection."));
-    console.log(chalk.yellow("(Use ↑/↓ arrow keys to navigate command history, Ctrl-T for shortcuts, Esc to cancel)"));
+    process.stdout.write(chalk.yellow("Type your questions and hit Enter. Commands start with /. Type /switch to change agents, /quit or /exit to return to agent selection.\n"));
+    process.stdout.write(chalk.yellow("(Use ↑/↓ arrow keys to navigate command history, Ctrl-T for shortcuts, Esc to cancel)\n"));
 
 
     try {
       await this.withAbortSignal(async signal => {
-        const eventCursor: AgentEventCursor = {position: 0};
+        const eventCursor: AgentEventCursor = { position: 0 };
 
         function cancelAgentOnEscapeKey(str: any, key: any) {
           if (key && key.name === 'escape') {
@@ -245,7 +207,7 @@ export default class AgentCLI implements TokenRingService {
                 ensureNewline();
                 const color = event.level === 'error' ? chalk.red :
                   event.level === 'warning' ? chalk.yellow : chalk.blue;
-                console.log(color(event.message));
+                process.stdout.write(color(event.message) + "\n");
                 lastWriteHadNewline = true;
                 break;
               }
@@ -257,13 +219,13 @@ export default class AgentCLI implements TokenRingService {
 
                 if (event.status === 'cancelled' || event.status === 'error') {
                   ensureNewline();
-                  console.log(chalk.red(event.message));
+                  process.stdout.write(chalk.red(event.message) + "\n");
                   lastWriteHadNewline = true;
                 }
                 break;
               case 'input.received':
                 ensureNewline();
-                console.log(chalk.cyan(`> ${event.message}`));
+                process.stdout.write(chalk.cyan(`> ${event.message}`) + "\n");
                 lastWriteHadNewline = true;
                 break;
             }
@@ -295,8 +257,8 @@ export default class AgentCLI implements TokenRingService {
               if (message === ExitToken) {
                 this.abortControllerStack[this.abortControllerStack.length - 1].abort();
               } else {
-                agent.handleInput({message});
                 currentInputPromise = null;
+                agent.handleInput({message});
               }
             });
           }
@@ -307,8 +269,8 @@ export default class AgentCLI implements TokenRingService {
 
             humanInputPromise = this.handleHumanRequest(state.waitingOn, abortController.signal)
             humanInputPromise.finally(() => {
-                this.abortControllerStack.pop()!.abort();
-              }).then(([id, response]) => {
+              this.abortControllerStack.pop()!.abort();
+            }).then(([id, response]) => {
               agent.sendHumanResponse(id, response);
               humanInputPromise = null;
             });
@@ -317,9 +279,9 @@ export default class AgentCLI implements TokenRingService {
       });
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') {
-        console.log("Agent session aborted.");
+        process.stdout.write("Agent session aborted.\n");
       } else {
-        console.error("Error while running agent loop", e);
+        process.stderr.write(formatLogMessages(["Error while running agent loop", e as Error]));
       }
     }
     printHorizontalLine();
@@ -327,6 +289,12 @@ export default class AgentCLI implements TokenRingService {
 
   private async gatherInput(agent: Agent, signal: AbortSignal): Promise<string | typeof ExitToken> {
     const history = agent.getState(CommandHistoryState).commands;
+
+
+
+// Move cursor to bottom of screen
+    const rows = process.stdout.rows || 24;
+    //process.stdout.write(`\x1b[${rows};0H`);
 
     const userInput = await askForCommand({
       autoCompletion: this.availableCommands,
@@ -344,7 +312,7 @@ export default class AgentCLI implements TokenRingService {
     }
 
     if (userInput === CancellationToken) {
-      console.log(chalk.yellow("[Input cancelled by user]", ));
+      process.stdout.write(chalk.yellow("[Input cancelled by user]") + "\n");
       return this.gatherInput(agent, signal);
     }
 
@@ -352,24 +320,35 @@ export default class AgentCLI implements TokenRingService {
   }
 
   private async handleHumanRequest(
-    {request, id}: { request: HumanInterfaceRequest, id: string },signal: AbortSignal) : Promise<[id: string, reply: any]> {
+    { request, id }: { request: HumanInterfaceRequest, id: string }, signal: AbortSignal): Promise<[id: string, reply: any]> {
+
+    let response: any;
 
     switch (request.type) {
       case "askForText":
-        return [id, await askForText(request, signal)];
+        response = await runOpenTUIScreen(AskScreen, { request });
+        break;
       case "askForConfirmation":
-        return [id, await askForConfirmation(request, signal)];
+        response = await runOpenTUIScreen(ConfirmationScreen, {
+          message: request.message,
+          defaultValue: request.default,
+          timeout: request.timeout
+        });
+        break;
       case "askForMultipleTreeSelection":
-        return [id, await askForMultipleTreeSelection(request, signal)];
       case "askForSingleTreeSelection":
-        return [id, await askForSingleTreeSelection(request, signal)];
+        response = await runOpenTUIScreen(TreeSelectionScreen, { request });
+        break;
       case "openWebPage":
-        return [id, await openWebPage(request)];
+        response = await runOpenTUIScreen(WebPageScreen, { request });
+        break;
       case "askForPassword":
-        return [id, await askForPassword(request, signal)];
+        response = await runOpenTUIScreen(PasswordScreen, { request });
+        break;
       default:
         throw new Error(`Unknown HumanInterfaceRequest type: ${(request as any)?.type}`);
     }
+    return [id, response];
   }
 
   private async withAbortSignal<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {

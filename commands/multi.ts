@@ -12,10 +12,7 @@ const description: string =
 async function execute(_args: string, agent: Agent): Promise<void> {
   const message = await editor({
     message: "Enter your multiline text (save and close editor to submit):",
-    // Preserve original option from JS implementation
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    waitForUseInput: false,
+    waitForUserInput: false,
   });
 
   if (message) {

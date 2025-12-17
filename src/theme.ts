@@ -1,0 +1,18 @@
+export const theme = {
+  chat: '#66BB6AFF',
+  reasoning: '#FFEB3BFF',
+  input: '#FFF176FF',
+  systemInfo: '#64B5F6FF',
+  systemWarning: '#FFEB3BFF',
+  systemError: '#EF5350FF',
+  spinner: '#4DD0E1FF',
+  prompt: '#FFF176FF',
+  banner: '#00BCD4FF',
+  selection: '#66BB6AFF',
+  selectionInactive: '#9E9E9EFF',
+  confirmYes: '#66BB6AFF',
+  confirmNo: '#EF5350FF',
+  timeout: '#FFEB3BFF',
+  dimText: '#9E9E9EFF',
+  border: '#EF5350FF',
+} as const;
