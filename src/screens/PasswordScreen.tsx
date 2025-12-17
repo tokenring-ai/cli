@@ -1,3 +1,5 @@
+/** @jsxImportSource @opentui/react */
+
 import {HumanInterfaceRequestFor, HumanInterfaceResponseFor} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import {useKeyboard} from '@opentui/react';
 import React, {useState} from 'react';

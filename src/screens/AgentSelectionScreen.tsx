@@ -1,3 +1,4 @@
+/** @jsxImportSource @opentui/react */
 import type Agent from '@tokenring-ai/agent/Agent';
 import type AgentManager from '@tokenring-ai/agent/services/AgentManager';
 import { WebHostService } from "@tokenring-ai/web-host";

@@ -1,3 +1,5 @@
+/** @jsxImportSource @opentui/react */
+
 import {useKeyboard} from '@opentui/react';
 import React, {useState} from 'react';
 import {theme} from '../theme.ts';
@@ -6,31 +8,31 @@ export interface ConfirmInputProps {
   message: string;
   defaultValue?: boolean;
   timeout?: number;
-  onConfirm: (value: boolean) => void;
+  onResponse: (value: boolean) => void;
 }
 
-export default function ConfirmationScreen({ message, defaultValue = false, timeout, onConfirm }: ConfirmInputProps) {
+export default function ConfirmationScreen({ message, defaultValue = false, timeout, onResponse }: ConfirmInputProps) {
   const [value, setValue] = useState(defaultValue);
   const [remaining, setRemaining] = useState(timeout);
 
   React.useEffect(() => {
     if (timeout && timeout > 0) {
-      const timer = setTimeout(() => onConfirm(defaultValue), timeout * 1000);
+      const timer = setTimeout(() => onResponse(defaultValue), timeout * 1000);
       const interval = setInterval(() => setRemaining(prev => Math.max(0, (prev ?? timeout) - 1)), 1000);
       return () => {
         clearTimeout(timer);
         clearInterval(interval);
       };
     }
-  }, [timeout, defaultValue, onConfirm]);
+  }, [timeout, defaultValue, onResponse]);
 
   useKeyboard((keyEvent) => {
     if (keyEvent.name?.toLowerCase() === 'y') {
-      onConfirm(true);
+      onResponse(true);
     } else if (keyEvent.name?.toLowerCase() === 'n') {
-      onConfirm(false);
+      onResponse(false);
     } else if (keyEvent.name === 'return') {
-      onConfirm(value);
+      onResponse(value);
     } else if (keyEvent.name === 'left' || keyEvent.name === 'right') {
       setValue(prev => !prev);
     }

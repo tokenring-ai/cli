@@ -18,7 +18,7 @@ import {
   CancellationToken,
   ExitToken,
 } from "./inputHandlers.js";
-import { runOpenTUIScreen } from "./src/OpenTUIBridge.js";
+import { runOpenTUIScreen, runAgentSelectionScreen, runAskScreen, runConfirmationScreen, runTreeSelectionScreen, runWebPageScreen, runPasswordScreen } from "./src/OpenTUIBridge.js";
 import AgentSelectionScreen from "./src/screens/AgentSelectionScreen.js";
 import ConfirmationScreen from "./src/screens/ConfirmationScreen.js";
 import PasswordScreen from "./src/screens/PasswordScreen.js";
@@ -90,7 +90,7 @@ export default class AgentCLI implements TokenRingService {
   }
 
   private async selectOrCreateAgent(): Promise<Agent | null> {
-    return runOpenTUIScreen(AgentSelectionScreen, {
+    return runAgentSelectionScreen(AgentSelectionScreen, {
       agentManager: this.agentManager,
       webHostService: this.app.getService(WebHostService),
       banner: this.config.bannerWide,
@@ -326,10 +326,10 @@ export default class AgentCLI implements TokenRingService {
 
     switch (request.type) {
       case "askForText":
-        response = await runOpenTUIScreen(AskScreen, { request });
+        response = await runAskScreen(AskScreen, { request });
         break;
       case "askForConfirmation":
-        response = await runOpenTUIScreen(ConfirmationScreen, {
+        response = await runConfirmationScreen(ConfirmationScreen, {
           message: request.message,
           defaultValue: request.default,
           timeout: request.timeout
@@ -337,13 +337,13 @@ export default class AgentCLI implements TokenRingService {
         break;
       case "askForMultipleTreeSelection":
       case "askForSingleTreeSelection":
-        response = await runOpenTUIScreen(TreeSelectionScreen, { request });
+        response = await runTreeSelectionScreen(TreeSelectionScreen, { request });
         break;
       case "openWebPage":
-        response = await runOpenTUIScreen(WebPageScreen, { request });
+        response = await runWebPageScreen(WebPageScreen, { request });
         break;
       case "askForPassword":
-        response = await runOpenTUIScreen(PasswordScreen, { request });
+        response = await runPasswordScreen(PasswordScreen, { request });
         break;
       default:
         throw new Error(`Unknown HumanInterfaceRequest type: ${(request as any)?.type}`);
