@@ -1,32 +1,35 @@
-import { AgentCommandService } from "@tokenring-ai/agent";
+import {AgentCommandService} from "@tokenring-ai/agent";
 import Agent from "@tokenring-ai/agent/Agent";
-import { HumanInterfaceRequest,  } from "@tokenring-ai/agent/HumanInterfaceRequest";
+import {HumanInterfaceRequest,} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import AgentManager from "@tokenring-ai/agent/services/AgentManager";
-import { AgentEventCursor, AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
-import { CommandHistoryState } from "@tokenring-ai/agent/state/commandHistoryState";
+import {AgentEventCursor, AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
+import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
 import TokenRingApp from "@tokenring-ai/app";
-import { TokenRingService } from "@tokenring-ai/app/types";
+import {TokenRingService} from "@tokenring-ai/app/types";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
-import chalk, { ChalkInstance } from "chalk";
-import { theme } from "./src/theme.js";
+import {WebHostService} from "@tokenring-ai/web-host";
+import chalk from "chalk";
 import * as process from "node:process";
 import * as readline from "node:readline";
-import { setTimeout } from "node:timers/promises";
-import ora, { Ora } from "ora";
-import { z } from "zod";
+import {setTimeout} from "node:timers/promises";
+import ora, {Ora} from "ora";
+import {z} from "zod";
+import {askForCommand, CancellationToken, ExitToken,} from "./inputHandlers.js";
 import {
-  askForCommand,
-  CancellationToken,
-  ExitToken,
-} from "./inputHandlers.js";
-import { runOpenTUIScreen, runAgentSelectionScreen, runAskScreen, runConfirmationScreen, runTreeSelectionScreen, runWebPageScreen, runPasswordScreen } from "./src/runTUIScreen.js";
+  runAgentSelectionScreen,
+  runAskScreen,
+  runConfirmationScreen,
+  runPasswordScreen,
+  runTreeSelectionScreen,
+  runWebPageScreen
+} from "./src/runTUIScreen.js";
 import AgentSelectionScreen from "./src/screens/AgentSelectionScreen.js";
+import AskScreen from "./src/screens/AskScreen.js";
 import ConfirmationScreen from "./src/screens/ConfirmationScreen.js";
 import PasswordScreen from "./src/screens/PasswordScreen.js";
 import TreeSelectionScreen from "./src/screens/TreeSelectionScreen.js";
 import WebPageScreen from "./src/screens/WebPageScreen.js";
-import AskScreen from "./src/screens/AskScreen.js";
-import { WebHostService } from "@tokenring-ai/web-host";
+import {theme} from "./src/theme.js";
 
 export const CLIConfigSchema = z.object({
   bannerNarrow: z.string(),

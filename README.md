@@ -71,7 +71,7 @@ export default {
     const config = app.getConfigSlice('cli', CLIConfigSchema);
     app.addServices(new AgentCLIService(app, config));
   },
-} as TokenRingPlugin;
+} satisfies TokenRingPlugin;
 ```
 
 ## Configuration

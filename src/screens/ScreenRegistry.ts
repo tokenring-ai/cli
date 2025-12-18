@@ -1,17 +1,10 @@
 /** @jsxImportSource @opentui/react */
 
 import type Agent from '@tokenring-ai/agent/Agent';
+import type {HumanInterfaceRequestFor, HumanInterfaceResponseFor} from '@tokenring-ai/agent/HumanInterfaceRequest';
 import type AgentManager from '@tokenring-ai/agent/services/AgentManager';
-import type { WebHostService } from '@tokenring-ai/web-host';
-import type { HumanInterfaceRequestFor, HumanInterfaceResponseFor } from '@tokenring-ai/agent/HumanInterfaceRequest';
+import type {WebHostService} from '@tokenring-ai/web-host';
 import type React from 'react';
-
-import type AgentSelectionScreen from './AgentSelectionScreen.jsx';
-import type AskScreen from './AskScreen.jsx';
-import type ConfirmationScreen from './ConfirmationScreen.jsx';
-import type TreeSelectionScreen from './TreeSelectionScreen.jsx';
-import type WebPageScreen from './WebPageScreen.jsx';
-import type PasswordScreen from './PasswordScreen.jsx';
 
 type ScreenRegistryEntry<P extends Record<string, any>, R> = {
   props: P;

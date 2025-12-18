@@ -1,10 +1,10 @@
 /** @jsxImportSource @opentui/react */
 
-import { createCliRenderer } from "@opentui/core";
-import { createRoot } from "@opentui/react";
+import {createCliRenderer} from "@opentui/core";
+import {createRoot} from "@opentui/react";
+import type {HumanInterfaceRequestFor, HumanInterfaceResponseFor} from '@tokenring-ai/agent/HumanInterfaceRequest';
 import React from "react";
-import type { ScreenName, ScreenProps, ScreenResponse } from "./screens/ScreenRegistry.js";
-import type { HumanInterfaceRequestFor, HumanInterfaceResponseFor } from '@tokenring-ai/agent/HumanInterfaceRequest';
+import type {ScreenProps, ScreenResponse} from "./screens/ScreenRegistry.js";
 
 const getCursorPosition = () : Promise<{row: number, col: number}> => {
   return new Promise((resolve) => {
