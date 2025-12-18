@@ -36,17 +36,35 @@ interface FlatNode {
 }
 
 export default function TreeSelectionScreen({ request, onResponse }: TreeSelectInputProps) {
+  const { tree, timeout, default: defaultValue, initialSelection } = request;
   const { height } = useTerminalDimensions();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(new Set(typeof initialSelection === "string" ? [initialSelection] : initialSelection || []));
   const [loading, setLoading] = useState<Set<string>>(new Set());
   const [resolvedChildren, setResolvedChildren] = useState<Map<string, TreeLeaf[]>>(new Map());
   const [remaining, setRemaining] = useState(request.timeout);
 
-  const { tree, timeout, default: defaultValue } = request;
+
   const multiple = request.type === 'askForMultipleTreeSelection';
+
+  const isVirtualParent = (node: TreeNode) => {
+    return (node.hasChildren || node.children || node.childrenLoader) &&
+           (!node.value || node.value.includes('*'));
+  };
+
+  const getChildValues = (node: TreeNode): string[] => {
+    const values: string[] = [];
+    const traverse = (n: TreeNode) => {
+      if (!isVirtualParent(n)) {
+        values.push(n.value);
+      }
+      n.children?.forEach(traverse);
+    };
+    node.children?.forEach(traverse);
+    return values;
+  };
 
   const maxVisibleItems = Math.max(1, height - 6);
 
@@ -222,10 +240,21 @@ export default function TreeSelectionScreen({ request, onResponse }: TreeSelectI
         if (multiple) {
           setChecked(prev => {
             const next = new Set(prev);
-            if (next.has(current.node.value)) {
-              next.delete(current.node.value);
+            if (isVirtualParent(current.node)) {
+              const children = getChildValues(current.node);
+              const allSelected = children.every(val => next.has(val));
+
+              if (allSelected) {
+                children.forEach(val => next.delete(val));
+              } else {
+                children.forEach(val => next.add(val));
+              }
             } else {
-              next.add(current.node.value);
+              if (next.has(current.node.value)) {
+                next.delete(current.node.value);
+              } else {
+                next.add(current.node.value);
+              }
             }
             return next;
           });
@@ -252,12 +281,25 @@ export default function TreeSelectionScreen({ request, onResponse }: TreeSelectI
   }, [flatTree, scrollOffset, maxVisibleItems]);
 
   return (
-    <box flexDirection="column" borderStyle="single">
+    <box flexDirection="column" borderStyle="single" paddingLeft={1} paddingRight={1} title={request.title} >
+      {request.message && <text fg={theme.treeMessage}>{request.message}</text>}
       {visibleTree.map((item, visibleIndex) => {
         const actualIndex = scrollOffset + visibleIndex;
+        const virtual = isVirtualParent(item.node);
+        const childValues = virtual ? getChildValues(item.node) : [];
+        const selectedCount = childValues.filter(v => checked.has(v)).length;
+
+        let fg : string = theme.treeNotSelectedItem;
+        if (actualIndex === selectedIndex) fg = theme.treeHighlightedItem;
+        else if (checked.has(item.node.value)) fg = theme.treeFullySelectedItem;
+        else if (multiple && virtual) {
+          if (selectedCount == childValues.length) fg = theme.treeFullySelectedItem;
+          else if (selectedCount > 0) fg = theme.treePartiallySelectedItem;
+        }
+
         return (
           <box key={actualIndex}>
-            <text fg={actualIndex === selectedIndex ? theme.selection : undefined}>
+            <text fg={fg}>
               {'  '.repeat(item.depth)}
               {actualIndex === selectedIndex ? '❯ ' : '  '}
               {item.loading
@@ -265,16 +307,16 @@ export default function TreeSelectionScreen({ request, onResponse }: TreeSelectI
                 : (item.node.children || item.node.childrenLoader || item.node.hasChildren)
                   ? (item.expanded ? '▼ ' : '▶ ')
                   : '  '}
-              {multiple && (checked.has(item.node.value) ? '◉ ' : '◯ ')}
+              {multiple && !virtual && (checked.has(item.node.value) ? '◉ ' : '◯ ')}
               {item.node.label}
-              {item.loading && <text> Loading...</text>}
+              {multiple && virtual && ` (${selectedCount}/${childValues.length} selected)`}
             </text>
           </box>
         );
       })}
       <text>
         ({multiple ? 'Space to toggle, Enter to submit' : 'Enter to select'}), q to exit
-        {timeout && timeout > 0 && <text fg={theme.timeout}> ({remaining}s)</text>}
+        {timeout && timeout > 0 && <text fg={theme.treeTimeout}> ({remaining}s)</text>}
       </text>
     </box>
   );

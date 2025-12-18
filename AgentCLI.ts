@@ -8,6 +8,7 @@ import TokenRingApp from "@tokenring-ai/app";
 import { TokenRingService } from "@tokenring-ai/app/types";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
 import chalk, { ChalkInstance } from "chalk";
+import { theme } from "./src/theme.js";
 import * as process from "node:process";
 import * as readline from "node:readline";
 import { setTimeout } from "node:timers/promises";
@@ -18,7 +19,7 @@ import {
   CancellationToken,
   ExitToken,
 } from "./inputHandlers.js";
-import { runOpenTUIScreen, runAgentSelectionScreen, runAskScreen, runConfirmationScreen, runTreeSelectionScreen, runWebPageScreen, runPasswordScreen } from "./src/OpenTUIBridge.js";
+import { runOpenTUIScreen, runAgentSelectionScreen, runAskScreen, runConfirmationScreen, runTreeSelectionScreen, runWebPageScreen, runPasswordScreen } from "./src/runTUIScreen.js";
 import AgentSelectionScreen from "./src/screens/AgentSelectionScreen.js";
 import ConfirmationScreen from "./src/screens/ConfirmationScreen.js";
 import PasswordScreen from "./src/screens/PasswordScreen.js";
@@ -31,8 +32,18 @@ export const CLIConfigSchema = z.object({
   bannerNarrow: z.string(),
   bannerWide: z.string(),
   bannerCompact: z.string(),
-  bannerColor: z.string().optional().default('cyan'),
 })
+
+
+const chatOutputColor = chalk.hex(theme.chatOutputText);
+const reasoningColor = chalk.hex(theme.chatReasoningText);
+const systemInfoColor = chalk.hex(theme.chatSystemInfoMessage);
+const systemErrorColor = chalk.hex(theme.chatSystemErrorMessage);
+const systemWarningColor = chalk.hex(theme.chatSystemWarningMessage);
+const previousInputColor = chalk.hex(theme.chatPreviousInput);
+const dividerColor = chalk.hex(theme.chatDivider);
+const bannerColor = chalk.hex(theme.agentSelectionBanner);
+
 
 /**
  * AgentCLI is a command-line interface for interacting with an TokenRingApp.
@@ -106,8 +117,7 @@ export default class AgentCLI implements TokenRingService {
     let humanInputPromise: Promise<[id: string, reply: any]> | null = null;
 
     process.stdout.write('\x1b[2J\x1b[0f');
-    const color = chalk[this.config.bannerColor as keyof ChalkInstance] as typeof chalk.cyan ?? chalk.cyan;
-    process.stdout.write(color(this.config.bannerWide) + "\n");
+    process.stdout.write(bannerColor(this.config.bannerWide) + "\n");
 
     function ensureNewline() {
       if (!lastWriteHadNewline) {
@@ -120,7 +130,7 @@ export default class AgentCLI implements TokenRingService {
       ensureNewline();
       const lineChar = "─";
       const lineWidth = process.stdout.columns ? Math.floor(process.stdout.columns * 0.8) : 60;
-      process.stdout.write(chalk.dim(lineChar.repeat(lineWidth)) + "\n");
+      process.stdout.write(dividerColor(lineChar.repeat(lineWidth)) + "\n");
       lastWriteHadNewline = true;
     }
 
@@ -130,7 +140,7 @@ export default class AgentCLI implements TokenRingService {
         currentOutputType = type;
       }
 
-      const color = type === "chat" ? chalk.green : chalk.yellow;
+      const color = type === "chat" ? chatOutputColor : reasoningColor;
       process.stdout.write(color(content));
       lastWriteHadNewline = content.endsWith("\n");
     }
@@ -140,8 +150,10 @@ export default class AgentCLI implements TokenRingService {
     const availableCommands = agentCommandService.getCommandNames().map(cmd => `/${cmd}`);
     availableCommands.push('/switch');
 
-    process.stdout.write(chalk.yellow("Type your questions and hit Enter. Commands start with /. Type /switch to change agents, /quit or /exit to return to agent selection.\n"));
-    process.stdout.write(chalk.yellow("(Use ↑/↓ arrow keys to navigate command history, Ctrl-T for shortcuts, Esc to cancel)\n"));
+    process.stdout.write(chatOutputColor(
+      "Type your questions and hit Enter. Commands start with /. Type /switch to change agents, /quit or /exit to return to agent selection.\n" +
+      "(Use ↑/↓ arrow keys to navigate command history, Ctrl-T for shortcuts, Esc to cancel)\n\n"
+    ));
 
 
     try {
@@ -205,8 +217,8 @@ export default class AgentCLI implements TokenRingService {
                 }
 
                 ensureNewline();
-                const color = event.level === 'error' ? chalk.red :
-                  event.level === 'warning' ? chalk.yellow : chalk.blue;
+                const color = event.level === 'error' ? systemErrorColor :
+                  event.level === 'warning' ? systemWarningColor : systemInfoColor;
                 process.stdout.write(color(event.message) + "\n");
                 lastWriteHadNewline = true;
                 break;
@@ -219,13 +231,13 @@ export default class AgentCLI implements TokenRingService {
 
                 if (event.status === 'cancelled' || event.status === 'error') {
                   ensureNewline();
-                  process.stdout.write(chalk.red(event.message) + "\n");
+                  process.stdout.write(systemErrorColor(event.message) + "\n");
                   lastWriteHadNewline = true;
                 }
                 break;
               case 'input.received':
                 ensureNewline();
-                process.stdout.write(chalk.cyan(`> ${event.message}`) + "\n");
+                process.stdout.write(previousInputColor(`user > ${event.message}`) + "\n");
                 lastWriteHadNewline = true;
                 break;
             }
@@ -237,7 +249,7 @@ export default class AgentCLI implements TokenRingService {
            */
 
           if (state.busyWith && !spinner) {
-            spinner = ora(state.busyWith);
+            spinner = ora({ text: state.busyWith, color: theme.chatSpinner });
             spinnerRunning = true;
             spinner.start();
           }
@@ -312,7 +324,7 @@ export default class AgentCLI implements TokenRingService {
     }
 
     if (userInput === CancellationToken) {
-      process.stdout.write(chalk.yellow("[Input cancelled by user]") + "\n");
+      process.stdout.write(systemWarningColor("[Input cancelled by user]") + "\n");
       return this.gatherInput(agent, signal);
     }
 

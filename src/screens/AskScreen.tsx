@@ -54,8 +54,8 @@ export default function AskScreen({ request, onResponse }: AskInputProps) {
 
   return (
     <box flexDirection="column">
-      {message && <text fg={theme.banner}>{message}</text>}
-      <text fg={theme.dimText}>(Press Ctrl+D to submit, Esc to cancel)</text>
+      {message && <text fg={theme.askMessage}>{message}</text>}
+      <text>(Press Ctrl+D to submit, Esc to cancel)</text>
       {lines.map((line, idx) => (
         <text key={idx}>{line}{idx === currentLine ? '█' : ''}</text>
       ))}

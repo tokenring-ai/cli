@@ -42,10 +42,10 @@ export default function ConfirmationScreen({ message, defaultValue = false, time
     <box flexDirection="column">
       <text>{message} </text>
       <box flexDirection="row">
-        <text fg={value ? theme.confirmYes : theme.selectionInactive}>[Yes]</text>
+        <text fg={value ? theme.confirmYes : theme.confirmInactive}>[Yes]</text>
         <text> / </text>
-        <text fg={!value ? theme.confirmNo : theme.selectionInactive}>[No]</text>
-        {timeout && timeout > 0 && <text fg={theme.timeout}> ({remaining}s)</text>}
+        <text fg={!value ? theme.confirmNo : theme.confirmInactive}>[No]</text>
+        {timeout && timeout > 0 && <text fg={theme.confirmTimeout}> ({remaining}s)</text>}
       </box>
     </box>
   );

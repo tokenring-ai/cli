@@ -106,14 +106,14 @@ export default function AgentSelectionScreen({
 
   return (
     <box flexDirection="column">
-      <box><text fg={theme.banner}>{banner}</text></box>
+      <box><text fg={theme.agentSelectionBanner}>{banner}</text></box>
       <TreeSelectionScreen
-        request={{ type: 'askForSingleTreeSelection', tree }}
+        request={{ type: 'askForSingleTreeSelection', message: "Select an agent or activity", title: "Agent Selection", tree }}
         onResponse={handleSelect}
       />
       {err &&
-        <box borderStyle="rounded" paddingLeft={1} paddingRight={1} borderColor={theme.border}>
-          <text fg={theme.systemError}>{err.message}</text>
+        <box borderStyle="rounded" paddingLeft={1} paddingRight={1}>
+          <text fg={theme.chatSystemErrorMessage}>{err.message}</text>
         </box>
       }
     </box>
