@@ -14,7 +14,7 @@ import process from "node:process";
 import readline from "node:readline";
 import {setTimeout} from "node:timers/promises";
 import {z} from "zod";
-import commandPrompt from "@tokenring-ai/inquirer-command-prompt";
+import {commandPrompt, PartialInputError} from "./commandPrompt.ts";
 import {SimpleSpinner} from "./SimpleSpinnter.ts";
 import {renderScreen} from "./src/runTUIScreen.js";
 import AgentSelectionScreen from "./src/screens/AgentSelectionScreen.js";
@@ -55,7 +55,7 @@ export default class AgentCLI implements TokenRingService {
   private readonly app: TokenRingApp;
   private agentManager!: AgentManager;
   private readonly config: z.infer<typeof CLIConfigSchema>;
-  private rl: readline.Interface | null = null;
+  private rl!: readline.Interface;
 
   /**
    * Creates a new AgentCLI instance.
@@ -117,7 +117,7 @@ export default class AgentCLI implements TokenRingService {
     let currentOutputType: string = "chat";
     let spinner: SimpleSpinner | null = null;
     let spinnerRunning = false;
-    let currentInputPromise: Promise<string> | null = null
+    let currentInputPromise: Promise<void> | null = null
     let humanInputPromise: Promise<[id: string, reply: any]> | null = null;
     const eventCursor: AgentEventCursor = { position: 0 };
 
@@ -278,24 +278,37 @@ export default class AgentCLI implements TokenRingService {
           if (state.idle && !currentInputPromise) {
             //process.stdin.off('keypress', cancelAgentOnEscapeKey);
 
-            const abortController = new AbortController();
-            this.abortControllerStack.push(abortController);
-
             ensureNewline();
 
-            currentInputPromise = this.gatherInput(agent, abortController.signal);
-            currentInputPromise.finally(() => {
-              this.abortControllerStack.pop()!.abort();
-            }).then(message => {
-              if (message === "/switch") {
-                this.abortControllerStack[this.abortControllerStack.length - 1].abort();
-              } else {
-                currentInputPromise = null;
-                this.ensureSigintHandlers();
-                agent.handleInput({message});
-              }
-            });
+            const createInputPromise = () => {
+              const abortController = new AbortController();
+              this.abortControllerStack.push(abortController);
+
+              return this.gatherInput(agent, abortController.signal)
+                .finally(() => {
+                  this.abortControllerStack.pop()!.abort();
+                }).then(message => {
+                  currentInputPromise = null;
+                  this.ensureSigintHandlers();
+                  agent.handleInput({message});
+                }).catch(err => {
+                  currentInputPromise = null;
+                  if (err instanceof PartialInputError) {
+                    if (err.buffer.trim() === "") {
+                      // Empty prompt + Ctrl-C = Switch agents
+                      this.abortControllerStack[this.abortControllerStack.length - 1].abort();
+                    } else {
+                      // Text in prompt - restart input loop
+                      currentInputPromise = createInputPromise();
+                    }
+                  }
+                });
+            };
+
+            currentInputPromise = createInputPromise();
           }
+
+
 
           if (state.waitingOn && !humanInputPromise) {
             const abortController = new AbortController();
@@ -312,7 +325,7 @@ export default class AgentCLI implements TokenRingService {
             });
           }
         }
-        spinner!.stop();
+        spinner?.stop();
       });
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') {
@@ -327,44 +340,18 @@ export default class AgentCLI implements TokenRingService {
   private async gatherInput(agent: Agent, signal: AbortSignal): Promise<string> {
     const history = agent.getState(CommandHistoryState).commands;
 
-    let emptyPrompt = true;
+    this.ensureSigintHandlers();
 
-    try {
-      const userInput = await commandPrompt(
-        {
-          theme: {
-            prefix: chalk.yellowBright("user"),
-          },
-          transformer: (input: string) => {
-            if (input.length > 0) {
-              emptyPrompt = false;
-            }
-            return input;
-          },
-          message: chalk.yellowBright(">"),
-          autoCompletion: this.availableCommands,
-          history,
-        },
-        {
-          signal,
-        },
-      );
-
-      process.stdout.write('\x1b[2K'); // Clears the entire current line
-      process.stdout.write('\x1b[0G'); // Moves the cursor to the beginning of the line
-      process.stdout.write('\x1b[1A'); // Moves the cursor up one line
-      process.stdout.write('\x1b[2K'); // Clears the entire current line
-
-      return userInput;
-    } catch (e) {
-      if (emptyPrompt) return "/switch";
-    }
-
-    /**
-     * Input was cancelled with text in the input, so we restart gathering input
-     */
-    process.stdout.write(systemWarningColor("[Input cancelled by user]") + "\n");
-    return this.gatherInput(agent, signal);
+    return await commandPrompt(
+      {
+        rl: this.rl!,
+        prefix: chalk.yellowBright("user"),
+        message: chalk.yellowBright(">"),
+        autoCompletion: this.availableCommands,
+        history,
+        signal,
+      }
+    );
   }
 
   private async handleHumanRequest(
