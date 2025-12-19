@@ -1,5 +1,6 @@
 import {AgentCommandService} from "@tokenring-ai/agent";
 import Agent from "@tokenring-ai/agent/Agent";
+import {AgentEventEnvelope} from "@tokenring-ai/agent/AgentEvents";
 import {HumanInterfaceRequest,} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import AgentManager from "@tokenring-ai/agent/services/AgentManager";
 import {AgentEventCursor, AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
@@ -9,20 +10,13 @@ import {TokenRingService} from "@tokenring-ai/app/types";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
 import {WebHostService} from "@tokenring-ai/web-host";
 import chalk from "chalk";
-import * as process from "node:process";
-import * as readline from "node:readline";
+import process from "node:process";
+import readline from "node:readline";
 import {setTimeout} from "node:timers/promises";
-import ora, {Ora} from "ora";
 import {z} from "zod";
-import {askForCommand, CancellationToken, ExitToken,} from "./inputHandlers.js";
-import {
-  runAgentSelectionScreen,
-  runAskScreen,
-  runConfirmationScreen,
-  runPasswordScreen,
-  runTreeSelectionScreen,
-  runWebPageScreen
-} from "./src/runTUIScreen.js";
+import commandPrompt from "@tokenring-ai/inquirer-command-prompt";
+import {SimpleSpinner} from "./SimpleSpinnter.ts";
+import {renderScreen} from "./src/runTUIScreen.js";
 import AgentSelectionScreen from "./src/screens/AgentSelectionScreen.js";
 import AskScreen from "./src/screens/AskScreen.js";
 import ConfirmationScreen from "./src/screens/ConfirmationScreen.js";
@@ -61,6 +55,7 @@ export default class AgentCLI implements TokenRingService {
   private readonly app: TokenRingApp;
   private agentManager!: AgentManager;
   private readonly config: z.infer<typeof CLIConfigSchema>;
+  private rl: readline.Interface | null = null;
 
   /**
    * Creates a new AgentCLI instance.
@@ -70,27 +65,31 @@ export default class AgentCLI implements TokenRingService {
   constructor(app: TokenRingApp, config: z.infer<typeof CLIConfigSchema>) {
     this.app = app;
     this.config = config;
-    process.on("SIGINT", () => {
+  }
+
+  ensureSigintHandlers() {
+    this.rl?.close()
+    process.removeAllListeners('SIGINT');
+    process.stdin.removeAllListeners('keypress');
+
+    process.stdin.setRawMode(true); // Switch to raw mode to capture Ctrl+C manually
+
+    this.rl = readline.createInterface(process.stdin, process.stdout)
+
+    this.rl.on('SIGINT', () => {
       if (this.abortControllerStack.length > 0) {
-        this.abortControllerStack[length - 1].abort();
+        this.abortControllerStack[this.abortControllerStack.length - 1].abort();
       } else {
         process.stdout.write("Ctrl-C pressed. Exiting...\n");
-        app.shutdown();
+        this.app.shutdown();
       }
     });
   }
-
   async run(): Promise<void> {
     this.agentManager = this.app.requireService(AgentManager);
 
-
-    // Enable keypress events
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(false);
-      readline.emitKeypressEvents(process.stdin);
-    }
-
     for (let agent = await this.selectOrCreateAgent(); agent; agent = await this.selectOrCreateAgent()) {
+      this.ensureSigintHandlers()
       try {
         await this.runAgentLoop(agent);
       } catch (error) {
@@ -99,12 +98,14 @@ export default class AgentCLI implements TokenRingService {
       }
     }
 
+
+    process.stdout.write(`\x1b[${process.stdout.rows || 24};0H`);
     process.stdout.write("Goodbye!");
     process.exit(0);
   }
 
   private async selectOrCreateAgent(): Promise<Agent | null> {
-    return runAgentSelectionScreen(AgentSelectionScreen, {
+    return renderScreen(AgentSelectionScreen, {
       agentManager: this.agentManager,
       webHostService: this.app.getService(WebHostService),
       banner: this.config.bannerWide,
@@ -114,30 +115,28 @@ export default class AgentCLI implements TokenRingService {
   private async runAgentLoop(agent: Agent): Promise<void> {
     let lastWriteHadNewline = true;
     let currentOutputType: string = "chat";
-    let spinner: Ora | null = null;
+    let spinner: SimpleSpinner | null = null;
     let spinnerRunning = false;
-    let currentInputPromise: Promise<string | typeof ExitToken> | null = null
+    let currentInputPromise: Promise<string> | null = null
     let humanInputPromise: Promise<[id: string, reply: any]> | null = null;
+    const eventCursor: AgentEventCursor = { position: 0 };
 
-    process.stdout.write('\x1b[2J\x1b[0f');
-    process.stdout.write(bannerColor(this.config.bannerWide) + "\n");
-
-    function ensureNewline() {
+    const ensureNewline = () => {
       if (!lastWriteHadNewline) {
         process.stdout.write("\n");
         lastWriteHadNewline = true;
       }
-    }
+    };
 
-    function printHorizontalLine() {
+    const printHorizontalLine = () => {
       ensureNewline();
       const lineChar = "─";
       const lineWidth = process.stdout.columns ? Math.floor(process.stdout.columns * 0.8) : 60;
       process.stdout.write(dividerColor(lineChar.repeat(lineWidth)) + "\n");
       lastWriteHadNewline = true;
-    }
+    };
 
-    function writeOutput(content: string, type: "chat" | "reasoning") {
+    const writeOutput = (content: string, type: "chat" | "reasoning") => {
       if (type !== currentOutputType) {
         printHorizontalLine();
         currentOutputType = type;
@@ -146,7 +145,75 @@ export default class AgentCLI implements TokenRingService {
       const color = type === "chat" ? chatOutputColor : reasoningColor;
       process.stdout.write(color(content));
       lastWriteHadNewline = content.endsWith("\n");
-    }
+    };
+
+    const renderEvent = (event: AgentEventEnvelope) => {
+      switch (event.type) {
+        case 'output.chat':
+                if (spinnerRunning) {
+                  spinner!.stop();
+            spinnerRunning = false;
+          }
+          writeOutput(event.content, "chat");
+          break;
+        case 'output.reasoning':
+                if (spinnerRunning) {
+                  spinner!.stop();
+            spinnerRunning = false;
+          }
+          writeOutput(event.content, "reasoning");
+          break;
+        case 'output.system': {
+                if (spinnerRunning) {
+                  spinner!.stop();
+            spinnerRunning = false;
+          }
+          ensureNewline();
+          const color = event.level === 'error' ? systemErrorColor :
+            event.level === 'warning' ? systemWarningColor : systemInfoColor;
+          process.stdout.write(color(event.message) + "\n");
+          lastWriteHadNewline = true;
+          break;
+          }
+        case 'input.handled':
+                if (spinnerRunning) {
+                  spinner!.stop();
+            spinnerRunning = false;
+          }
+          if (event.status === 'cancelled' || event.status === 'error') {
+            ensureNewline();
+            process.stdout.write(systemErrorColor(event.message) + "\n");
+            lastWriteHadNewline = true;
+          }
+          break;
+        case 'input.received':
+          ensureNewline();
+          process.stdout.write(previousInputColor(`user > ${event.message}`) + "\n");
+          lastWriteHadNewline = true;
+          break;
+      }
+    };
+
+    const redraw = (state: AgentEventState) => {
+      process.stdout.write('\x1b[2J\x1b[0f');
+      process.stdout.write(bannerColor(this.config.bannerWide) + "\n");
+      process.stdout.write(chatOutputColor(
+        "Type your questions and hit Enter. Commands start with /. Type /switch to change agents, /quit or /exit to return to agent selection.\n" +
+        "(Use ↑/↓ arrow keys to navigate command history, Ctrl-T for shortcuts, Esc to cancel)\n\n"
+      ));
+      
+      lastWriteHadNewline = true;
+      currentOutputType = "chat";
+      
+      for (const event of state.yieldEventsByCursor({ position: 0 })) {
+        renderEvent(event);
+      }
+      
+      eventCursor.position = state.events.length;
+    };
+
+    process.stdout.write('\x1b[2J\x1b[0f');
+    process.stdout.write(bannerColor(this.config.bannerWide) + "\n");
 
     const agentCommandService = agent.requireServiceByType(AgentCommandService);
 
@@ -161,8 +228,6 @@ export default class AgentCLI implements TokenRingService {
 
     try {
       await this.withAbortSignal(async signal => {
-        const eventCursor: AgentEventCursor = { position: 0 };
-
         function cancelAgentOnEscapeKey(str: any, key: any) {
           if (key && key.name === 'escape') {
             agent.requestAbort('User pressed escape');
@@ -186,7 +251,7 @@ export default class AgentCLI implements TokenRingService {
           }
 
           if (!state.idle && currentInputPromise) {
-            process.stdin.on('keypress', cancelAgentOnEscapeKey);
+            //process.stdin.on('keypress', cancelAgentOnEscapeKey);
 
             this.abortControllerStack[this.abortControllerStack.length - 1].abort();
           }
@@ -196,54 +261,7 @@ export default class AgentCLI implements TokenRingService {
           }
 
           for (const event of state.yieldEventsByCursor(eventCursor)) {
-            switch (event.type) {
-              case 'output.chat':
-                if (spinnerRunning) {
-                  spinner!.stop();
-                  spinnerRunning = false;
-                }
-
-                writeOutput(event.content, "chat");
-                break;
-              case 'output.reasoning':
-                if (spinnerRunning) {
-                  spinner!.stop();
-                  spinnerRunning = false;
-                }
-
-                writeOutput(event.content, "reasoning");
-                break;
-              case 'output.system': {
-                if (spinnerRunning) {
-                  spinner!.stop();
-                  spinnerRunning = false;
-                }
-
-                ensureNewline();
-                const color = event.level === 'error' ? systemErrorColor :
-                  event.level === 'warning' ? systemWarningColor : systemInfoColor;
-                process.stdout.write(color(event.message) + "\n");
-                lastWriteHadNewline = true;
-                break;
-              }
-              case 'input.handled':
-                if (spinnerRunning) {
-                  spinner!.stop();
-                  spinnerRunning = false;
-                }
-
-                if (event.status === 'cancelled' || event.status === 'error') {
-                  ensureNewline();
-                  process.stdout.write(systemErrorColor(event.message) + "\n");
-                  lastWriteHadNewline = true;
-                }
-                break;
-              case 'input.received':
-                ensureNewline();
-                process.stdout.write(previousInputColor(`user > ${event.message}`) + "\n");
-                lastWriteHadNewline = true;
-                break;
-            }
+            renderEvent(event);
           }
 
           /**
@@ -252,13 +270,13 @@ export default class AgentCLI implements TokenRingService {
            */
 
           if (state.busyWith && !spinner) {
-            spinner = ora({ text: state.busyWith, color: theme.chatSpinner });
+            spinner = new SimpleSpinner(state.busyWith, theme.chatSpinner);
             spinnerRunning = true;
             spinner.start();
           }
 
           if (state.idle && !currentInputPromise) {
-            process.stdin.off('keypress', cancelAgentOnEscapeKey);
+            //process.stdin.off('keypress', cancelAgentOnEscapeKey);
 
             const abortController = new AbortController();
             this.abortControllerStack.push(abortController);
@@ -269,10 +287,11 @@ export default class AgentCLI implements TokenRingService {
             currentInputPromise.finally(() => {
               this.abortControllerStack.pop()!.abort();
             }).then(message => {
-              if (message === ExitToken) {
+              if (message === "/switch") {
                 this.abortControllerStack[this.abortControllerStack.length - 1].abort();
               } else {
                 currentInputPromise = null;
+                this.ensureSigintHandlers();
                 agent.handleInput({message});
               }
             });
@@ -286,11 +305,14 @@ export default class AgentCLI implements TokenRingService {
             humanInputPromise.finally(() => {
               this.abortControllerStack.pop()!.abort();
             }).then(([id, response]) => {
+              redraw(state);
+              this.ensureSigintHandlers();
               agent.sendHumanResponse(id, response);
               humanInputPromise = null;
             });
           }
         }
+        spinner!.stop();
       });
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') {
@@ -302,36 +324,47 @@ export default class AgentCLI implements TokenRingService {
     printHorizontalLine();
   }
 
-  private async gatherInput(agent: Agent, signal: AbortSignal): Promise<string | typeof ExitToken> {
+  private async gatherInput(agent: Agent, signal: AbortSignal): Promise<string> {
     const history = agent.getState(CommandHistoryState).commands;
 
+    let emptyPrompt = true;
 
+    try {
+      const userInput = await commandPrompt(
+        {
+          theme: {
+            prefix: chalk.yellowBright("user"),
+          },
+          transformer: (input: string) => {
+            if (input.length > 0) {
+              emptyPrompt = false;
+            }
+            return input;
+          },
+          message: chalk.yellowBright(">"),
+          autoCompletion: this.availableCommands,
+          history,
+        },
+        {
+          signal,
+        },
+      );
 
-// Move cursor to bottom of screen
-    const rows = process.stdout.rows || 24;
-    //process.stdout.write(`\x1b[${rows};0H`);
+      process.stdout.write('\x1b[2K'); // Clears the entire current line
+      process.stdout.write('\x1b[0G'); // Moves the cursor to the beginning of the line
+      process.stdout.write('\x1b[1A'); // Moves the cursor up one line
+      process.stdout.write('\x1b[2K'); // Clears the entire current line
 
-    const userInput = await askForCommand({
-      autoCompletion: this.availableCommands,
-      history
-    }, signal);
-
-
-    process.stdout.write('\x1b[2K'); // Clears the entire current line
-    process.stdout.write('\x1b[0G'); // Moves the cursor to the beginning of the line
-    process.stdout.write('\x1b[1A'); // Moves the cursor up one line
-    process.stdout.write('\x1b[2K'); // Clears the entire current line
-
-    if (userInput === '/switch' || userInput === ExitToken) {
-      return ExitToken;
+      return userInput;
+    } catch (e) {
+      if (emptyPrompt) return "/switch";
     }
 
-    if (userInput === CancellationToken) {
-      process.stdout.write(systemWarningColor("[Input cancelled by user]") + "\n");
-      return this.gatherInput(agent, signal);
-    }
-
-    return userInput;
+    /**
+     * Input was cancelled with text in the input, so we restart gathering input
+     */
+    process.stdout.write(systemWarningColor("[Input cancelled by user]") + "\n");
+    return this.gatherInput(agent, signal);
   }
 
   private async handleHumanRequest(
@@ -341,10 +374,10 @@ export default class AgentCLI implements TokenRingService {
 
     switch (request.type) {
       case "askForText":
-        response = await runAskScreen(AskScreen, { request });
+        response = await renderScreen(AskScreen, { request });
         break;
       case "askForConfirmation":
-        response = await runConfirmationScreen(ConfirmationScreen, {
+        response = await renderScreen(ConfirmationScreen, {
           message: request.message,
           defaultValue: request.default,
           timeout: request.timeout
@@ -352,13 +385,13 @@ export default class AgentCLI implements TokenRingService {
         break;
       case "askForMultipleTreeSelection":
       case "askForSingleTreeSelection":
-        response = await runTreeSelectionScreen(TreeSelectionScreen, { request });
+        response = await renderScreen(TreeSelectionScreen, { request });
         break;
       case "openWebPage":
-        response = await runWebPageScreen(WebPageScreen, { request });
+        response = await renderScreen(WebPageScreen, { request });
         break;
       case "askForPassword":
-        response = await runPasswordScreen(PasswordScreen, { request });
+        response = await renderScreen(PasswordScreen, { request });
         break;
       default:
         throw new Error(`Unknown HumanInterfaceRequest type: ${(request as any)?.type}`);

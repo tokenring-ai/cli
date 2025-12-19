@@ -35,8 +35,17 @@ interface FlatNode {
   loading: boolean;
 }
 
-export default function TreeSelectionScreen({ request, onResponse }: TreeSelectInputProps) {
+type TreeRequest = HumanInterfaceRequestFor<"askForSingleTreeSelection"> | HumanInterfaceRequestFor<"askForMultipleTreeSelection">;
+
+export default function TreeSelectionScreen<T extends TreeRequest>({
+                                                                     request,
+                                                                     onResponse
+                                                                   }: {
+  request: T,
+  onResponse: (response: HumanInterfaceResponseFor<T["type"]>) => void
+}) {
   const { tree, timeout, default: defaultValue, initialSelection } = request;
+
   const { height } = useTerminalDimensions();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);

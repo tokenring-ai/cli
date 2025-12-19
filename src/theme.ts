@@ -24,8 +24,7 @@ export const theme = {
   chatSystemWarningMessage: '#FFEB3BFF',
   chatSystemErrorMessage: '#EF5350FF',
   chatDivider: '#9E9E9EFF',
-  chatSpinner: 'magenta', // Only supports a few named colors
-
+  chatSpinner: '#FFEB3BFF',
 
   // Box styles
   boxTitle: '#FFF176FF',
