@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/react */
 import type Agent from '@tokenring-ai/agent/Agent';
-import type AgentManager from '@tokenring-ai/agent/services/AgentManager';
+import AgentManager from '@tokenring-ai/agent/services/AgentManager';
 import { WebHostService } from "@tokenring-ai/web-host";
 import SPAResource from "@tokenring-ai/web-host/SPAResource";
 import React, { useCallback, useMemo } from 'react';
@@ -8,20 +8,23 @@ import type { TreeLeaf } from './TreeSelectionScreen.tsx';
 import TreeSelectionScreen from './TreeSelectionScreen.tsx';
 import open from 'open';
 import { theme } from '../theme.ts';
+import TokenRingApp from "@tokenring-ai/app";
+import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
 
 interface AgentSelectionScreenProps {
-  webHostService?: WebHostService;
-  agentManager: AgentManager;
+  app: TokenRingApp;
   banner: string;
   onResponse: (agent: Agent | null) => void;
 }
 
 export default function AgentSelectionScreen({
-  webHostService,
-  agentManager,
+  app,
   onResponse,
   banner
 }: AgentSelectionScreenProps) {
+  const agentManager = app.requireService(AgentManager);
+  const webHostService = app.getService(WebHostService);
+
   const [err, setError] = React.useState<Error | null>(null);
   const tree: TreeLeaf = useMemo(() => {
     const configs = Object.entries(agentManager.getAgentConfigs());
@@ -65,6 +68,18 @@ export default function AgentSelectionScreen({
       }));
     }
 
+    // Add workflows category
+    const workflows = app.getService(WorkflowService);
+    if (workflows) {
+      const workflowList = workflows.listWorkflows();
+      if (workflowList.length > 0) {
+        categories['Workflows'] = workflowList.map(({key, workflow}) => ({
+          name: `${workflow.name} (${key})`,
+          value: `workflow:${key}`,
+        }));
+      }
+    }
+
     return {
       name: 'Select Agent',
       children: Object.entries(categories)
@@ -75,7 +90,7 @@ export default function AgentSelectionScreen({
           children: agents.sort((a, b) => a.name.localeCompare(b.name)),
         })),
     };
-  }, [agentManager]);
+  }, [agentManager, webHostService, app]);
 
   const handleSelect = useCallback(async (agentType: string | null) => {
     if (!agentType) {
@@ -101,8 +116,17 @@ export default function AgentSelectionScreen({
       } else {
         open(`${url}${remainder}`);
       }
+    } else if (action === 'workflow') {
+      try {
+        const workflowService = app.requireService(WorkflowService);
+        const agent = await workflowService.spawnWorkflow(remainder, { headless: false });
+
+        onResponse(agent);
+      } catch (e) {
+        setError(e as Error);
+      }
     }
-  }, [agentManager, webHostService, onResponse]);
+  }, [agentManager, webHostService, onResponse, app]);
 
   return (
     <box flexDirection="column">

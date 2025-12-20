@@ -106,8 +106,7 @@ export default class AgentCLI implements TokenRingService {
 
   private async selectOrCreateAgent(): Promise<Agent | null> {
     return renderScreen(AgentSelectionScreen, {
-      agentManager: this.agentManager,
-      webHostService: this.app.getService(WebHostService),
+      app: this.app,
       banner: this.config.bannerWide,
     });
   }
