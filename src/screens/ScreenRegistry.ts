@@ -51,6 +51,10 @@ export type ScreenRegistry = {
     { request: HumanInterfaceRequestFor<'askForPassword'> },
     HumanInterfaceResponseFor<'askForPassword'>
   >;
+  FormScreen: ScreenRegistryEntry<
+    { request: HumanInterfaceRequestFor<'askForForm'> },
+    HumanInterfaceResponseFor<'askForForm'>
+  >;
 };
 
 export type ScreenName = keyof ScreenRegistry;

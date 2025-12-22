@@ -8,7 +8,6 @@ import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState
 import TokenRingApp from "@tokenring-ai/app";
 import {TokenRingService} from "@tokenring-ai/app/types";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
-import {WebHostService} from "@tokenring-ai/web-host";
 import chalk from "chalk";
 import process from "node:process";
 import readline from "node:readline";
@@ -23,6 +22,7 @@ import ConfirmationScreen from "./src/screens/ConfirmationScreen.js";
 import PasswordScreen from "./src/screens/PasswordScreen.js";
 import TreeSelectionScreen from "./src/screens/TreeSelectionScreen.js";
 import WebPageScreen from "./src/screens/WebPageScreen.js";
+import FormScreen from "./src/screens/FormScreen.js";
 import {theme} from "./src/theme.js";
 
 export const CLIConfigSchema = z.object({
@@ -31,12 +31,14 @@ export const CLIConfigSchema = z.object({
   bannerCompact: z.string(),
 })
 
-
-const chatOutputColor = chalk.hex(theme.chatOutputText);
-const reasoningColor = chalk.hex(theme.chatReasoningText);
-const systemInfoColor = chalk.hex(theme.chatSystemInfoMessage);
-const systemErrorColor = chalk.hex(theme.chatSystemErrorMessage);
-const systemWarningColor = chalk.hex(theme.chatSystemWarningMessage);
+const outputColors = {
+  "output.chat": chalk.hex(theme.chatOutputText),
+  "output.reasoning": chalk.hex(theme.chatReasoningText),
+  "output.info": chalk.hex(theme.chatSystemInfoMessage),
+  "output.warning": chalk.hex(theme.chatSystemWarningMessage),
+  "output.error": chalk.hex(theme.chatSystemErrorMessage),
+}
+;
 const previousInputColor = chalk.hex(theme.chatPreviousInput);
 const dividerColor = chalk.hex(theme.chatDivider);
 const bannerColor = chalk.hex(theme.agentSelectionBanner);
@@ -127,61 +129,51 @@ export default class AgentCLI implements TokenRingService {
       }
     };
 
-    const printHorizontalLine = () => {
-      ensureNewline();
+    const printHorizontalLine = (message: string) => {
       const lineChar = "─";
       const lineWidth = process.stdout.columns ? Math.floor(process.stdout.columns * 0.8) : 60;
-      process.stdout.write(dividerColor(lineChar.repeat(lineWidth)) + "\n");
+      process.stdout.write(
+        dividerColor(
+          lineChar.repeat(4)
+          + " " + message + " " +
+          lineChar.repeat(lineWidth - 6 - message.length)
+        ) + "\n"
+      );
       lastWriteHadNewline = true;
-    };
-
-    const writeOutput = (content: string, type: "chat" | "reasoning") => {
-      if (type !== currentOutputType) {
-        printHorizontalLine();
-        currentOutputType = type;
-      }
-
-      const color = type === "chat" ? chatOutputColor : reasoningColor;
-      process.stdout.write(color(content));
-      lastWriteHadNewline = content.endsWith("\n");
     };
 
     const renderEvent = (event: AgentEventEnvelope) => {
       switch (event.type) {
         case 'output.chat':
-                if (spinnerRunning) {
-                  spinner!.stop();
-            spinnerRunning = false;
-          }
-          writeOutput(event.content, "chat");
-          break;
         case 'output.reasoning':
-                if (spinnerRunning) {
-                  spinner!.stop();
+        case 'output.info':
+        case 'output.warning':
+        case 'output.error':
+          if (spinnerRunning) {
+            spinner!.stop();
             spinnerRunning = false;
           }
-          writeOutput(event.content, "reasoning");
+          if (event.type !== currentOutputType) {
+            ensureNewline();
+            if (event.type === 'output.chat') {
+              printHorizontalLine("Chat");
+            } else if (event.type === 'output.reasoning') {
+              printHorizontalLine("Reasoning");
+            }
+            currentOutputType = event.type;
+          }
+
+          process.stdout.write(outputColors[event.type](event.message));
+          lastWriteHadNewline = event.message.endsWith("\n");
           break;
-        case 'output.system': {
-                if (spinnerRunning) {
-                  spinner!.stop();
+        case 'input.handled':
+          if (spinnerRunning) {
+            spinner!.stop();
             spinnerRunning = false;
           }
           ensureNewline();
-          const color = event.level === 'error' ? systemErrorColor :
-            event.level === 'warning' ? systemWarningColor : systemInfoColor;
-          process.stdout.write(color(event.message) + "\n");
-          lastWriteHadNewline = true;
-          break;
-          }
-        case 'input.handled':
-                if (spinnerRunning) {
-                  spinner!.stop();
-            spinnerRunning = false;
-          }
           if (event.status === 'cancelled' || event.status === 'error') {
-            ensureNewline();
-            process.stdout.write(systemErrorColor(event.message) + "\n");
+            process.stdout.write(outputColors['output.error'](event.message));
             lastWriteHadNewline = true;
           }
           break;
@@ -196,7 +188,7 @@ export default class AgentCLI implements TokenRingService {
     const redraw = (state: AgentEventState) => {
       process.stdout.write('\x1b[2J\x1b[0f');
       process.stdout.write(bannerColor(this.config.bannerWide) + "\n");
-      process.stdout.write(chatOutputColor(
+      process.stdout.write(outputColors['output.chat'](
         "Type your questions and hit Enter. Commands start with /. Type /switch to change agents, /quit or /exit to return to agent selection.\n" +
         "(Use ↑/↓ arrow keys to navigate command history, Ctrl-T for shortcuts, Esc to cancel)\n\n"
       ));
@@ -211,18 +203,22 @@ export default class AgentCLI implements TokenRingService {
       eventCursor.position = state.events.length;
     };
 
-    process.stdout.write('\x1b[2J\x1b[0f');
-    process.stdout.write(bannerColor(this.config.bannerWide) + "\n");
+
+
+    //process.stdout.write('\x1b[2J\x1b[0f');
+    //process.stdout.write(bannerColor(this.config.bannerWide) + "\n");
 
     const agentCommandService = agent.requireServiceByType(AgentCommandService);
 
     const availableCommands = agentCommandService.getCommandNames().map(cmd => `/${cmd}`);
     availableCommands.push('/switch');
 
-    process.stdout.write(chatOutputColor(
+    /*process.stdout.write(outputColors['output.chat'](
       "Type your questions and hit Enter. Commands start with /. Type /switch to change agents, /quit or /exit to return to agent selection.\n" +
       "(Use ↑/↓ arrow keys to navigate command history, Ctrl-T for shortcuts, Esc to cancel)\n\n"
-    ));
+    ));*/
+
+    redraw(agent.getState(AgentEventState));
 
 
     try {
@@ -333,7 +329,8 @@ export default class AgentCLI implements TokenRingService {
         process.stderr.write(formatLogMessages(["Error while running agent loop", e as Error]));
       }
     }
-    printHorizontalLine();
+    ensureNewline();
+    //printHorizontalLine();
   }
 
   private async gatherInput(agent: Agent, signal: AbortSignal): Promise<string> {
@@ -378,6 +375,9 @@ export default class AgentCLI implements TokenRingService {
         break;
       case "askForPassword":
         response = await renderScreen(PasswordScreen, { request });
+        break;
+      case "askForForm":
+        response = await renderScreen(FormScreen, { request });
         break;
       default:
         throw new Error(`Unknown HumanInterfaceRequest type: ${(request as any)?.type}`);
