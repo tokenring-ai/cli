@@ -56,7 +56,3 @@ export type ScreenRegistry = {
     HumanInterfaceResponseFor<'askForForm'>
   >;
 };
-
-export type ScreenName = keyof ScreenRegistry;
-export type ScreenProps<K extends ScreenName> = ScreenRegistry[K]['props'];
-export type ScreenResponse<K extends ScreenName> = ScreenRegistry[K]['response'];
