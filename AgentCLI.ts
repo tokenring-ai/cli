@@ -7,6 +7,7 @@ import {AgentEventCursor, AgentEventState} from "@tokenring-ai/agent/state/agent
 import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
 import TokenRingApp from "@tokenring-ai/app";
 import {TokenRingService} from "@tokenring-ai/app/types";
+import {createAsciiTable} from "@tokenring-ai/utility/string/asciiTable";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
 import chalk from "chalk";
 import process from "node:process";
@@ -179,7 +180,15 @@ export default class AgentCLI implements TokenRingService {
           break;
         case 'input.received':
           ensureNewline();
-          process.stdout.write(previousInputColor(`user > ${event.message}`) + "\n");
+          process.stdout.write(previousInputColor(createAsciiTable(
+            [
+              ['user >', event.message]
+            ], {
+            columnWidths: [7, process.stdout.columns ? process.stdout.columns - 7 : 65],
+            padding: 0,
+            grid: false
+          })));
+
           lastWriteHadNewline = true;
           break;
       }
