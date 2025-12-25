@@ -1,6 +1,6 @@
 # @tokenring-ai/cli
 
-A comprehensive command-line interface for interacting with TokenRing AI agents. This package provides an interactive terminal-based interface for managing AI agents, executing commands, and handling human interface requests with a rich, responsive UI.
+A comprehensive command-line interface for interacting with TokenRing AI agents. This package provides an interactive terminal-based interface for managing AI agents, executing commands, and handling human interface requests with a rich, responsive UI built on OpenTUI.
 
 ## Overview
 
@@ -110,6 +110,8 @@ export const CLIConfigSchema = z.object({
 - Agent selection with interactive UI
 - Workflow integration and execution
 - Web host resource access
+- Current agents view with categorized agents
+- Workflows category for executing predefined workflows
 
 ### Interactive Commands
 
@@ -169,6 +171,7 @@ export default class AgentCLI implements TokenRingService {
   private async runAgentLoop(agent: Agent): Promise<void>
   private async gatherInput(agent: Agent, signal: AbortSignal): Promise<string>
   private async handleHumanRequest(request: HumanInterfaceRequest, id: string, signal: AbortSignal): Promise<[id: string, reply: any]>
+  private async withAbortSignal<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T>
 }
 ```
 
