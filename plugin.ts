@@ -7,7 +7,7 @@ import chatCommands from "./chatCommands.ts";
 import packageJSON from './package.json' with {type: 'json'};
 
 const packageConfigSchema = z.object({
-  cli: CLIConfigSchema
+  cli: CLIConfigSchema.optional()
 });
 
 export default {
@@ -15,11 +15,13 @@ export default {
   version: packageJSON.version,
   description: packageJSON.description,
   install(app, config) {
-    app.waitForService(AgentCommandService, agentCommandService =>
-      agentCommandService.addAgentCommands(chatCommands)
-    );
-    // const config = app.getConfigSlice('cli', CLIConfigSchema);
-    app.addServices(new AgentCLI(app, config.cli));
+    if (config.cli) {
+      app.waitForService(AgentCommandService, agentCommandService =>
+        agentCommandService.addAgentCommands(chatCommands)
+      );
+      // const config = app.getConfigSlice('cli', CLIConfigSchema);
+      app.addServices(new AgentCLI(app, config.cli));
+    }
   },
   config: packageConfigSchema
 } satisfies TokenRingPlugin<typeof packageConfigSchema>;
