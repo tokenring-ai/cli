@@ -56,7 +56,6 @@ export default class AgentCLI implements TokenRingService {
   private availableCommands: string[] = [];
 
   private readonly app: TokenRingApp;
-  private agentManager!: AgentManager;
   private readonly config: z.infer<typeof CLIConfigSchema>;
   private rl!: readline.Interface;
 
@@ -89,8 +88,6 @@ export default class AgentCLI implements TokenRingService {
     });
   }
   async run(): Promise<void> {
-    this.agentManager = this.app.requireService(AgentManager);
-
     for (let agent = await this.selectOrCreateAgent(); agent; agent = await this.selectOrCreateAgent()) {
       this.ensureSigintHandlers()
       try {
@@ -145,6 +142,9 @@ export default class AgentCLI implements TokenRingService {
 
     const renderEvent = (event: AgentEventEnvelope) => {
       switch (event.type) {
+        case 'agent.created':
+          process.stdout.write(outputColors["output.info"](`${agent.config.name} created\n`));
+          break;
         case 'output.chat':
         case 'output.reasoning':
         case 'output.info':
