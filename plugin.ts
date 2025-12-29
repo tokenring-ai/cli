@@ -19,7 +19,6 @@ export default {
       app.waitForService(AgentCommandService, agentCommandService =>
         agentCommandService.addAgentCommands(chatCommands)
       );
-      // const config = app.getConfigSlice('cli', CLIConfigSchema);
       app.addServices(new AgentCLI(app, config.cli));
     }
   },
