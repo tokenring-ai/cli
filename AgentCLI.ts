@@ -2,7 +2,6 @@ import {AgentCommandService} from "@tokenring-ai/agent";
 import Agent from "@tokenring-ai/agent/Agent";
 import {AgentEventEnvelope} from "@tokenring-ai/agent/AgentEvents";
 import {HumanInterfaceRequest,} from "@tokenring-ai/agent/HumanInterfaceRequest";
-import AgentManager from "@tokenring-ai/agent/services/AgentManager";
 import {AgentEventCursor, AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
 import TokenRingApp from "@tokenring-ai/app";
@@ -20,10 +19,10 @@ import {renderScreen} from "./src/runTUIScreen.js";
 import AgentSelectionScreen from "./src/screens/AgentSelectionScreen.js";
 import AskScreen from "./src/screens/AskScreen.js";
 import ConfirmationScreen from "./src/screens/ConfirmationScreen.js";
+import FormScreen from "./src/screens/FormScreen.js";
 import PasswordScreen from "./src/screens/PasswordScreen.js";
 import TreeSelectionScreen from "./src/screens/TreeSelectionScreen.js";
 import WebPageScreen from "./src/screens/WebPageScreen.js";
-import FormScreen from "./src/screens/FormScreen.js";
 import {theme} from "./src/theme.js";
 
 export const CLIConfigSchema = z.object({
@@ -199,16 +198,16 @@ export default class AgentCLI implements TokenRingService {
       process.stdout.write(bannerColor(this.config.bannerWide) + "\n");
       process.stdout.write(outputColors['output.chat'](
         "Type your questions and hit Enter. Commands start with /. Type /switch to change agents, /quit or /exit to return to agent selection.\n" +
-        "(Use ↑/↓ arrow keys to navigate command history, Ctrl-T for shortcuts, Esc to cancel)\n\n"
+        "(Use ↑/↓ arrow keys to navigate command history, Ctrl-T for shortcuts, Esc to cancel, Ctrl-C to switch agents)\n\n"
       ));
-      
+
       lastWriteHadNewline = true;
       currentOutputType = "chat";
-      
+
       for (const event of state.yieldEventsByCursor({ position: 0 })) {
         renderEvent(event);
       }
-      
+
       eventCursor.position = state.events.length;
     };
 
@@ -255,6 +254,7 @@ export default class AgentCLI implements TokenRingService {
           }
 
           if (!state.idle && currentInputPromise) {
+
             //process.stdin.on('keypress', cancelAgentOnEscapeKey);
 
             this.abortControllerStack[this.abortControllerStack.length - 1].abort();
@@ -294,12 +294,13 @@ export default class AgentCLI implements TokenRingService {
                 }).then(message => {
                   currentInputPromise = null;
                   this.ensureSigintHandlers();
+
                   agent.handleInput({message});
                 }).catch(err => {
                   currentInputPromise = null;
                   if (err instanceof PartialInputError) {
                     if (err.buffer.trim() === "") {
-                      // Empty prompt + Ctrl-C = Switch agents
+                      // Empty prompt + Ctrl+C = Switch agents
                       this.abortControllerStack[this.abortControllerStack.length - 1].abort();
                     } else {
                       // Text in prompt - restart input loop
@@ -328,6 +329,19 @@ export default class AgentCLI implements TokenRingService {
               humanInputPromise = null;
             });
           }
+
+          // Display status line if it exists
+          /* TODO: Make this work with the rest of the cli
+          if (state.statusLine) {
+            ensureNewline();
+            const lineWidth = process.stdout.columns ? Math.floor(process.stdout.columns * 0.8) : 60;
+            const statusLineDisplay = `Status: ${state.statusLine}`;
+            const lineChar = "─";
+            process.stdout.write(outputColors['output.info'](
+              statusLineDisplay + lineChar.repeat(Math.max(0, lineWidth - statusLineDisplay.length)) + "\n"
+            ));
+          }
+          */
         }
         spinner?.stop();
       });
