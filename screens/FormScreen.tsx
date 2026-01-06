@@ -12,6 +12,7 @@ type FormValues = Record<string, string | string[] | null>;
 interface FormScreenProps {
   request: HumanInterfaceRequestFor<"askForForm">;
   onResponse: (response: HumanInterfaceResponseFor<"askForForm">) => void;
+  signal?: AbortSignal;
 }
 
 // Type guards for different field types
@@ -57,11 +58,19 @@ const getFieldLabel = (field: FormField): string => {
   return 'Unknown Field';
 };
 
-export default function FormScreen({ request, onResponse }: FormScreenProps) {
+export default function FormScreen({ request, onResponse, signal }: FormScreenProps) {
   const allFields = useMemo(() => 
     request.sections.flatMap(s => s.fields.map(f => ({ ...f, section: s.name }))),
     [request.sections]
   );
+
+  React.useEffect(() => {
+    if (signal) {
+      const handler = () => onResponse({ type: 'askForForm', values: {} });
+      signal.addEventListener('abort', handler);
+      return () => signal.removeEventListener('abort', handler);
+    }
+  }, [signal, onResponse]);
 
   const [values, setValues] = useState<FormValues>(() => {
     const initial: FormValues = {};

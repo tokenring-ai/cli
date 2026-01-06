@@ -8,13 +8,22 @@ import {theme} from '../theme.ts';
 interface AskInputProps {
   request: HumanInterfaceRequestFor<"askForText">;
   onResponse: (response: HumanInterfaceResponseFor<"askForText">) => void;
+  signal?: AbortSignal;
 }
 
-export default function AskScreen({ request, onResponse }: AskInputProps) {
+export default function AskScreen({ request, onResponse, signal }: AskInputProps) {
   const [lines, setLines] = useState<string[]>(['']);
   const [currentLine, setCurrentLine] = useState(0);
 
   const {message} = request;
+
+  React.useEffect(() => {
+    if (signal) {
+      const handler = () => onResponse(null);
+      signal.addEventListener('abort', handler);
+      return () => signal.removeEventListener('abort', handler);
+    }
+  }, [signal, onResponse]);
 
   useKeyboard((keyEvent) => {
     if ((keyEvent.name === 'escape' || keyEvent.name === 'q')) {

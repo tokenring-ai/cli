@@ -22,10 +22,12 @@ interface TreeNode {
 
 type TreeSelectInputProps = {
   request: HumanInterfaceRequestFor<"askForSingleTreeSelection">;
-  onResponse: (response: HumanInterfaceResponseFor<"askForSingleTreeSelection">) => void
+  onResponse: (response: HumanInterfaceResponseFor<"askForSingleTreeSelection">) => void;
+  signal?: AbortSignal;
 } | {
   request: HumanInterfaceRequestFor<"askForMultipleTreeSelection">;
-  onResponse: (response: HumanInterfaceResponseFor<"askForMultipleTreeSelection">) => void
+  onResponse: (response: HumanInterfaceResponseFor<"askForMultipleTreeSelection">) => void;
+  signal?: AbortSignal;
 }
 
 interface FlatNode {
@@ -39,10 +41,12 @@ type TreeRequest = HumanInterfaceRequestFor<"askForSingleTreeSelection"> | Human
 
 export default function TreeSelectionScreen<T extends TreeRequest>({
                                                                      request,
-                                                                     onResponse
+                                                                     onResponse,
+                                                                     signal
                                                                    }: {
   request: T,
-  onResponse: (response: HumanInterfaceResponseFor<T["type"]>) => void
+  onResponse: (response: HumanInterfaceResponseFor<T["type"]>) => void,
+  signal?: AbortSignal
 }) {
   const { tree, timeout, default: defaultValue, initialSelection } = request;
 
@@ -54,6 +58,14 @@ export default function TreeSelectionScreen<T extends TreeRequest>({
   const [loading, setLoading] = useState<Set<string>>(new Set());
   const [resolvedChildren, setResolvedChildren] = useState<Map<string, TreeLeaf[]>>(new Map());
   const [remaining, setRemaining] = useState(request.timeout);
+
+  React.useEffect(() => {
+    if (signal) {
+      const handler = () => onResponse(null);
+      signal.addEventListener('abort', handler);
+      return () => signal.removeEventListener('abort', handler);
+    }
+  }, [signal, onResponse]);
 
 
   const multiple = request.type === 'askForMultipleTreeSelection';

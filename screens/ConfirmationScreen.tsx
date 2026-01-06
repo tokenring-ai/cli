@@ -9,11 +9,20 @@ export interface ConfirmInputProps {
   defaultValue?: boolean;
   timeout?: number;
   onResponse: (value: boolean) => void;
+  signal?: AbortSignal;
 }
 
-export default function ConfirmationScreen({ message, defaultValue = false, timeout, onResponse }: ConfirmInputProps) {
+export default function ConfirmationScreen({ message, defaultValue = false, timeout, onResponse, signal }: ConfirmInputProps) {
   const [value, setValue] = useState(defaultValue);
   const [remaining, setRemaining] = useState(timeout);
+
+  React.useEffect(() => {
+    if (signal) {
+      const handler = () => onResponse(defaultValue);
+      signal.addEventListener('abort', handler);
+      return () => signal.removeEventListener('abort', handler);
+    }
+  }, [signal, onResponse, defaultValue]);
 
   React.useEffect(() => {
     if (timeout && timeout > 0) {

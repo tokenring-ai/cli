@@ -5,12 +5,21 @@ import {useKeyboard} from '@opentui/react';
 import React, {useState} from 'react';
 
 export interface PasswordInputProps {
-  request: HumanInterfaceRequestFor<"askForPassword">
+  request: HumanInterfaceRequestFor<"askForPassword">;
   onResponse: (response: HumanInterfaceResponseFor<"askForPassword">) => void;
+  signal?: AbortSignal;
 }
 
-export default function PasswordScreen({ request, onResponse } : PasswordInputProps) {
+export default function PasswordScreen({ request, onResponse, signal } : PasswordInputProps) {
   const [value, setValue] = useState('');
+
+  React.useEffect(() => {
+    if (signal) {
+      const handler = () => onResponse('');
+      signal.addEventListener('abort', handler);
+      return () => signal.removeEventListener('abort', handler);
+    }
+  }, [signal, onResponse]);
 
   useKeyboard((keyEvent) => {
     if (keyEvent.name === 'return') {
