@@ -6,14 +6,14 @@
     "@tokenring-ai/app": "0.2.0",
     "@tokenring-ai/chat": "0.2.0",
     "zod": "catalog:",
-    "@inquirer/prompts": "^8.1.0",
+    "@inquirer/prompts": "^8.2.0",
     "@tokenring-ai/agent": "0.2.0",
     "@tokenring-ai/utility": "0.2.0",
     "execa": "^9.6.1",
     "chalk": "^5.6.2",
     "open": "^11.0.0",
-    "@opentui/core": "^0.1.63",
-    "@opentui/react": "^0.1.63",
+    "@opentui/core": "^0.1.72",
+    "@opentui/react": "^0.1.72",
     "react": "catalog:"
   },
   "devDependencies": {
