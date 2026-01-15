@@ -27,7 +27,7 @@ async function execute(remainder: string, agent: Agent): Promise<void> {
     await execa(editor, [tmpFile], {stdio: "inherit"});
   } catch (error: unknown) {
     const err = error as { shortMessage?: string; message?: string };
-    agent.errorLine(`Editor process failed: ${err.shortMessage || err.message}`);
+    agent.errorMessage(`Editor process failed: ${err.shortMessage || err.message}`);
     try {
       await fs.unlink(tmpFile);
     } catch {
@@ -40,8 +40,7 @@ async function execute(remainder: string, agent: Agent): Promise<void> {
   const editedContent = await fs.readFile(tmpFile, "utf8");
 
   // Output the edited content as a system line
-  agent.infoLine("Edited prompt:");
-  agent.infoLine(editedContent);
+  agent.infoMessage("Edited prompt:\n" + editedContent);
 
   // Clean up the temporary file
   try {
