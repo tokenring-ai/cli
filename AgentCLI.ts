@@ -6,7 +6,7 @@ import process from "node:process";
 import readline from "node:readline";
 import {setTimeout} from "node:timers/promises";
 import {z} from "zod";
-import AgentLoop, {AgentLoopOptions} from "./AgentLoop";
+import AgentLoop from "./AgentLoop";
 import {renderScreen} from "./renderScreen.tsx";
 import AgentSelectionScreen from "./screens/AgentSelectionScreen.tsx";
 

@@ -1,6 +1,7 @@
 /** @jsxImportSource @opentui/react */
 import type Agent from '@tokenring-ai/agent/Agent';
 import AgentManager from '@tokenring-ai/agent/services/AgentManager';
+import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
 import { WebHostService } from "@tokenring-ai/web-host";
 import SPAResource from "@tokenring-ai/web-host/SPAResource";
 import React, { useCallback, useMemo } from 'react';
@@ -137,7 +138,7 @@ export default function AgentSelectionScreen({
       />
       {err &&
         <box borderStyle="rounded" paddingLeft={1} paddingRight={1}>
-          <text fg={theme.chatSystemErrorMessage}>{err.message}</text>
+          <text fg={theme.chatSystemErrorMessage}>{formatLogMessages(['Error selecting agent:',err])}</text>
         </box>
       }
     </box>
