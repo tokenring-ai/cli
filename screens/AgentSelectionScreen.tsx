@@ -1,16 +1,18 @@
 /** @jsxImportSource @opentui/react */
 import type Agent from '@tokenring-ai/agent/Agent';
 import AgentManager from '@tokenring-ai/agent/services/AgentManager';
-import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
-import { WebHostService } from "@tokenring-ai/web-host";
-import SPAResource from "@tokenring-ai/web-host/SPAResource";
-import React, { useCallback, useMemo } from 'react';
-import type { TreeLeaf } from './TreeSelectionScreen.tsx';
-import TreeSelectionScreen from './TreeSelectionScreen.tsx';
-import open from 'open';
-import { theme } from '../theme.ts';
 import TokenRingApp from "@tokenring-ai/app";
+import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
+import {WebHostService} from "@tokenring-ai/web-host";
+import SPAResource from "@tokenring-ai/web-host/SPAResource";
 import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
+import open from 'open';
+import React, {useCallback, useMemo} from 'react';
+import {z} from "zod";
+import {theme} from '../theme.ts';
+import QuestionInputScreen from './QuestionInputScreen.tsx';
+import {QuestionRequestSchema} from "@tokenring-ai/agent/HumanInterfaceRequest";
+import type {TreeLeaf} from "@tokenring-ai/agent/HumanInterfaceRequest";
 
 interface AgentSelectionScreenProps {
   app: TokenRingApp;
@@ -87,19 +89,19 @@ export default function AgentSelectionScreen({
         .filter(([_, agents]) => agents.length > 0)
         .map(([category, agents]) => ({
           name: category,
-          value: category,
+          //value: category,
           children: agents.sort((a, b) => a.name.localeCompare(b.name)),
         })),
     };
   }, [agentManager, webHostService, app]);
 
-  const handleSelect = useCallback(async (agentType: string | null) => {
-    if (!agentType) {
+  const handleSelect = useCallback(async (agentType: string[] | null) => {
+    if (!agentType || agentType.length === 0) {
       onResponse(null);
       return;
     }
 
-    const [action, remainder] = agentType.split(':');
+    const [action, remainder] = agentType[0].split(':');
     if (action === 'spawn') {
       try {
         const agent = await agentManager.spawnAgent({ agentType: remainder, headless: false });
@@ -115,7 +117,7 @@ export default function AgentSelectionScreen({
       if (!url) {
         setError(new Error('The web host service does not appear to be bound to a valid host/port.'));
       } else {
-        open(`${url}${remainder}`);
+        await open(`${url}${remainder}`);
       }
     } else if (action === 'workflow') {
       try {
@@ -129,11 +131,27 @@ export default function AgentSelectionScreen({
     }
   }, [agentManager, webHostService, onResponse, app]);
 
+  const request: z.output<typeof QuestionRequestSchema> = {
+    type: "question.request",
+    immediate: true,
+    timestamp: Date.now(),
+    requestId: "agent-selection",
+    message: "Select an agent to connect to or spawn:",
+    question: {
+      type: "treeSelect",
+      label: "Agent Selection",
+      minimumSelections: 1,
+      maximumSelections: 1,
+      tree
+    },
+    autoSubmitAfter: 0
+  };
+
   return (
     <box flexDirection="column">
       <box><text fg={theme.agentSelectionBanner}>{banner}</text></box>
-      <TreeSelectionScreen
-        request={{ type: 'askForSingleTreeSelection', message: "Select an agent or activity", title: "Agent Selection", tree }}
+      <QuestionInputScreen
+        request={request}
         onResponse={handleSelect}
       />
       {err &&

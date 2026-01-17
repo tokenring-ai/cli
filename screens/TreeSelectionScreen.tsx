@@ -1,33 +1,19 @@
 /** @jsxImportSource @opentui/react */
 
-import {HumanInterfaceRequestFor, HumanInterfaceResponseFor} from "@tokenring-ai/agent/HumanInterfaceRequest";
+import {
+  type questionResponseTypes, type TreeLeaf,
+  TreeSelectQuestionSchema
+} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import {useKeyboard, useTerminalDimensions} from '@opentui/react';
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import {z} from "zod";
 import {theme} from '../theme.ts';
-
-export type TreeLeaf = {
-  name: string
-  value?: string
-  hasChildren?: boolean
-  children?: Array<TreeLeaf> | (() => Promise<TreeLeaf[]> | TreeLeaf[])
-}
 
 interface TreeNode {
   label: string;
   value: string;
-  hasChildren?: boolean;
   children?: TreeNode[];
   childrenLoader?: () => Promise<TreeLeaf[]> | TreeLeaf[];
-}
-
-type TreeSelectInputProps = {
-  request: HumanInterfaceRequestFor<"askForSingleTreeSelection">;
-  onResponse: (response: HumanInterfaceResponseFor<"askForSingleTreeSelection">) => void;
-  signal?: AbortSignal;
-} | {
-  request: HumanInterfaceRequestFor<"askForMultipleTreeSelection">;
-  onResponse: (response: HumanInterfaceResponseFor<"askForMultipleTreeSelection">) => void;
-  signal?: AbortSignal;
 }
 
 interface FlatNode {
@@ -37,27 +23,24 @@ interface FlatNode {
   loading: boolean;
 }
 
-type TreeRequest = HumanInterfaceRequestFor<"askForSingleTreeSelection"> | HumanInterfaceRequestFor<"askForMultipleTreeSelection">;
-
-export default function TreeSelectionScreen<T extends TreeRequest>({
-                                                                     request,
+export default function TreeSelectionScreen({
+                                                                     question,
                                                                      onResponse,
                                                                      signal
                                                                    }: {
-  request: T,
-  onResponse: (response: HumanInterfaceResponseFor<T["type"]>) => void,
+  question: z.output<typeof TreeSelectQuestionSchema>,
+  onResponse: (response: string[] | null) => void,
   signal?: AbortSignal
 }) {
-  const { tree, timeout, default: defaultValue, initialSelection } = request;
+  const { tree, defaultValue, minimumSelections, maximumSelections } = question;
 
   const { height } = useTerminalDimensions();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [checked, setChecked] = useState<Set<string>>(new Set(typeof initialSelection === "string" ? [initialSelection] : initialSelection || []));
+  const [checked, setChecked] = useState<Set<string>>(new Set(defaultValue ?? []));
   const [loading, setLoading] = useState<Set<string>>(new Set());
   const [resolvedChildren, setResolvedChildren] = useState<Map<string, TreeLeaf[]>>(new Map());
-  const [remaining, setRemaining] = useState(request.timeout);
 
   React.useEffect(() => {
     if (signal) {
@@ -68,10 +51,37 @@ export default function TreeSelectionScreen<T extends TreeRequest>({
   }, [signal, onResponse]);
 
 
-  const multiple = request.type === 'askForMultipleTreeSelection';
+  const multiple = maximumSelections !== 1;
+
+  const canSelect = (value: string): boolean => {
+    const isCurrentlySelected = checked.has(value);
+
+    if (isCurrentlySelected) {
+      if (minimumSelections !== undefined && checked.size <= minimumSelections) {
+        return false;
+      }
+      return true;
+    } else {
+      if (maximumSelections !== undefined && checked.size >= maximumSelections) {
+        return false;
+      }
+      return true;
+    }
+  };
+
+  const isSelectionValid = (): boolean => {
+    const count = checked.size;
+    if (minimumSelections !== undefined && count < minimumSelections) {
+      return false;
+    }
+    if (maximumSelections !== undefined && count > maximumSelections) {
+      return false;
+    }
+    return true;
+  };
 
   const isVirtualParent = (node: TreeNode) => {
-    return (node.hasChildren || node.children || node.childrenLoader) &&
+    return (node.children || node.childrenLoader) &&
            (!node.value || node.value.includes('*'));
   };
 
@@ -88,17 +98,6 @@ export default function TreeSelectionScreen<T extends TreeRequest>({
   };
 
   const maxVisibleItems = Math.max(1, height - 6);
-
-  useEffect(() => {
-    if (timeout && timeout > 0) {
-      const timer = setTimeout(() => onResponse(defaultValue as any), timeout * 1000);
-      const interval = setInterval(() => setRemaining(prev => Math.max(0, (prev ?? timeout) - 1)), 1000);
-      return () => {
-        clearTimeout(timer);
-        clearInterval(interval);
-      };
-    }
-  }, [timeout, defaultValue, onResponse]);
 
   useEffect(() => {
     const rootValue = tree.value || tree.name;
@@ -147,7 +146,6 @@ export default function TreeSelectionScreen<T extends TreeRequest>({
       return {
         label: leaf.name,
         value,
-        hasChildren: leaf.hasChildren || !!leaf.children,
         children,
         childrenLoader
       };
@@ -212,7 +210,7 @@ export default function TreeSelectionScreen<T extends TreeRequest>({
           return next;
         });
       }
-    } else if (current.node.children || current.node.hasChildren || resolvedChildren.has(nodeValue)) {
+    } else if (current.node.children || resolvedChildren.has(nodeValue)) {
       setExpanded(prev => new Set(prev).add(nodeValue));
     }
   }, [resolvedChildren]);
@@ -266,14 +264,26 @@ export default function TreeSelectionScreen<T extends TreeRequest>({
               const allSelected = children.every(val => next.has(val));
 
               if (allSelected) {
+                if (minimumSelections !== undefined && next.size <= minimumSelections) {
+                  return prev;
+                }
                 children.forEach(val => next.delete(val));
               } else {
+                if (maximumSelections !== undefined && next.size >= maximumSelections) {
+                  return prev;
+                }
                 children.forEach(val => next.add(val));
               }
             } else {
               if (next.has(current.node.value)) {
+                if (minimumSelections !== undefined && next.size <= minimumSelections) {
+                  return prev;
+                }
                 next.delete(current.node.value);
               } else {
+                if (maximumSelections !== undefined && next.size >= maximumSelections) {
+                  return prev;
+                }
                 next.add(current.node.value);
               }
             }
@@ -286,12 +296,14 @@ export default function TreeSelectionScreen<T extends TreeRequest>({
         }
       }
     } else if (keyEvent.name === 'return') {
-      if (request.type === 'askForMultipleTreeSelection') {
-        onResponse(Array.from(checked) as any);
+      if (multiple) {
+        if (isSelectionValid()) {
+          onResponse(Array.from(checked));
+        }
       } else {
         const current = flatTree[selectedIndex];
         if (current) {
-          onResponse(current.node.value as any);
+          onResponse([current.node.value]);
         }
       }
     }
@@ -302,8 +314,7 @@ export default function TreeSelectionScreen<T extends TreeRequest>({
   }, [flatTree, scrollOffset, maxVisibleItems]);
 
   return (
-    <box flexDirection="column" borderStyle="single" paddingLeft={1} paddingRight={1} title={request.title} >
-      {request.message && <text fg={theme.treeMessage}>{request.message}</text>}
+    <box flexDirection="column" borderStyle="single" paddingLeft={1} paddingRight={1} title={question.label} >
       {visibleTree.map((item, visibleIndex) => {
         const actualIndex = scrollOffset + visibleIndex;
         const virtual = isVirtualParent(item.node);
@@ -325,7 +336,7 @@ export default function TreeSelectionScreen<T extends TreeRequest>({
               {actualIndex === selectedIndex ? '❯ ' : '  '}
               {item.loading
                 ? '⏳ '
-                : (item.node.children || item.node.childrenLoader || item.node.hasChildren)
+                : (item.node.children || item.node.childrenLoader)
                   ? (item.expanded ? '▼ ' : '▶ ')
                   : '  '}
               {multiple && !virtual && (checked.has(item.node.value) ? '◉ ' : '◯ ')}
@@ -337,7 +348,6 @@ export default function TreeSelectionScreen<T extends TreeRequest>({
       })}
       <text>
         ({multiple ? 'Space to toggle, Enter to submit' : 'Enter to select'}), q to exit
-        {timeout && timeout > 0 && <text fg={theme.treeTimeout}> ({remaining}s)</text>}
       </text>
     </box>
   );

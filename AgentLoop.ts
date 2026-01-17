@@ -1,7 +1,7 @@
 import {AgentCommandService} from "@tokenring-ai/agent";
 import Agent from "@tokenring-ai/agent/Agent";
 import {AgentEventEnvelope} from "@tokenring-ai/agent/AgentEvents";
-import {HumanInterfaceRequest,} from "@tokenring-ai/agent/HumanInterfaceRequest";
+import {type QuestionRequestSchema, QuestionResponseSchema} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import {AgentEventCursor, AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import {AgentExecutionState} from "@tokenring-ai/agent/state/agentExecutionState";
 import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
@@ -14,14 +14,9 @@ import readline from "node:readline";
 import {z} from "zod";
 import {commandPrompt, PartialInputError} from "./commandPrompt.ts";
 import {renderScreen} from "./renderScreen.tsx";
-import AskScreen from "./screens/AskScreen.tsx";
-import ConfirmationScreen from "./screens/ConfirmationScreen.tsx";
-import FormScreen from "./screens/FormScreen.tsx";
-import PasswordScreen from "./screens/PasswordScreen.tsx";
-import WebPageScreen from "./screens/WebPageScreen.tsx";
-import {SimpleSpinner} from "./SimpleSpinnter.ts";
+import QuestionInputScreen from "./screens/QuestionInputScreen.tsx";
+import {SimpleSpinner} from "./SimpleSpinner.ts";
 import {theme} from "./theme.ts";
-import TreeSelectionScreen from "./screens/TreeSelectionScreen.tsx";
 
 const outputColors = {
   "output.chat": chalk.hex(theme.chatOutputText),
@@ -94,15 +89,22 @@ export default class AgentLoop implements TokenRingService {
         case 'agent.created':
           process.stdout.write(outputColors["output.info"](`${this.agent.config.name} created\n`));
           break;
-        case 'output.chat':
-        case 'output.reasoning':
-        case 'output.info':
         case 'output.warning':
         case 'output.error':
+        case 'output.info':
+          if (! event.message.endsWith("\n")) {
+            event = {
+              ...event,
+              message: event.message + "\n"
+            }
+          }
+        case 'output.chat':
+        case 'output.reasoning':
           if (this.spinnerRunning) {
             this.spinner!.stop();
             this.spinnerRunning = false;
           }
+
           if (event.type !== this.currentOutputType) {
             ensureNewline();
             if (event.type === 'output.chat') {
@@ -249,10 +251,10 @@ export default class AgentLoop implements TokenRingService {
               this.humanInputPromise = this.handleHumanRequest(execState.waitingOn[0], abortController.signal)
                 .finally(() => {
                   this.abortControllerStack.pop()!.abort();
-                }).then(([id, response]) => {
+                }).then(([request, response]) => {
                   redraw(this.agent.getState(AgentEventState));
                   this.ensureSigintHandlers();
-                  this.agent.sendHumanResponse(id, response);
+                  this.agent.sendQuestionResponse(request.requestId, {result: response});
                   this.humanInputPromise = null;
                 });
             }
@@ -309,39 +311,10 @@ export default class AgentLoop implements TokenRingService {
   }
 
   private async handleHumanRequest(
-    { request, id }: { request: HumanInterfaceRequest, id: string }, signal: AbortSignal): Promise<[id: string, reply: any]> {
+    request: z.output<typeof QuestionRequestSchema>, signal: AbortSignal): Promise<[request: z.output<typeof QuestionRequestSchema>, response: z.output<typeof QuestionResponseSchema>]> {
 
-    let response: any;
-
-    switch (request.type) {
-      case "askForText":
-        response = await renderScreen(AskScreen, { request }, signal);
-        break;
-      case "askForConfirmation":
-        response = await renderScreen(ConfirmationScreen, {
-          message: request.message,
-          defaultValue: request.default,
-          timeout: request.timeout
-        }, signal);
-        break;
-      case "askForMultipleTreeSelection":
-      case "askForSingleTreeSelection":
-        response = await renderScreen(TreeSelectionScreen, { request }, signal);
-        break;
-      case "openWebPage":
-        response = await renderScreen(WebPageScreen, { request }, signal);
-        break;
-      case "askForPassword":
-        response = await renderScreen(PasswordScreen, { request }, signal);
-        break;
-      case "askForForm":
-        response = await renderScreen(FormScreen, { request }, signal);
-        break;
-      default:
-        throw new Error(`Unknown HumanInterfaceRequest type: ${(request as any)?.type}`);
-    }
-
-    return [id, response];
+    const response = await renderScreen(QuestionInputScreen, { request }, signal);
+    return [request, response];
   }
 
   private async withAbortSignal<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {

@@ -1,5 +1,5 @@
-import process from "node:process";
 import chalk from "chalk";
+import process from "node:process";
 
 /**
  * Custom spinner class that renders a simple animation in the terminal.
@@ -10,7 +10,7 @@ export class SimpleSpinner {
   private frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
   private interval: NodeJS.Timeout | null = null;
   private currentFrame = 0;
-  private colorFn: (text: string) => string;
+  private readonly colorFn: (text: string) => string;
 
   constructor(private message: string = "", hexColor: string = "#ffffff") {
     // Create a chalk function from the hex color
