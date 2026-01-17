@@ -1,10 +1,11 @@
 import {AgentCommandService} from "@tokenring-ai/agent";
 import {TokenRingPlugin} from "@tokenring-ai/app";
 import {z} from "zod";
-import AgentCLI, {CLIConfigSchema} from "./AgentCLI.ts";
+import AgentCLI from "./AgentCLI.ts";
 
 import chatCommands from "./chatCommands.ts";
 import packageJSON from './package.json' with {type: 'json'};
+import {CLIConfigSchema} from "./schema.ts";
 
 const packageConfigSchema = z.object({
   cli: CLIConfigSchema.optional()

@@ -31,6 +31,7 @@ export interface TreeSelectProps extends BaseInputProps {
     tree: AsyncTreeLeaf
   };
   onResponse: (response: string[] | null) => void;
+  onHighlight?: (value: string) => void;
 }
 
 export interface FileSelectProps extends BaseInputProps {

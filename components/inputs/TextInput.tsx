@@ -3,9 +3,10 @@ import { useKeyboard } from '@opentui/react';
 import React, { useState } from 'react';
 import { theme } from '../../theme';
 import type { TextInputProps } from '../../types';
-import { useAbortSignal } from '../../hooks';
+import { useAbortSignal, useResponsiveLayout } from '../../hooks';
 
 export default function TextInput({ question, message, onResponse, signal }: TextInputProps) {
+  const layout = useResponsiveLayout();
   const [lines, setLines] = useState<string[]>(['']);
   const [currentLine, setCurrentLine] = useState(0);
 
@@ -46,6 +47,16 @@ export default function TextInput({ question, message, onResponse, signal }: Tex
       setLines(newLines);
     }
   });
+
+  if (layout.minimalMode) {
+    return (
+      <box>
+        <text fg={theme.chatSystemWarningMessage}>
+          Terminal too small. Minimum: 40x10
+        </text>
+      </box>
+    );
+  }
 
   return (
     <box flexDirection="column">

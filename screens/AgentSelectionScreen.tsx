@@ -7,29 +7,78 @@ import {WebHostService} from "@tokenring-ai/web-host";
 import SPAResource from "@tokenring-ai/web-host/SPAResource";
 import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
 import open from 'open';
-import React, {useCallback, useMemo} from 'react';
+import React, {useCallback, useMemo, useState} from 'react';
 import {z} from "zod";
 import {TreeSelect} from "../components";
+import {PreviewPanel} from "../components/common";
+import {CLIConfigSchema} from "../schema.ts";
 import {theme} from '../theme.ts';
+import {useResponsiveLayout} from '../hooks';
 import QuestionInputScreen from './QuestionInputScreen';
 import {QuestionRequestSchema} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import type {TreeLeaf} from "@tokenring-ai/agent/HumanInterfaceRequest";
 
 interface AgentSelectionScreenProps {
   app: TokenRingApp;
-  banner: string;
+  config: z.output<typeof CLIConfigSchema>;
   onResponse: (agent: Agent | null) => void;
 }
 
 export default function AgentSelectionScreen({
   app,
   onResponse,
-  banner
+  config
 }: AgentSelectionScreenProps) {
+  const layout = useResponsiveLayout();
   const agentManager = app.requireService(AgentManager);
   const webHostService = app.getService(WebHostService);
 
   const [err, setError] = React.useState<Error | null>(null);
+  const [previewData, setPreviewData] = useState<Record<string, string> | null>(null);
+
+  const handleHighlight = useCallback((value: string) => {
+    const [action, remainder] = value.split(':');
+
+    if (action === 'spawn') {
+      const configs = agentManager.getAgentConfigs();
+      const config = configs[remainder];
+      if (config) {
+        setPreviewData({
+          'Type': remainder,
+          'Name': config.name,
+          'Category': config.category || 'Other',
+          'Description': config.description || 'No description'
+        });
+      }
+    } else if (action === 'connect') {
+      const agent = agentManager.getAgent(remainder);
+      if (agent) {
+        setPreviewData({
+          'ID': agent.id,
+          'Name': agent.name
+        });
+      }
+    } else if (action === 'open') {
+      setPreviewData({
+        'Type': 'Web Application',
+        'Resource': remainder
+      });
+    } else if (action === 'workflow') {
+      const workflowService = app.getService(WorkflowService);
+      if (workflowService) {
+        const workflows = workflowService.listWorkflows();
+        const workflow = workflows.find(w => w.key === remainder);
+        if (workflow) {
+          setPreviewData({
+            'Type': 'Workflow',
+            'Name': workflow.workflow.name,
+            'Key': remainder
+          });
+        }
+      }
+    }
+  }, [agentManager, app]);
+
   const tree: TreeLeaf = useMemo(() => {
     const configs = Object.entries(agentManager.getAgentConfigs());
 
@@ -45,6 +94,7 @@ export default function AgentSelectionScreen({
             {
               name: `Connect to ${resourceName}`,
               value: `open:${resource.config.prefix.substring(1)}`,
+              icon: '🌐'
             }
           );
         }
@@ -55,6 +105,7 @@ export default function AgentSelectionScreen({
       const leaf: TreeLeaf = {
         name: `${config.name} (${type})`,
         value: `spawn:${type}`,
+        icon: '🤖'
       };
 
       const category = config.category || 'Other';
@@ -69,6 +120,7 @@ export default function AgentSelectionScreen({
       categories['Current Agents'] = currentAgents.map(agent => ({
         name: agent.name,
         value: `connect:${agent.id}`,
+        icon: '▶️'
       }));
     }
 
@@ -80,6 +132,7 @@ export default function AgentSelectionScreen({
         categories['Workflows'] = workflowList.map(({key, workflow}) => ({
           name: `${workflow.name} (${key})`,
           value: `workflow:${key}`,
+          icon: '🔄'
         }));
       }
     }
@@ -140,17 +193,37 @@ export default function AgentSelectionScreen({
     tree
   };
 
+  if (layout.minimalMode) {
+    return (
+      <box>
+        <text fg={theme.chatSystemWarningMessage}>
+          Terminal too small. Minimum: 40x10
+        </text>
+      </box>
+    );
+  }
+
   return (
     <box flexDirection="column">
-      <box><text fg={theme.agentSelectionBanner}>{banner}</text></box>
-      <TreeSelect question={question} message="Select an agent to connect to or spawn:"
-        onResponse={handleSelect}
-      />
-      {err &&
-        <box borderStyle="rounded" paddingLeft={1} paddingRight={1}>
-          <text fg={theme.chatSystemErrorMessage}>{formatLogMessages(['Error selecting agent:',err])}</text>
+      <box><text fg={theme.agentSelectionBanner}>{config.screenBanner}</text></box>
+      <box flexDirection="row" flexGrow={1}>
+        <box flexGrow={1} flexDirection="column">
+          <TreeSelect question={question} message="Select an agent to connect to or spawn:"
+            onResponse={handleSelect}
+            onHighlight={handleHighlight}
+          />
+          {err &&
+            <box borderStyle="rounded" paddingLeft={1} paddingRight={1}>
+              <text fg={theme.chatSystemErrorMessage}>{formatLogMessages(['Error selecting agent:',err])}</text>
+            </box>
+          }
         </box>
-      }
+        {previewData && (
+          <box width={35} marginLeft={1}>
+            <PreviewPanel title="Details" details={previewData} />
+          </box>
+        )}
+      </box>
     </box>
   );
 }

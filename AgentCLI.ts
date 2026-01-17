@@ -8,14 +8,9 @@ import {setTimeout} from "node:timers/promises";
 import {z} from "zod";
 import AgentLoop from "./AgentLoop";
 import {renderScreen} from "./renderScreen.tsx";
+import {CLIConfigSchema} from "./schema.ts";
 import AgentSelectionScreen from "./screens/AgentSelectionScreen.tsx";
-
-export const CLIConfigSchema = z.object({
-  bannerNarrow: z.string(),
-  bannerWide: z.string(),
-  bannerCompact: z.string(),
-})
-
+import LoadingScreen from "./screens/LoadingScreen.tsx";
 
 /**
  * AgentCLI is a command-line interface for interacting with an TokenRingApp.
@@ -39,6 +34,10 @@ export default class AgentCLI implements TokenRingService {
   }
 
   async run(): Promise<void> {
+    await renderScreen(LoadingScreen, {
+      config: this.config,
+    });
+
     for (let agent = await this.selectOrCreateAgent(); agent; agent = await this.selectOrCreateAgent()) {
       try {
         const agentLoop = new AgentLoop(agent, {
@@ -61,7 +60,7 @@ export default class AgentCLI implements TokenRingService {
   private async selectOrCreateAgent(): Promise<Agent | null> {
     return renderScreen(AgentSelectionScreen, {
       app: this.app,
-      banner: this.config.bannerWide,
+      config: this.config,
     });
   }
 }

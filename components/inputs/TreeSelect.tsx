@@ -1,15 +1,28 @@
 /** @jsxImportSource @opentui/react */
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { theme } from '../../theme';
 import type { TreeSelectProps } from '../../types';
-import { useAbortSignal, useScrolling, useTreeNavigation } from '../../hooks';
+import { useAbortSignal, useTreeNavigation, useResponsiveLayout } from '../../hooks';
 import { flattenTree, getChildValues, isVirtualParent, isSelectionValid, canSelect } from '../../utils';
 
-export default function TreeSelect({ question: {tree, defaultValue, minimumSelections, maximumSelections, label}, onResponse, signal }: TreeSelectProps) {
-  const { height } = useTerminalDimensions();
+const iconMap: Record<string, string> = {
+  'agent': '🤖',
+  'workflow': '🔄',
+  'webapp': '🌐',
+  'folder': '📁',
+  'file': '📄',
+  'current': '▶️',
+  'default': '•'
+};
+
+export default function TreeSelect({ question: {tree, defaultValue, minimumSelections, maximumSelections, label}, onResponse, signal, onHighlight }: TreeSelectProps) {
+  const { height, width } = useTerminalDimensions();
+  const layout = useResponsiveLayout();
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [scrollOffset, setScrollOffset] = useState(0);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
+  const prevHeightRef = useRef(height);
 
   const {
     expanded,
@@ -31,13 +44,37 @@ export default function TreeSelect({ question: {tree, defaultValue, minimumSelec
   }, [flashMessage]);
 
   const multiple = maximumSelections !== 1;
-  const maxVisibleItems = Math.max(1, height - 6);
+  const maxVisibleItems = layout.maxVisibleItems;
 
   const flatTree = useMemo(() => {
     return flattenTree(tree, expanded, resolvedChildren, loading);
   }, [tree, expanded, resolvedChildren, loading]);
 
-  const scrollOffset = useScrolling(selectedIndex, maxVisibleItems);
+  useEffect(() => {
+    const current = flatTree[selectedIndex];
+    if (current && onHighlight) {
+      onHighlight(current.node.value);
+    }
+  }, [selectedIndex, flatTree, onHighlight]);
+
+  useEffect(() => {
+    if (selectedIndex < scrollOffset) {
+      setScrollOffset(selectedIndex);
+    } else if (selectedIndex >= scrollOffset + maxVisibleItems) {
+      setScrollOffset(selectedIndex - maxVisibleItems + 1);
+    }
+  }, [selectedIndex, maxVisibleItems, scrollOffset]);
+
+  useEffect(() => {
+    if (prevHeightRef.current !== height) {
+      if (selectedIndex < scrollOffset) {
+        setScrollOffset(selectedIndex);
+      } else if (selectedIndex >= scrollOffset + maxVisibleItems) {
+        setScrollOffset(Math.max(0, selectedIndex - maxVisibleItems + 1));
+      }
+      prevHeightRef.current = height;
+    }
+  }, [height, selectedIndex, scrollOffset, maxVisibleItems]);
 
   useKeyboard((keyEvent) => {
     if ((keyEvent.name === 'escape' || keyEvent.name === 'q')) {
@@ -140,6 +177,21 @@ export default function TreeSelect({ question: {tree, defaultValue, minimumSelec
     }
   });
 
+  const truncateLabel = (label: string, maxWidth: number): string => {
+    if (label.length <= maxWidth) return label;
+    return label.substring(0, maxWidth - 3) + '...';
+  };
+
+  if (layout.minimalMode) {
+    return (
+      <box>
+        <text fg={theme.chatSystemWarningMessage}>
+          Terminal too small. Minimum: 40x10
+        </text>
+      </box>
+    );
+  }
+
   const visibleTree = useMemo(() => {
     return flatTree.slice(scrollOffset, scrollOffset + maxVisibleItems);
   }, [flatTree, scrollOffset, maxVisibleItems]);
@@ -172,6 +224,9 @@ export default function TreeSelect({ question: {tree, defaultValue, minimumSelec
 
         const itemFg = multiple && !virtual && !itemCanSelect ? theme.treeNotSelectedItem : fg;
 
+        const availableWidth = width - (item.depth * 2) - 10;
+        const truncatedLabel = truncateLabel(item.node.label, availableWidth);
+
         return (
           <box key={actualIndex}>
             <text fg={itemFg}>
@@ -183,7 +238,8 @@ export default function TreeSelect({ question: {tree, defaultValue, minimumSelec
                   ? (item.expanded ? '▼ ' : '▶ ')
                   : '  '}
               {multiple && !virtual && (checked.has(item.node.value) ? '◉ ' : '◯ ')}
-              {item.node.label}
+              {item.node.icon || iconMap.default} 
+              {truncatedLabel}
               {multiple && virtual && ` (${selectedCount}/${childValues.length} selected)`}
             </text>
           </box>

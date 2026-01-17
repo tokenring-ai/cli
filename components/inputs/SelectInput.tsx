@@ -1,12 +1,14 @@
 /** @jsxImportSource @opentui/react */
-import { useKeyboard } from '@opentui/react';
+import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import React, { useState, useEffect } from 'react';
 import { theme } from '../../theme';
 import type { SelectInputProps } from '../../types';
-import { useAbortSignal } from '../../hooks';
+import { useAbortSignal, useResponsiveLayout } from '../../hooks';
 import { isSelectionValid, canSelect } from '../../utils/selectionValidation';
 
 export default function SelectInput({ question, message, onResponse, signal }: SelectInputProps) {
+  const { width } = useTerminalDimensions();
+  const layout = useResponsiveLayout();
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set(
     question.defaultValue?.map(v => question.options.findIndex(o => o.value === v)).filter(i => i >= 0) || []
   ));
@@ -84,6 +86,21 @@ export default function SelectInput({ question, message, onResponse, signal }: S
     );
   };
 
+  const truncateLabel = (label: string, maxWidth: number): string => {
+    if (label.length <= maxWidth) return label;
+    return label.substring(0, maxWidth - 3) + '...';
+  };
+
+  if (layout.minimalMode) {
+    return (
+      <box>
+        <text fg={theme.chatSystemWarningMessage}>
+          Terminal too small. Minimum: 40x10
+        </text>
+      </box>
+    );
+  }
+
   return (
     <box flexDirection="column">
       {message && <text fg={theme.askMessage}>{message}</text>}
@@ -98,11 +115,13 @@ export default function SelectInput({ question, message, onResponse, signal }: S
       {question.options.map((option, idx) => {
         const canSelect_ = itemCanSelect(idx);
         const optionFg = !singleSelect && !canSelect_ ? theme.treeNotSelectedItem : (focusedIndex === idx ? theme.treeHighlightedItem : theme.treeNotSelectedItem);
+        const availableWidth = width - 10;
+        const truncatedLabel = truncateLabel(option.label, availableWidth);
         return (
           <text key={idx} fg={optionFg}>
             {focusedIndex === idx ? '❯ ' : '  '}
             {singleSelect ? '' : (selectedIndices.has(idx) ? '☑ ' : '☐ ')}
-            {option.label}
+            {truncatedLabel}
           </text>
         );
       })}

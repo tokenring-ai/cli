@@ -1,1 +1,2 @@
-export {default as AgentCLI, CLIConfigSchema} from "./AgentCLI.ts";
+export {default as AgentCLI} from "./AgentCLI.ts";
+export {CLIConfigSchema} from "./schema.ts";

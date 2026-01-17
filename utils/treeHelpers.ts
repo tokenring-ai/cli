@@ -18,12 +18,18 @@ export function convertLeafToNode(
     childrenLoader = leaf.children as ((signal?: AbortSignal) => Promise<AsyncTreeLeaf[]> | AsyncTreeLeaf[]);
   }
 
-  return {
+  const result: TreeNode = {
     label: leaf.name,
     value,
     children,
     childrenLoader
   };
+
+  if ((leaf as any).icon) {
+    result.icon = (leaf as any).icon;
+  }
+
+  return result;
 }
 
 export function isVirtualParent(node: TreeNode): boolean {

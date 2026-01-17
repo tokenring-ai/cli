@@ -14,6 +14,7 @@ import readline from "node:readline";
 import {z} from "zod";
 import {commandPrompt, PartialInputError} from "./commandPrompt.ts";
 import {renderScreen} from "./renderScreen.tsx";
+import type {CLIConfigSchema} from "./schema.ts";
 import QuestionInputScreen from "./screens/QuestionInputScreen.tsx";
 import {SimpleSpinner} from "./SimpleSpinner.ts";
 import {theme} from "./theme.ts";
@@ -28,12 +29,6 @@ const outputColors = {
 const previousInputColor = chalk.hex(theme.chatPreviousInput);
 const dividerColor = chalk.hex(theme.chatDivider);
 const bannerColor = chalk.hex(theme.agentSelectionBanner);
-
-export const CLIConfigSchema = z.object({
-  bannerNarrow: z.string(),
-  bannerWide: z.string(),
-  bannerCompact: z.string(),
-});
 
 export interface AgentLoopOptions {
   availableCommands: string[];
@@ -147,7 +142,7 @@ export default class AgentLoop implements TokenRingService {
 
     const redraw = (state: AgentEventState) => {
       process.stdout.write('\x1b[2J\x1b[0f');
-      process.stdout.write(bannerColor(this.options.config.bannerWide) + "\n");
+      process.stdout.write(bannerColor(this.options.config.chatBanner) + "\n");
       process.stdout.write(outputColors['output.chat'](
         "Type your questions and hit Enter. Commands start with /. Type /switch to change agents, /quit or /exit to return to agent selection.\n" +
         "(Use ↑/↓ arrow keys to navigate command history, Ctrl-T for shortcuts, Esc to cancel, Ctrl-C to switch agents)\n\n"
@@ -170,6 +165,11 @@ export default class AgentLoop implements TokenRingService {
 
     redraw(this.agent.getState(AgentEventState));
 
+    const resizeHandler = () => {
+      redraw(this.agent.getState(AgentEventState));
+    };
+
+    process.stdout.on('resize', resizeHandler);
 
     try {
       await this.withAbortSignal(async signal => {
@@ -270,6 +270,8 @@ export default class AgentLoop implements TokenRingService {
       } else {
         process.stderr.write(formatLogMessages(["Error while running agent loop", e as Error]));
       }
+    } finally {
+      process.stdout.removeListener('resize', resizeHandler);
     }
     ensureNewline();
   }
@@ -313,7 +315,7 @@ export default class AgentLoop implements TokenRingService {
   private async handleHumanRequest(
     request: z.output<typeof QuestionRequestSchema>, signal: AbortSignal): Promise<[request: z.output<typeof QuestionRequestSchema>, response: z.output<typeof QuestionResponseSchema>]> {
 
-    const response = await renderScreen(QuestionInputScreen, { request, agent: this.agent }, signal);
+    const response = await renderScreen(QuestionInputScreen, { request, agent: this.agent, config: this.options.config }, signal);
     return [request, response];
   }
 
