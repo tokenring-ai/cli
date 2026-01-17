@@ -1,6 +1,5 @@
 import {Agent} from "@tokenring-ai/agent";
-import {FileSelectQuestionSchema, type QuestionRequestSchema, TreeSelectQuestionSchema} from "@tokenring-ai/agent/HumanInterfaceRequest";
-import TokenRingApp from "@tokenring-ai/app";
+import {FileSelectQuestionSchema, type QuestionRequestSchema, TreeSelectQuestionSchema, FormQuestionSchema} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import type { z } from "zod";
 
 export interface BaseInputProps {
@@ -38,4 +37,10 @@ export interface FileSelectProps extends BaseInputProps {
   agent: Agent;
   question: Omit<z.output<typeof FileSelectQuestionSchema>, "type">;
   onResponse: (response: string[] | null) => void;
+}
+
+export interface FormInputProps extends BaseInputProps {
+  agent: Agent;
+  question: Omit<z.output<typeof FormQuestionSchema>, "type">;
+  onResponse: (response: Record<string, Record<string, any>> | null) => void;
 }

@@ -5,7 +5,7 @@ import { QuestionRequestSchema } from "@tokenring-ai/agent/HumanInterfaceRequest
 import TokenRingApp from "@tokenring-ai/app";
 import React from 'react';
 import { z } from 'zod';
-import { TextInput, SelectInput, TreeSelect, FileSelect } from '../components/inputs';
+import { TextInput, SelectInput, TreeSelect, FileSelect, FormInput } from '../components/inputs';
 
 import {CLIConfigSchema} from "../schema.ts";
 import { theme } from '../theme.ts';
@@ -32,8 +32,9 @@ export default function QuestionInputScreen({ agent, request, config, onResponse
         return <SelectInput question={question} message={message} onResponse={onResponse} signal={signal}/>;
       case 'fileSelect':
         return <FileSelect question={question} agent={agent} message={message} onResponse={onResponse} signal={signal}/>;
+      case 'form':
+        return <FormInput question={question} agent={agent} message={message} onResponse={onResponse} signal={signal}/>;
       default:
-        const type: never = question.type;
         return <box>
           <text>Unknown question type</text>
         </box>;
