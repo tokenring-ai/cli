@@ -9,6 +9,7 @@ import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
 import open from 'open';
 import React, {useCallback, useMemo} from 'react';
 import {z} from "zod";
+import {TreeSelect} from "../components";
 import {theme} from '../theme.ts';
 import QuestionInputScreen from './QuestionInputScreen';
 import {QuestionRequestSchema} from "@tokenring-ai/agent/HumanInterfaceRequest";
@@ -131,27 +132,18 @@ export default function AgentSelectionScreen({
     }
   }, [agentManager, webHostService, onResponse, app]);
 
-  const request: z.output<typeof QuestionRequestSchema> = {
-    type: "question.request",
-    immediate: true,
-    timestamp: Date.now(),
-    requestId: "agent-selection",
-    message: "Select an agent to connect to or spawn:",
-    question: {
-      type: "treeSelect",
-      label: "Agent Selection",
-      minimumSelections: 1,
-      maximumSelections: 1,
-      tree
-    },
-    autoSubmitAfter: 0
+  const question = {
+    type: "treeSelect",
+    label: "Agent Selection",
+    minimumSelections: 1,
+    maximumSelections: 1,
+    tree
   };
 
   return (
     <box flexDirection="column">
       <box><text fg={theme.agentSelectionBanner}>{banner}</text></box>
-      <QuestionInputScreen
-        request={request}
+      <TreeSelect question={question} message="Select an agent to connect to or spawn:"
         onResponse={handleSelect}
       />
       {err &&

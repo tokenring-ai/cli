@@ -4,12 +4,9 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { theme } from '../../theme';
 import type { TreeSelectProps } from '../../types';
 import { useAbortSignal, useScrolling, useTreeNavigation } from '../../hooks';
-import { flattenTree, getChildValues, isVirtualParent } from '../../utils';
-import { isSelectionValid, canSelect } from '../../utils/selectionValidation';
+import { flattenTree, getChildValues, isVirtualParent, isSelectionValid, canSelect } from '../../utils';
 
-export default function TreeSelect({ question, onResponse, signal }: TreeSelectProps) {
-  const { tree, defaultValue, minimumSelections, maximumSelections, label } = question;
-
+export default function TreeSelect({ question: {tree, defaultValue, minimumSelections, maximumSelections, label}, onResponse, signal }: TreeSelectProps) {
   const { height } = useTerminalDimensions();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);

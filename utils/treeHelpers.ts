@@ -1,22 +1,21 @@
-import type { TreeLeaf } from "@tokenring-ai/agent/HumanInterfaceRequest";
-import type { TreeNode, FlatNode } from "../types/tree";
+import type {AsyncTreeLeaf, TreeNode, FlatNode } from "../types";
 
 export function convertLeafToNode(
-  leaf: TreeLeaf,
-  resolvedMap: Map<string, TreeLeaf[]>
+  leaf: AsyncTreeLeaf,
+  resolvedMap: Map<string, AsyncTreeLeaf[]>
 ): TreeNode {
   const value = leaf.value || leaf.name;
   const resolved = resolvedMap.get(value);
 
   let children: TreeNode[] | undefined;
-  let childrenLoader: (() => Promise<TreeLeaf[]> | TreeLeaf[]) | undefined;
+  let childrenLoader: ((signal?: AbortSignal) => Promise<AsyncTreeLeaf[]> | AsyncTreeLeaf[]) | undefined;
 
   if (resolved) {
     children = resolved.map(child => convertLeafToNode(child, resolvedMap));
   } else if (Array.isArray(leaf.children)) {
     children = leaf.children.map(child => convertLeafToNode(child, resolvedMap));
   } else if (typeof leaf.children === 'function') {
-    childrenLoader = leaf.children;
+    childrenLoader = leaf.children as ((signal?: AbortSignal) => Promise<AsyncTreeLeaf[]> | AsyncTreeLeaf[]);
   }
 
   return {
@@ -45,14 +44,14 @@ export function getChildValues(node: TreeNode): string[] {
 }
 
 export function flattenTree(
-  tree: TreeLeaf,
+  tree: AsyncTreeLeaf,
   expanded: Set<string>,
-  resolvedChildren: Map<string, TreeLeaf[]>,
+  resolvedChildren: Map<string, AsyncTreeLeaf[]>,
   loading: Set<string>
 ): FlatNode[] {
   const result: FlatNode[] = [];
 
-  const traverse = (leaves: TreeLeaf[], depth: number) => {
+  const traverse = (leaves: AsyncTreeLeaf[], depth: number) => {
     for (const leaf of leaves) {
       const convertedNode = convertLeafToNode(leaf, resolvedChildren);
       const isExpanded = expanded.has(convertedNode.value);
@@ -79,7 +78,7 @@ export function flattenTree(
   const rootValue = tree.value || tree.name;
   const rootResolved = resolvedChildren.get(rootValue);
 
-  let rootChildren: TreeLeaf[];
+  let rootChildren: AsyncTreeLeaf[];
   if (rootResolved) {
     rootChildren = rootResolved;
   } else if (Array.isArray(tree.children)) {

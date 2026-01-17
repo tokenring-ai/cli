@@ -1,10 +1,10 @@
-import type { TreeLeaf } from "@tokenring-ai/agent/HumanInterfaceRequest";
+import type {AsyncTreeLeaf} from "./inputs.ts";
 
 export interface TreeNode {
   label: string;
   value: string;
   children?: TreeNode[];
-  childrenLoader?: () => Promise<TreeLeaf[]> | TreeLeaf[];
+  childrenLoader?: (signal?: AbortSignal) => Promise<AsyncTreeLeaf[]> | AsyncTreeLeaf[];
 }
 
 export interface FlatNode {

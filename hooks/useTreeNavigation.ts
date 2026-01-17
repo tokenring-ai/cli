@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { TreeLeaf } from "@tokenring-ai/agent/HumanInterfaceRequest";
+import type {AsyncTreeLeaf} from "../types";
 
-export function useTreeNavigation(tree: TreeLeaf, defaultValue?: string[]) {
+export function useTreeNavigation(tree: AsyncTreeLeaf, defaultValue?: string[]) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [checked, setChecked] = useState<Set<string>>(new Set(defaultValue ?? []));
   const [loading, setLoading] = useState<Set<string>>(new Set());
-  const [resolvedChildren, setResolvedChildren] = useState<Map<string, TreeLeaf[]>>(new Map());
+  const [resolvedChildren, setResolvedChildren] = useState<Map<string, AsyncTreeLeaf[]>>(new Map());
 
   useEffect(() => {
     const rootValue = tree.value || tree.name;
@@ -15,7 +15,7 @@ export function useTreeNavigation(tree: TreeLeaf, defaultValue?: string[]) {
         setLoading(prev => new Set(prev).add(rootValue));
 
         try {
-          const loader = tree.children as () => Promise<TreeLeaf[]> | TreeLeaf[];
+          const loader = tree.children as () => Promise<AsyncTreeLeaf[]> | AsyncTreeLeaf[];
           const result = loader();
           const children = result instanceof Promise ? await result : result;
 
@@ -33,7 +33,7 @@ export function useTreeNavigation(tree: TreeLeaf, defaultValue?: string[]) {
     }
   }, [tree, resolvedChildren, loading]);
 
-  const expandNode = useCallback(async (nodeValue: string, childrenLoader?: () => Promise<TreeLeaf[]> | TreeLeaf[]) => {
+  const expandNode = useCallback(async (nodeValue: string, childrenLoader?: () => Promise<AsyncTreeLeaf[]> | AsyncTreeLeaf[]) => {
     if (childrenLoader && !resolvedChildren.has(nodeValue)) {
       setLoading(prev => new Set(prev).add(nodeValue));
 

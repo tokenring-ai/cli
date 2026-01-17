@@ -313,7 +313,7 @@ export default class AgentLoop implements TokenRingService {
   private async handleHumanRequest(
     request: z.output<typeof QuestionRequestSchema>, signal: AbortSignal): Promise<[request: z.output<typeof QuestionRequestSchema>, response: z.output<typeof QuestionResponseSchema>]> {
 
-    const response = await renderScreen(QuestionInputScreen, { request }, signal);
+    const response = await renderScreen(QuestionInputScreen, { request, agent: this.agent }, signal);
     return [request, response];
   }
 

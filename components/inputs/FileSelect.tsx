@@ -1,30 +1,50 @@
 /** @jsxImportSource @opentui/react */
-import { useKeyboard } from '@opentui/react';
-import React, { useState } from 'react';
-import { theme } from '../../theme';
-import type { FileSelectProps } from '../../types';
-import { useAbortSignal } from '../../hooks';
+import {FileSystemService} from "@tokenring-ai/filesystem";
+import React from 'react';
+import type {AsyncTreeLeaf, FileSelectProps} from '../../types';
+import TreeSelect from './TreeSelect';
 
-export default function FileSelect({ question, message, onResponse, signal }: FileSelectProps) {
-  const [paths, setPaths] = useState<string[]>(question.defaultValue || []);
+export default function FileSelect({ agent, question: { allowFiles, allowDirectories, ...treeSelectQuestion}, onResponse, signal }: FileSelectProps) {
+  const fileSystemService = agent.requireServiceByType(FileSystemService);
+  //TODO: the tree selector does not highlight directories with selected files in them
+  const buildTree = async (path = ""): Promise<Array<AsyncTreeLeaf>> => {
+    const children: Array<AsyncTreeLeaf> = [];
 
-  useAbortSignal(signal, () => onResponse(null));
-
-  useKeyboard((keyEvent) => {
-    if (keyEvent.name === 'escape') {
-      onResponse(null);
-      return;
+    for await (const itemPath of fileSystemService.getDirectoryTree(path, {
+      ignoreFilter: (itemPath) => false,
+      recursive: false,
+    }, agent)) {
+      if (itemPath.endsWith("/")) {
+        // Directory
+        const dirName = itemPath
+          .substring(0, itemPath.length - 1)
+          .split("/")
+          .pop()!;
+        children.push({
+          name: dirName,
+          ...(allowDirectories && {value: itemPath}),
+          children: () => buildTree(itemPath),
+        });
+      } else if (allowFiles) {
+        // File
+        const fileName = itemPath.split("/").pop()!;
+        children.push({
+          name: fileName,
+          value: itemPath,
+        });
+      }
     }
-    if (keyEvent.name === 'return') {
-      onResponse(paths);
-      return;
-    }
-  });
 
-  return (
-    <box flexDirection="column">
-      {message && <text fg={theme.askMessage}>{message}</text>}
-      <text>(File selection not yet implemented)</text>
-    </box>
-  );
+    return children;
+  };
+
+  const question = {
+    ...treeSelectQuestion,
+    tree:{
+      name: "File Selection",
+      children: buildTree,
+    }
+  };
+
+  return <TreeSelect question={question} onResponse={onResponse} signal={signal} />;
 }
