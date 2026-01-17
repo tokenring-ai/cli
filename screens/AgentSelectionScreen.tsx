@@ -10,7 +10,7 @@ import open from 'open';
 import React, {useCallback, useMemo} from 'react';
 import {z} from "zod";
 import {theme} from '../theme.ts';
-import QuestionInputScreen from './QuestionInputScreen.tsx';
+import QuestionInputScreen from './QuestionInputScreen';
 import {QuestionRequestSchema} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import type {TreeLeaf} from "@tokenring-ai/agent/HumanInterfaceRequest";
 
