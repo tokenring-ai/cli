@@ -41,16 +41,6 @@ export default function FormInput({ question, message, agent, onResponse, signal
     }
   };
 
-  const handleBack = () => {
-    if (currentFieldIndex > 0) {
-      setCurrentFieldIndex(currentFieldIndex - 1);
-    } else if (currentSectionIndex > 0) {
-      setCurrentSectionIndex(currentSectionIndex - 1);
-      const prevSection = sections[currentSectionIndex - 1];
-      setCurrentFieldIndex(Object.keys(prevSection.fields).length - 1);
-    }
-  };
-
   useKeyboard((keyEvent) => {
     if (keyEvent.name === 'escape') {
       onResponse(null);
@@ -68,7 +58,6 @@ export default function FormInput({ question, message, agent, onResponse, signal
     );
   }
 
-  const fieldLabel = `${currentSection.name} - ${currentFieldKey}`;
   const progressText = `Section ${currentSectionIndex + 1}/${sections.length}, Field ${currentFieldIndex + 1}/${fieldKeys.length}`;
 
   return (

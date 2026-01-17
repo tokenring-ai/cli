@@ -1,6 +1,6 @@
 import {Agent} from "@tokenring-ai/agent";
-import {FileSelectQuestionSchema, type QuestionRequestSchema, TreeSelectQuestionSchema, FormQuestionSchema} from "@tokenring-ai/agent/HumanInterfaceRequest";
-import type { z } from "zod";
+import {FileSelectQuestionSchema, FormQuestionSchema, type QuestionRequestSchema, TreeSelectQuestionSchema} from "@tokenring-ai/agent/HumanInterfaceRequest";
+import type {z} from "zod";
 
 export interface BaseInputProps {
   message?: string;
@@ -24,7 +24,6 @@ export type AsyncTreeLeaf = {
   children?: Array<AsyncTreeLeaf> | (() => Promise<AsyncTreeLeaf[]> | AsyncTreeLeaf[]) | ((signal: AbortSignal) => Promise<AsyncTreeLeaf[]> | AsyncTreeLeaf[]);
 };
 
-
 export interface TreeSelectProps extends BaseInputProps {
   question: Omit<z.output<typeof TreeSelectQuestionSchema>, "type" | "tree"> & {
     tree: AsyncTreeLeaf
@@ -32,6 +31,7 @@ export interface TreeSelectProps extends BaseInputProps {
   onResponse: (response: string[] | null) => void;
   onHighlight?: (value: string) => void;
 }
+
 
 export interface FileSelectProps extends BaseInputProps {
   agent: Agent;

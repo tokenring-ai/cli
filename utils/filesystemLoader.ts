@@ -63,17 +63,3 @@ export async function loadDirectory(
   }
 }
 
-export async function createFileSystemTree(
-  options?: FileSystemLoaderOptions
-): Promise<AsyncTreeLeaf> {
-  const rootPath = options?.rootPath || process.cwd();
-  
-  return {
-    name: `📁 ${rootPath}`,
-    value: rootPath,
-    children: (signal?: AbortSignal) => loadDirectory(rootPath, {
-      showHidden: options?.showHidden,
-      extensions: options?.extensions
-    }, signal)
-  };
-}

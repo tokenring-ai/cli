@@ -1,11 +1,16 @@
 export const theme = {
-  //prompt: '#FFF176FF',
-  //banner: '#00BCD4FF',
-  //timeout: '#FFEB3BFF',
-  //border: '#EF5350FF',
-
   // Agent selection
-  agentSelectionBanner: '#cf6e32',
+  agentSelectionBanner: '#ffffff',
+  agentSelectionBannerBackground: '#2c2c2c',
+
+  // Question screen
+  questionScreenBanner: '#ffffff',
+  questionScreenBannerBackground: '#cf6e32',
+
+  // General panel background style
+  panelBackground: '#1e1e1e',
+  screenBackground: '#1e1e1e',
+
 
   // Ask screen
   askMessage: '#00BCD4FF',
@@ -36,4 +41,9 @@ export const theme = {
   treeNotSelectedItem: '#9E9E9EFF',
   treeHighlightedItem: '#FFEB3BFF',
   treeTimeout: '#FFEB3BFF',
+
+  // Loading screen
+  loadingScreenBackground: '#023683',
+  loadingScreenBannerBackground: '#022f6c',
+  loadingScreenText: '#f0f9ff',
 } as const;

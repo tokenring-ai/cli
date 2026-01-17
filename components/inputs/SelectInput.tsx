@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { theme } from '../../theme';
 import type { SelectInputProps } from '../../types';
 import { useAbortSignal, useResponsiveLayout } from '../../hooks';
-import { isSelectionValid, canSelect } from '../../utils/selectionValidation';
+import { isSelectionValid, canSelect } from '../../utils';
 
 export default function SelectInput({ question, message, onResponse, signal }: SelectInputProps) {
   const { width } = useTerminalDimensions();
@@ -58,7 +58,7 @@ export default function SelectInput({ question, message, onResponse, signal }: S
       setFocusedIndex(Math.min(question.options.length - 1, focusedIndex + 1));
     } else if (keyEvent.name === 'space' && !singleSelect) {
       const newSelected = new Set(selectedIndices);
-      const optionValue = question.options[focusedIndex].value;
+
       if (newSelected.has(focusedIndex)) {
         if (question.minimumSelections !== undefined && newSelected.size <= question.minimumSelections) {
           setFlashMessage(`Cannot deselect: minimum ${question.minimumSelections} required`);

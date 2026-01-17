@@ -1,8 +1,9 @@
 /** @jsxImportSource @opentui/react */
-import React, { useEffect } from 'react';
-import { z } from 'zod';
+import React, {useEffect} from 'react';
+import {z} from 'zod';
 
 import {CLIConfigSchema} from "../schema.ts";
+import {theme} from "../theme.ts";
 
 interface LoadingScreenProps {
   config: z.output<typeof CLIConfigSchema>;
@@ -25,18 +26,16 @@ export default function LoadingScreen({
       alignItems="center"
       width="100%"
       height="100%"
-      backgroundColor="#0284c7"
+      backgroundColor={theme.loadingScreenBackground}
     >
       <box
-        borderStyle="rounded"
-        borderColor="#06b6d4"
         paddingLeft={4}
         paddingRight={4}
         paddingTop={2}
         paddingBottom={2}
-        backgroundColor="#0369a1"
+        backgroundColor={theme.loadingScreenBannerBackground}
       >
-        <text fg="#f0f9ff">{config.loadingBanner}</text>
+        <text fg={theme.loadingScreenText}>{config.loadingBanner}</text>
       </box>
     </box>
   );

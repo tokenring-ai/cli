@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { useTerminalDimensions } from '@opentui/react';
+import {useTerminalDimensions} from '@opentui/react';
+import {useMemo} from 'react';
 
 export interface ResponsiveLayout {
   maxVisibleItems: number;
@@ -7,13 +7,17 @@ export interface ResponsiveLayout {
   showHelp: boolean;
   truncateAt: number;
   isCompact: boolean;
+  isNarrow: boolean;
+  isShort: boolean;
   minimalMode: boolean;
+  width: number;
+  height: number;
 }
 
 export function useResponsiveLayout(): ResponsiveLayout {
   const { height, width } = useTerminalDimensions();
 
-  const layout = useMemo(() => {
+  return useMemo(() => {
     const isNarrow = width < 80;
     const isShort = height < 20;
     const isTiny = height < 10 || width < 40;
@@ -24,9 +28,11 @@ export function useResponsiveLayout(): ResponsiveLayout {
       showHelp: !isShort && !isTiny,
       truncateAt: Math.max(20, width - 20),
       isCompact: isNarrow || isShort,
+      isNarrow,
+      isShort,
       minimalMode: isTiny,
+      width,
+      height,
     };
   }, [height, width]);
-
-  return layout;
 }

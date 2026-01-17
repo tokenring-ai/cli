@@ -1,15 +1,14 @@
 /** @jsxImportSource @opentui/react */
 
+import {useTerminalDimensions} from "@opentui/react";
 import {Agent} from "@tokenring-ai/agent";
-import { QuestionRequestSchema } from "@tokenring-ai/agent/HumanInterfaceRequest";
-import TokenRingApp from "@tokenring-ai/app";
+import {QuestionRequestSchema} from "@tokenring-ai/agent/HumanInterfaceRequest";
 import React from 'react';
-import { z } from 'zod';
-import { TextInput, SelectInput, TreeSelect, FileSelect, FormInput } from '../components/inputs';
+import {z} from 'zod';
+import {FileSelect, FormInput, SelectInput, TextInput, TreeSelect} from '../components/inputs';
 
 import {CLIConfigSchema} from "../schema.ts";
-import { theme } from '../theme.ts';
-import type {TreeSelectProps} from "../types";
+import {theme} from '../theme.ts';
 
 type QuestionInputScreenProps = {
   agent: Agent;
@@ -20,6 +19,7 @@ type QuestionInputScreenProps = {
 };
 
 export default function QuestionInputScreen({ agent, request, config, onResponse, signal }: QuestionInputScreenProps) {
+  const { height, width } = useTerminalDimensions();
   const { question, message } = request;
 
   function inputComponent() {
@@ -42,10 +42,12 @@ export default function QuestionInputScreen({ agent, request, config, onResponse
   }
 
   return (
-    <box flexDirection="column">
-      <box><text fg={theme.agentSelectionBanner}>{config.screenBanner}</text></box>
-      <box><text>{message}</text></box>
-      <box flexGrow={1} flexDirection="column">
+    <box flexDirection="column" height={ height } backgroundColor={theme.screenBackground}>
+      <box>
+        <box><text fg={theme.questionScreenBanner}>{config.screenBanner}</text></box>
+        <box><text>{message}</text></box>
+      </box>
+      <box style={{ height: '100%' }} backgroundColor={theme.panelBackground}>
         {inputComponent()}
       </box>
     </box>

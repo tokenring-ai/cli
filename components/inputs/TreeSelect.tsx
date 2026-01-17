@@ -1,20 +1,10 @@
 /** @jsxImportSource @opentui/react */
-import { useKeyboard, useTerminalDimensions } from '@opentui/react';
-import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { theme } from '../../theme';
-import type { TreeSelectProps } from '../../types';
-import { useAbortSignal, useTreeNavigation, useResponsiveLayout } from '../../hooks';
-import { flattenTree, getChildValues, isVirtualParent, isSelectionValid, canSelect } from '../../utils';
-
-const iconMap: Record<string, string> = {
-  'agent': '🤖',
-  'workflow': '🔄',
-  'webapp': '🌐',
-  'folder': '📁',
-  'file': '📄',
-  'current': '▶️',
-  'default': '•'
-};
+import {useKeyboard, useTerminalDimensions} from '@opentui/react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
+import {useAbortSignal, useResponsiveLayout, useTreeNavigation} from '../../hooks';
+import {theme} from '../../theme';
+import type {TreeSelectProps} from '../../types';
+import {canSelect, flattenTree, getChildValues, isSelectionValid, isVirtualParent} from '../../utils';
 
 export default function TreeSelect({ question: {tree, defaultValue, minimumSelections, maximumSelections, label}, onResponse, signal, onHighlight }: TreeSelectProps) {
   const { height, width } = useTerminalDimensions();
@@ -196,10 +186,8 @@ export default function TreeSelect({ question: {tree, defaultValue, minimumSelec
     return flatTree.slice(scrollOffset, scrollOffset + maxVisibleItems);
   }, [flatTree, scrollOffset, maxVisibleItems]);
 
-  const canSubmit = isSelectionValid(checked, minimumSelections, maximumSelections);
-
   return (
-    <box flexDirection="column" borderStyle="single" paddingLeft={1} paddingRight={1} title={label}>
+    <box flexDirection="column" borderStyle="rounded"  paddingLeft={1} paddingRight={1} title={label} backgroundColor={theme.panelBackground}>
       {multiple && (
         <text fg={theme.treeMessage}>
           Selected: {checked.size}
@@ -238,7 +226,6 @@ export default function TreeSelect({ question: {tree, defaultValue, minimumSelec
                   ? (item.expanded ? '▼ ' : '▶ ')
                   : '  '}
               {multiple && !virtual && (checked.has(item.node.value) ? '◉ ' : '◯ ')}
-              {item.node.icon || iconMap.default} 
               {truncatedLabel}
               {multiple && virtual && ` (${selectedCount}/${childValues.length} selected)`}
             </text>
@@ -246,9 +233,6 @@ export default function TreeSelect({ question: {tree, defaultValue, minimumSelec
         );
       })}
       {flashMessage && <text fg={theme.confirmNo}>{flashMessage}</text>}
-      <text fg={canSubmit ? theme.confirmYes : theme.confirmNo}>
-        {canSubmit ? '✓ Press Enter to submit' : '✗ Selection invalid'}
-      </text>
       <text>
         ({multiple ? 'Space to toggle, Enter to submit' : 'Space/→ to expand, ← to collapse, Enter to select'}), q to exit
       </text>

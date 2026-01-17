@@ -1,4 +1,4 @@
-import type {AsyncTreeLeaf, TreeNode, FlatNode } from "../types";
+import type {AsyncTreeLeaf, FlatNode, TreeNode} from "../types";
 
 export function convertLeafToNode(
   leaf: AsyncTreeLeaf,
@@ -18,18 +18,12 @@ export function convertLeafToNode(
     childrenLoader = leaf.children as ((signal?: AbortSignal) => Promise<AsyncTreeLeaf[]> | AsyncTreeLeaf[]);
   }
 
-  const result: TreeNode = {
+  return {
     label: leaf.name,
     value,
     children,
     childrenLoader
   };
-
-  if ((leaf as any).icon) {
-    result.icon = (leaf as any).icon;
-  }
-
-  return result;
 }
 
 export function isVirtualParent(node: TreeNode): boolean {
