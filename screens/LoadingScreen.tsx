@@ -1,4 +1,5 @@
 /** @jsxImportSource @opentui/react */
+import {useTerminalDimensions} from "@opentui/react";
 import React, {useEffect} from 'react';
 import {z} from 'zod';
 
@@ -14,10 +15,15 @@ export default function LoadingScreen({
   config,
   onResponse,
 }: LoadingScreenProps) {
+  const { width } = useTerminalDimensions();
+
   useEffect(() => {
     const timer = setTimeout(() => onResponse(null), 2000);
     return () => clearTimeout(timer);
   }, [onResponse, config]);
+
+  const wideBannerWidth = config.loadingBannerWide.split(/\n/).reduce((acc, line) => Math.max(acc, line.length), 0);
+  const narrowBannerWidth = config.loadingBannerNarrow.split(/\n/).reduce((acc, line) => Math.max(acc, line.length), 0);
 
   return (
     <box
@@ -35,7 +41,11 @@ export default function LoadingScreen({
         paddingBottom={2}
         backgroundColor={theme.loadingScreenBannerBackground}
       >
-        <text fg={theme.loadingScreenText}>{config.loadingBanner}</text>
+        <text fg={theme.loadingScreenText}>
+          {   width > wideBannerWidth ? config.loadingBannerWide
+            : width > narrowBannerWidth ? config.loadingBannerNarrow
+            : config.loadingBannerCompact
+          }</text>
       </box>
     </box>
   );

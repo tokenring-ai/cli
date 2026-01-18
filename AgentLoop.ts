@@ -1,7 +1,6 @@
 import {AgentCommandService} from "@tokenring-ai/agent";
 import Agent from "@tokenring-ai/agent/Agent";
-import {AgentEventEnvelope} from "@tokenring-ai/agent/AgentEvents";
-import {type QuestionRequestSchema, QuestionResponseSchema} from "@tokenring-ai/agent/HumanInterfaceRequest";
+import {AgentEventEnvelope, type ParsedQuestionRequest, QuestionResponseSchema} from "@tokenring-ai/agent/AgentEvents";
 import {AgentEventCursor, AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import {AgentExecutionState} from "@tokenring-ai/agent/state/agentExecutionState";
 import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
@@ -141,11 +140,13 @@ export default class AgentLoop implements TokenRingService {
     };
 
     const redraw = (state: AgentEventState) => {
-      process.stdout.write('\x1b[2J\x1b[0f');
+      // Clear screen, move to top-left, and wipe scrollback buffer
+      process.stdout.write('\x1b[2J\x1b[0f\x1b[3J');
       process.stdout.write(bannerColor(this.options.config.chatBanner) + "\n");
       process.stdout.write(outputColors['output.chat'](
-        "Type your questions and hit Enter. Commands start with /. Type /switch to change agents, /quit or /exit to return to agent selection.\n" +
-        "(Use ↑/↓ arrow keys to navigate command history, Ctrl-T for shortcuts, Esc to cancel, Ctrl-C to switch agents)\n\n"
+        "Type your questions and hit Enter. Commands start with /\n" +
+        "Use ↑/↓ for command history, Esc to cancel your current activity\n" +
+        "Ctrl-C to return to the agent selection screen\n\n"
       ));
 
       this.lastWriteHadNewline = true;
@@ -156,6 +157,7 @@ export default class AgentLoop implements TokenRingService {
       }
 
       this.eventCursor.position = state.events.length;
+      process.stdout.write("\n");
     };
 
     const agentCommandService = this.agent.requireServiceByType(AgentCommandService);
@@ -313,7 +315,7 @@ export default class AgentLoop implements TokenRingService {
   }
 
   private async handleHumanRequest(
-    request: z.output<typeof QuestionRequestSchema>, signal: AbortSignal): Promise<[request: z.output<typeof QuestionRequestSchema>, response: z.output<typeof QuestionResponseSchema>]> {
+    request: ParsedQuestionRequest, signal: AbortSignal): Promise<[request: ParsedQuestionRequest, response: z.output<typeof QuestionResponseSchema>]> {
 
     const response = await renderScreen(QuestionInputScreen, { request, agent: this.agent, config: this.options.config }, signal);
     return [request, response];

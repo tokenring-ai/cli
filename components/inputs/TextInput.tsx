@@ -1,11 +1,12 @@
 /** @jsxImportSource @opentui/react */
-import { useKeyboard } from '@opentui/react';
-import React, { useState } from 'react';
-import { theme } from '../../theme';
-import type { TextInputProps } from '../../types';
-import { useAbortSignal, useResponsiveLayout } from '../../hooks';
+import {useKeyboard} from '@opentui/react';
+import React, {useState} from 'react';
+import {useAbortSignal} from "../../hooks/useAbortSignal.ts";
+import {useResponsiveLayout} from "../../hooks/useResponsiveLayout.ts";
+import {theme} from '../../theme';
+import type {TextInputProps} from "./types.ts";
 
-export default function TextInput({ question, message, onResponse, signal }: TextInputProps) {
+export default function TextInput({ question, onResponse, signal }: TextInputProps) {
   const layout = useResponsiveLayout();
   const [lines, setLines] = useState<string[]>(['']);
   const [currentLine, setCurrentLine] = useState(0);
@@ -60,7 +61,7 @@ export default function TextInput({ question, message, onResponse, signal }: Tex
 
   return (
     <box flexDirection="column">
-      {message && <text fg={theme.askMessage}>{message}</text>}
+      <text fg={theme.askMessage}>{question.label}</text>
       <text>(Press Ctrl+D to submit, Esc to cancel)</text>
       {lines.map((line, idx) => (
         <text key={idx}>{line}{idx === currentLine ? '█' : ''}</text>

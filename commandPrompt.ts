@@ -1,6 +1,6 @@
-import readline from "node:readline";
-import process from "node:process";
 import chalk from "chalk";
+import process from "node:process";
+import readline from "node:readline";
 
 export class PartialInputError extends Error {
   constructor(public buffer: string) {

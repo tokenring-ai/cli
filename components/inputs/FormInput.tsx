@@ -1,15 +1,15 @@
 /** @jsxImportSource @opentui/react */
-import { useKeyboard } from '@opentui/react';
-import React, { useState } from 'react';
-import { theme } from '../../theme';
-import type { FormInputProps } from '../../types';
-import { useAbortSignal, useResponsiveLayout } from '../../hooks';
-import TextInput from './TextInput';
-import SelectInput from './SelectInput';
-import TreeSelect from './TreeSelect';
+import {useKeyboard} from '@opentui/react';
+import React, {useState} from 'react';
+import {useAbortSignal} from "../../hooks/useAbortSignal.ts";
+import {useResponsiveLayout} from "../../hooks/useResponsiveLayout.ts";
+import {theme} from '../../theme';
 import FileSelect from './FileSelect';
+import TextInput from './TextInput';
+import TreeSelect from './TreeSelect';
+import type {FormInputProps} from "./types.ts";
 
-export default function FormInput({ question, message, agent, onResponse, signal }: FormInputProps) {
+export default function FormInput({ question, agent, onResponse, signal }: FormInputProps) {
   const layout = useResponsiveLayout();
   const [responses, setResponses] = useState<Record<string, Record<string, any>>>({});
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
@@ -58,33 +58,22 @@ export default function FormInput({ question, message, agent, onResponse, signal
     );
   }
 
-  const progressText = `Section ${currentSectionIndex + 1}/${sections.length}, Field ${currentFieldIndex + 1}/${fieldKeys.length}`;
+  const progressText = `${currentSection.name} (Section ${currentSectionIndex + 1}/${sections.length}, Field ${currentFieldIndex + 1}/${fieldKeys.length})`;
 
   return (
     <box flexDirection="column">
-      {message && <text fg={theme.askMessage}>{message}</text>}
       <text fg={theme.treeMessage}>{progressText}</text>
-      {currentSection.description && <text>{currentSection.description}</text>}
       <box flexDirection="column" flexGrow={1}>
         {currentField.type === 'text' && (
           <TextInput
-            question={{ ...currentField, label: currentFieldKey }}
-            message={currentFieldKey}
-            onResponse={handleFieldResponse}
-            signal={signal}
-          />
-        )}
-        {currentField.type === 'select' && (
-          <SelectInput
-            question={{ ...currentField, label: currentFieldKey }}
-            message={currentFieldKey}
+            question={currentField}
             onResponse={handleFieldResponse}
             signal={signal}
           />
         )}
         {currentField.type === 'treeSelect' && (
           <TreeSelect
-            question={{ ...currentField, label: currentFieldKey }}
+            question={currentField}
             onResponse={handleFieldResponse}
             signal={signal}
           />
@@ -92,8 +81,7 @@ export default function FormInput({ question, message, agent, onResponse, signal
         {currentField.type === 'fileSelect' && (
           <FileSelect
             agent={agent}
-            question={{ ...currentField, label: currentFieldKey }}
-            message={currentFieldKey}
+            question={currentField}
             onResponse={handleFieldResponse}
             signal={signal}
           />
