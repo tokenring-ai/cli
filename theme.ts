@@ -11,7 +11,6 @@ export const theme = {
   panelBackground: '#1e1e1e',
   screenBackground: '#1e1e1e',
 
-
   // Ask screen
   askMessage: '#00BCD4FF',
 

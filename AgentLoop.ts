@@ -17,6 +17,7 @@ import type {CLIConfigSchema} from "./schema.ts";
 import QuestionInputScreen from "./screens/QuestionInputScreen.tsx";
 import {SimpleSpinner} from "./SimpleSpinner.ts";
 import {theme} from "./theme.ts";
+import applyMarkdownStyles from "./utility/applyMarkdownStyles.ts";
 
 const outputColors = {
   "output.chat": chalk.hex(theme.chatOutputText),
@@ -48,6 +49,7 @@ export default class AgentLoop implements TokenRingService {
   private currentInputPromise: Promise<void> | null = null;
   private humanInputPromise: Promise<void> | null = null;
   private eventCursor: AgentEventCursor = { position: 0 };
+  private currentLine: string = "";
 
   private readonly agent: Agent;
   private readonly options: AgentLoopOptions;
@@ -82,6 +84,7 @@ export default class AgentLoop implements TokenRingService {
       switch (event.type) {
         case 'agent.created':
           process.stdout.write(outputColors["output.info"](`${this.agent.config.name} created\n`));
+          this.currentLine = "";
           break;
         case 'output.warning':
         case 'output.error':
@@ -109,7 +112,19 @@ export default class AgentLoop implements TokenRingService {
             this.currentOutputType = event.type;
           }
 
-          process.stdout.write(outputColors[event.type](event.message));
+          let outputMessage = event.message;
+
+          for (let i = 0; i < outputMessage.length; i++) {
+            const char = outputMessage[i];
+            if (char === '\n') {
+              const lineToOutput = applyMarkdownStyles(this.currentLine);
+              process.stdout.write(outputColors[event.type as keyof typeof outputColors](lineToOutput + "\n"));
+              this.currentLine = "";
+            } else {
+              this.currentLine += char;
+            }
+          }
+
           this.lastWriteHadNewline = event.message.endsWith("\n");
           break;
         case 'input.handled':
@@ -122,6 +137,7 @@ export default class AgentLoop implements TokenRingService {
             process.stdout.write(outputColors['output.error'](event.message));
             this.lastWriteHadNewline = true;
           }
+          this.currentLine = "";
           break;
         case 'input.received':
           ensureNewline();
@@ -135,6 +151,7 @@ export default class AgentLoop implements TokenRingService {
           })));
 
           this.lastWriteHadNewline = true;
+          this.currentLine = "";
           break;
       }
     };
@@ -333,3 +350,5 @@ export default class AgentLoop implements TokenRingService {
     }
   }
 }
+
+
