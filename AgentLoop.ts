@@ -80,10 +80,44 @@ export default class AgentLoop implements TokenRingService {
       this.lastWriteHadNewline = true;
     };
 
+    const turnOffSpinner = () => {
+      if (this.spinnerRunning) {
+        this.spinnerRunning = false;
+        this.spinner?.stop();
+      }
+    }
+
     const renderEvent = (event: AgentEventEnvelope) => {
+      // noinspection FallThroughInSwitchStatementJS
       switch (event.type) {
         case 'agent.created':
+          turnOffSpinner();
+          ensureNewline();
           process.stdout.write(outputColors["output.info"](`${this.agent.config.name} created\n`));
+          this.currentLine = "";
+          break;
+        case 'agent.stopped':
+          turnOffSpinner();
+          ensureNewline();
+          process.stdout.write(outputColors["output.info"](`Agent stopped\n`));
+          this.currentLine = "";
+          break;
+        case 'reset':
+          turnOffSpinner();
+          ensureNewline();
+          process.stdout.write(outputColors["output.info"](`Agent reset: ${event.what.join(', ')}\n`));
+          this.currentLine = "";
+          break;
+        case 'abort':
+          turnOffSpinner();
+          ensureNewline();
+          process.stdout.write(outputColors["output.info"](`Agent aborted: ${event.reason}\n`));
+          this.currentLine = "";
+          break;
+        case 'output.artifact':
+          turnOffSpinner();
+          ensureNewline();
+          process.stdout.write(outputColors["output.info"](`Agent outputed artifact: ${event.name}\n`));
           this.currentLine = "";
           break;
         case 'output.warning':
@@ -153,6 +187,13 @@ export default class AgentLoop implements TokenRingService {
           this.lastWriteHadNewline = true;
           this.currentLine = "";
           break;
+        case 'question.request':
+        case 'question.response':
+          break;
+
+        default:
+          // noinspection JSUnusedLocalSymbols
+          const foo: never = event;
       }
     };
 
