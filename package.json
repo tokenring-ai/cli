@@ -5,7 +5,7 @@
   "dependencies": {
     "@tokenring-ai/app": "0.2.0",
     "@tokenring-ai/chat": "0.2.0",
-    "zod": "catalog:",
+    "zod": "^4.3.6",
     "@inquirer/prompts": "^8.2.0",
     "@tokenring-ai/agent": "0.2.0",
     "@tokenring-ai/utility": "0.2.0",
@@ -14,12 +14,12 @@
     "open": "^11.0.0",
     "@opentui/core": "^0.1.75",
     "@opentui/react": "^0.1.75",
-    "react": "catalog:"
+    "react": "^19.2.4"
   },
   "devDependencies": {
-    "vitest": "catalog:",
-    "typescript": "catalog:",
-    "@types/react": "catalog:"
+    "vitest": "^4.0.18",
+    "typescript": "^5.9.3",
+    "@types/react": "^19.2.10"
   },
   "exports": {
     ".": "./index.ts",
