@@ -7,7 +7,7 @@ import React from "react";
 export const renderScreen = async <P, R = P>(
   Component: React.ComponentType<P & { onResponse: (response: R) => void; signal?: AbortSignal }>,
   props: P,
-  signal?: AbortSignal
+  signal: AbortSignal
 ): Promise<R> => {
 
   const renderer = await createCliRenderer({
@@ -37,7 +37,7 @@ export const renderScreen = async <P, R = P>(
         reject(new Error('Aborted'));
       };
 
-      signal?.addEventListener('abort', abortHandler, { once: true });
+    signal.addEventListener('abort', abortHandler, {once: true});
 
       const C = Component as any;
       root.render(<C {...props} onResponse={handleResponse} signal={signal} />);

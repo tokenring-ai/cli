@@ -19,8 +19,6 @@ export default class AgentCLI implements TokenRingService {
   name = "AgentCLI";
   description = "Command-line interface for interacting with agents";
 
-  private readonly app: TokenRingApp;
-  private readonly config: z.infer<typeof CLIConfigSchema>;
   private rl!: readline.Interface;
 
   /**
@@ -28,28 +26,28 @@ export default class AgentCLI implements TokenRingService {
    * @param app The TokenRingApp instance to manage agents.
    * @param config The configuration for the CLI.
    */
-  constructor(app: TokenRingApp, config: z.infer<typeof CLIConfigSchema>) {
-    this.app = app;
-    this.config = config;
+  constructor(readonly app: TokenRingApp, readonly config: z.infer<typeof CLIConfigSchema>) {
   }
 
-  async run(): Promise<void> {
+  async run(signal: AbortSignal): Promise<void> {
     await renderScreen(LoadingScreen, {
-      config: this.config,
-    });
+      config: this.config
+    }, signal);
 
-    for (let agent = await this.selectOrCreateAgent(); agent; agent = await this.selectOrCreateAgent()) {
+    for (let agent = await this.selectOrCreateAgent(signal); agent; agent = await this.selectOrCreateAgent(signal)) {
       try {
         const agentLoop = new AgentLoop(agent, {
           availableCommands: [],
           rl: this.rl,
-          config: this.config,
+          config: this.config
         });
-        await agentLoop.run();
+
+        await agentLoop.run(signal);
       } catch (error) {
         process.stderr.write(formatLogMessages(["Error while running agent loop", error as Error]));
         await setTimeout(1000);
       }
+      if (signal.aborted) return;
     }
 
     process.stdout.write(`\x1b[${process.stdout.rows || 24};0H`);
@@ -57,10 +55,10 @@ export default class AgentCLI implements TokenRingService {
     process.exit(0);
   }
 
-  private async selectOrCreateAgent(): Promise<Agent | null> {
+  private async selectOrCreateAgent(signal: AbortSignal): Promise<Agent | null> {
     return renderScreen(AgentSelectionScreen, {
       app: this.app,
       config: this.config,
-    });
+    }, signal);
   }
 }

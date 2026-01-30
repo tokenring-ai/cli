@@ -86,6 +86,7 @@ export async function commandPrompt(options: CommandPromptOptions): Promise<stri
 
     rl.on("line", onLine);
     rl.setPrompt(promptLabel);
+
     rl.prompt();
   });
 }

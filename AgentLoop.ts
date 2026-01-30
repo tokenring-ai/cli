@@ -4,7 +4,6 @@ import {AgentEventEnvelope, type ParsedQuestionRequest, QuestionResponseSchema} 
 import {AgentEventCursor, AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import {AgentExecutionState} from "@tokenring-ai/agent/state/agentExecutionState";
 import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
-import {TokenRingService} from "@tokenring-ai/app/types";
 import {createAsciiTable} from "@tokenring-ai/utility/string/asciiTable";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
 import chalk from "chalk";
@@ -36,10 +35,7 @@ export interface AgentLoopOptions {
   config: z.infer<typeof CLIConfigSchema>;
 }
 
-export default class AgentLoop implements TokenRingService {
-  name = "AgentLoop";
-  description = "Agent execution loop handler";
-
+export default class AgentLoop {
   // Hoisted variables from runAgentLoop
   private abortControllerStack: Array<AbortController> = [];
   private lastWriteHadNewline = true;
@@ -51,15 +47,14 @@ export default class AgentLoop implements TokenRingService {
   private eventCursor: AgentEventCursor = { position: 0 };
   private currentLine: string = "";
 
-  private readonly agent: Agent;
-  private readonly options: AgentLoopOptions;
-
-  constructor(agent: Agent, options: AgentLoopOptions) {
-    this.agent = agent;
-    this.options = options;
+  constructor(readonly agent: Agent, readonly options: AgentLoopOptions) {
   }
 
-  async run(): Promise<void> {
+  async run(signal: AbortSignal): Promise<void> {
+    signal.addEventListener("abort", () => {
+      this.abortControllerStack[0]?.abort();
+    })
+
     const ensureNewline = () => {
       if (!this.lastWriteHadNewline) {
         process.stdout.write("\n");
@@ -381,6 +376,7 @@ export default class AgentLoop implements TokenRingService {
 
   private async withAbortSignal<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
     const abortController = new AbortController();
+
     this.abortControllerStack.push(abortController);
 
     try {
