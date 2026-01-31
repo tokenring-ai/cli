@@ -121,7 +121,7 @@ export default class AgentCLI implements TokenRingService {
 
   constructor(app: TokenRingApp, config: z.infer<typeof CLIConfigSchema>);
 
-  async run(): Promise<void>;
+  async run(signal: AbortSignal): Promise<void>;
 }
 ```
 
@@ -132,13 +132,13 @@ export default class AgentCLI implements TokenRingService {
 
 **Methods:**
 
-- `async run(): Promise<void>` - Start the CLI application and begin processing user input
+- `async run(signal: AbortSignal): Promise<void>` - Start the CLI application and begin processing user input
   - Displays the `LoadingScreen` with appropriate banner based on terminal width (`loadingBannerWide`, `loadingBannerNarrow`, or `loadingBannerCompact`)
   - Enters an infinite loop to select and interact with agents
   - Handles errors gracefully and maintains UI state between sessions
   - Cleans up terminal on exit (clears all input, shows "Goodbye!")
 
-- `private async selectOrCreateAgent(): Promise<Agent | null>` - Display agent selection menu and create/return selected agent
+- `private async selectOrCreateAgent(signal: AbortSignal): Promise<Agent | null>` - Display agent selection menu and create/return selected agent
   - Renders the `AgentSelectionScreen`
   - Returns the selected agent or `null` to exit
   - Handles agent spawning, connecting, web application launching, and workflow execution
@@ -216,7 +216,7 @@ interface AgentLoopOptions {
 
 **Key Methods:**
 
-- `async run(): Promise<void>` - Main agent interaction loop
+- `async run(signal: AbortSignal): Promise<void>` - Main agent interaction loop
   - Sets up `AgentEventState` and `AgentExecutionState` subscriptions
   - Enters race between event processing and execution handling
   - Manages spinner animations during agent busy states
@@ -645,13 +645,13 @@ Responsive layout management hook that calculates layout properties based on ter
 **Interface:**
 ```typescript
 interface ResponsiveLayout {
-  maxVisibleItems: number;      // Maximum items without scrolling (default: max(5, height - 8))
+  maxVisibleItems: number;      // Maximum items without scrolling (default: max(5, height - 6))
   showBreadcrumbs: boolean;     // Always false
   showHelp: boolean;            // Always false
-  truncateAt: number;           // Length at which text truncates (40)
+  truncateAt: number;           // Length at which text truncates (20)
   isCompact: boolean;           // Terminal is narrow (width < 80)
-  isNarrow: boolean;            // Terminal is short (height < 40)
-  isShort: boolean;             // Terminal is narrow AND short (width < 80 AND height < 40)
+  isNarrow: boolean;            // Terminal is short (height < 20)
+  isShort: boolean;             // Terminal is narrow AND short (width < 80 AND height < 20)
   minimalMode: boolean;         // Terminal too small (width < 40 OR height < 10)
   width: number;                // Terminal width (process.stdout.columns)
   height: number;               // Terminal height (process.stdout.rows)
@@ -678,13 +678,13 @@ function MyComponent() {
 ```
 
 **Layout Properties:**
-- `maxVisibleItems` (number): Maximum items that can be shown without scrolling calculated as max(5, height - 8)
+- `maxVisibleItems` (number): Maximum items that can be shown without scrolling calculated as max(5, height - 6)
 - `showBreadcrumbs`: Always false
 - `showHelp`: Always false
-- `truncateAt` (number): Length at which text truncates (40)
+- `truncateAt` (number): Length at which text truncates (20)
 - `isCompact` (boolean): Terminal is narrow (width < 80)
-- `isNarrow` (boolean): Terminal is short (height < 40)
-- `isShort` (boolean): Terminal is narrow AND short (width < 80 AND height < 40)
+- `isNarrow` (boolean): Terminal is short (height < 20)
+- `isShort` (boolean): Terminal is narrow AND short (width < 80 AND height < 20)
 - `minimalMode` (boolean): Terminal too small (width < 40 OR height < 10)
 - `width` (number): Terminal width (process.stdout.columns)
 - `height` (number): Terminal height (process.stdout.rows)
@@ -693,13 +693,13 @@ function MyComponent() {
 ```typescript
 const detectResponsiveLayout = (rows: number, cols: number) => {
   return {
-    maxVisibleItems: Math.max(5, rows - 8),
+    maxVisibleItems: Math.max(5, rows - 6),
     showBreadcrumbs: false,
     showHelp: false,
-    truncateAt: 40,
+    truncateAt: Math.max(20, cols - 20),
     isCompact: cols < 80,
-    isNarrow: rows < 40,
-    isShort: cols < 80 && rows < 40,
+    isNarrow: rows < 20,
+    isShort: cols < 80 && rows < 20,
     minimalMode: cols < 40 || rows < 10,
     width: cols,
     height: rows,
@@ -790,7 +790,7 @@ The side preview panel displays details when you highlight items via `onHighligh
 **Layout Modes:**
 - **Normal** (width >= 80, not short): Large layout with split screen (tree | preview)
 - **Narrow** (width < 80): Mobile column layout (preview on top, tree stacked below)
-- **Short** (height < 40): Compact horizontal layout (preview on right, tree on left)
+- **Short** (height < 20): Compact horizontal layout (preview on right, tree on left)
 
 **Empty States:**
 - Displays orange error box if selection fails during handleSelect
@@ -1051,21 +1051,21 @@ pkg/cli/
 ### Core Dependencies
 
 - `@tokenring-ai/app` (0.2.0) - Application framework and plugin system
+- `@tokenring-ai/chat` (0.2.0) - Chat service and tool definitions
+  - ChatAgentConfigSchema
 - `@tokenring-ai/agent` (0.2.0) - Agent framework and capabilities
   - Agent, CommandHistoryState, AgentCommandService
   - ParsedQuestionRequest, QuestionResponseSchema
   - AgentEventEnvelope, AgentEventState, AgentExecutionState
   - ParsedTreeSelectQuestion
-- `@tokenring-ai/chat` (0.2.0) - Chat service and tool definitions
-  - ChatAgentConfigSchema
 - `@tokenring-ai/utility` (0.2.0) - Utility functions (formatLogMessage, asciiTable)
 - `zod` (catalog) - Runtime type validation for configuration and schemas
 
 ### UI Framework
 
-- `@opentui/core` (^0.1.72) - OpenTUI core components and keyboard management
-- `@opentui/react` (^0.1.72) - OpenTUI React bindings and terminal components
-- `react` (catalog) - React library for component implementations
+- `@opentui/core` (^0.1.75) - OpenTUI core components and keyboard management
+- `@opentui/react` (^0.1.75) - OpenTUI React bindings and terminal components
+- `react` (^19.2.4) - React library for component implementations
 
 ### Prompt Handling
 
