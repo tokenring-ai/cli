@@ -112,7 +112,11 @@ export default class AgentLoop {
         case 'output.artifact':
           turnOffSpinner();
           ensureNewline();
-          process.stdout.write(outputColors["output.info"](`Agent outputed artifact: ${event.name}\n`));
+          process.stdout.write(outputColors["output.info"](`Agent generated artifact: ${event.name}\n`));
+          if (event.encoding === "text") {
+            process.stdout.write(event.body.trim());
+            process.stdout.write("\n");
+          }
           this.currentLine = "";
           break;
         case 'output.warning':
