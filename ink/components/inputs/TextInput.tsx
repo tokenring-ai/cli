@@ -1,9 +1,8 @@
-/** @jsxImportSource @opentui/react */
-import {useKeyboard} from '@opentui/react';
-import React, {useState} from 'react';
-import {useAbortSignal} from "../../hooks/useAbortSignal.ts";
+import {Box, Text, useInput} from 'ink';
+import React, {useEffect, useState} from 'react';
+import {useAbortSignal} from "../../../hooks/useAbortSignal.ts";
 import {useResponsiveLayout} from "../../hooks/useResponsiveLayout.ts";
-import {theme} from '../../theme';
+import {theme} from '../../../theme.ts';
 import type {TextInputProps} from "./types.ts";
 
 export default function TextInput({ question, onResponse, signal }: TextInputProps) {
@@ -13,24 +12,24 @@ export default function TextInput({ question, onResponse, signal }: TextInputPro
 
   useAbortSignal(signal, () => onResponse(null));
 
-  useKeyboard((keyEvent) => {
-    if ((keyEvent.name === 'escape' || keyEvent.name === 'q')) {
+  useInput((input, key) => {
+    if (key.escape) {
       onResponse(null);
       return;
     }
 
-    if (keyEvent.ctrl && keyEvent.name === 'd') {
+    if (key.ctrl && input === 'd') {
       onResponse(lines.join('\n'));
       return;
     }
 
-    if (keyEvent.name === 'return') {
+    if (key.return) {
       setLines([...lines, '']);
       setCurrentLine(currentLine + 1);
       return;
     }
 
-    if (keyEvent.name === 'backspace') {
+    if (key.backspace || key.delete) {
       const newLines = [...lines];
       if (newLines[currentLine].length > 0) {
         newLines[currentLine] = newLines[currentLine].slice(0, -1);
@@ -42,30 +41,30 @@ export default function TextInput({ question, onResponse, signal }: TextInputPro
       return;
     }
 
-    if (keyEvent.raw) {
+    if (input) {
       const newLines = [...lines];
-      newLines[currentLine] = (newLines[currentLine] || '') + keyEvent.raw;
+      newLines[currentLine] = (newLines[currentLine] || '') + input;
       setLines(newLines);
     }
   });
 
   if (layout.minimalMode) {
     return (
-      <box>
-        <text fg={theme.chatSystemWarningMessage}>
+      <Box>
+        <Text color={theme.chatSystemWarningMessage}>
           Terminal too small. Minimum: 40x10
-        </text>
-      </box>
+        </Text>
+      </Box>
     );
   }
 
   return (
-    <box flexDirection="column">
-      <text fg={theme.askMessage}>{question.label}</text>
-      <text>(Press Ctrl+D to submit, Esc to cancel)</text>
+    <Box flexDirection="column">
+      <Text color={theme.askMessage}>{question.label}</Text>
+      <Text>(Press Ctrl+D to submit, Esc to cancel)</Text>
       {lines.map((line, idx) => (
-        <text key={idx}>{line}{idx === currentLine ? '█' : ''}</text>
+        <Text key={idx}>{line}{idx === currentLine ? '█' : ''}</Text>
       ))}
-    </box>
+    </Box>
   );
 }

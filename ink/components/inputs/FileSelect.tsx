@@ -1,8 +1,7 @@
-/** @jsxImportSource @opentui/react */
-import {useKeyboard, useTerminalDimensions} from '@opentui/react';
+import {Box, Text, useInput} from 'ink';
 import {FileSystemService} from "@tokenring-ai/filesystem";
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {theme} from '../../theme';
+import {theme} from '../../../theme.ts';
 import type {FileSelectProps} from "./types.ts";
 
 export interface AsyncFileNode {
@@ -20,20 +19,19 @@ interface FlatItem {
 }
 
 export default function FileSelect({
-                                     question: {
-                                       label = 'Select Files',
-                                       allowFiles = true,
-                                       allowDirectories = true,
-                                       defaultValue = [],
-                                       minimumSelections,
-                                       maximumSelections
-                                     },
-                                     agent,
-                                     onResponse,
-                                     signal
-                                   }: FileSelectProps) {
+  question: {
+    label = 'Select Files',
+    allowFiles = true,
+    allowDirectories = true,
+    defaultValue = [],
+    minimumSelections,
+    maximumSelections
+  },
+  agent,
+  onResponse,
+  signal
+}: FileSelectProps) {
   const fileSystemService = agent.requireServiceByType(FileSystemService);
-  const { height, width } = useTerminalDimensions();
 
   const [nodes, setNodes] = useState<AsyncFileNode[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -45,17 +43,15 @@ export default function FileSelect({
   const [initialLoading, setInitialLoading] = useState(true);
 
   const multiple = maximumSelections !== 1;
-  const maxVisibleItems = Math.max(5, height - 8);
+  const maxVisibleItems = 20;
 
   const loadPath = useCallback(async (path: string): Promise<AsyncFileNode[]> => {
     const entries = await Array.fromAsync(fileSystemService.getDirectoryTree(path, { recursive: false, ignoreFilter: () => false }, agent));
     return entries.map(name => {
       const isDirectory = name.endsWith('/');
       const fullPath = isDirectory ? name.slice(0, -1) : name;
-
       let cleanName = (isDirectory ? name.substring(0, name.length - 1) : name);
       cleanName = cleanName.substring(cleanName.lastIndexOf('/') + 1);
-
 
       return {
         name: cleanName,
@@ -66,7 +62,6 @@ export default function FileSelect({
     });
   }, [fileSystemService]);
 
-  // Initial load of current directory
   useEffect(() => {
     const init = async () => {
       setInitialLoading(true);
@@ -150,7 +145,6 @@ export default function FileSelect({
     const traverse = (nodeList: AsyncFileNode[], depth: number) => {
       for (const node of nodeList) {
         const isVisible = (node.isDirectory && allowDirectories) || (!node.isDirectory && allowFiles);
-        // We still traverse directories even if not "selectable" to allow navigation
         const showThisNode = isVisible || node.isDirectory;
 
         if (showThisNode) {
@@ -176,21 +170,21 @@ export default function FileSelect({
     }
   }, [selectedIndex, maxVisibleItems, scrollOffset]);
 
-  useKeyboard((keyEvent) => {
-    if (keyEvent.name === 'escape' || keyEvent.name === 'q') {
+  useInput((input, key) => {
+    if (key.escape || input === 'q') {
       onResponse(null);
       return;
     }
 
-    if (keyEvent.name === 'up') setSelectedIndex(prev => Math.max(0, prev - 1));
-    else if (keyEvent.name === 'down') setSelectedIndex(prev => Math.min(flatTree.length - 1, prev + 1));
-    else if (keyEvent.name === 'right') {
+    if (key.upArrow) setSelectedIndex(prev => Math.max(0, prev - 1));
+    else if (key.downArrow) setSelectedIndex(prev => Math.min(flatTree.length - 1, prev + 1));
+    else if (key.rightArrow) {
       const current = flatTree[selectedIndex];
       if (current?.node.isDirectory && !current.isExpanded) toggleExpand(current.node);
-    } else if (keyEvent.name === 'left') {
+    } else if (key.leftArrow) {
       const current = flatTree[selectedIndex];
       if (current?.isExpanded) toggleExpand(current.node);
-    } else if (keyEvent.name === 'space') {
+    } else if (input === ' ') {
       const current = flatTree[selectedIndex];
       if (!current) return;
 
@@ -217,7 +211,7 @@ export default function FileSelect({
       } else if (current.node.isDirectory) {
         toggleExpand(current.node);
       }
-    } else if (keyEvent.name === 'return') {
+    } else if (key.return) {
       if (multiple) {
         if (minimumSelections && checked.size < minimumSelections) {
           setFlashMessage(`Select at least ${minimumSelections}`);
@@ -232,66 +226,60 @@ export default function FileSelect({
     }
   });
 
-  if (height < 10 || width < 40) return <box><text fg={theme.chatSystemWarningMessage}>Terminal too small.</text></box>;
-
   if (initialLoading) {
     return (
-      <box flexDirection="column" borderStyle="rounded" paddingLeft={1} paddingRight={1} title={label} backgroundColor={theme.panelBackground}>
-        <text fg={theme.treeMessage}>⏳ Loading directory...</text>
-      </box>
+      <Box flexDirection="column" borderStyle="round" paddingLeft={1} paddingRight={1}>
+        <Text color={theme.treeMessage}>⏳ Loading directory...</Text>
+      </Box>
     );
   }
 
   const visibleTree = flatTree.slice(scrollOffset, scrollOffset + maxVisibleItems);
 
   return (
-    <box flexDirection="column" borderStyle="rounded" paddingLeft={1} paddingRight={1} title={label} backgroundColor={theme.panelBackground}>
+    <Box flexDirection="column" borderStyle="round" paddingLeft={1} paddingRight={1}>
+      <Text color={theme.treeMessage}>{label}</Text>
       {multiple && (
-        <text fg={theme.treeMessage}>
+        <Text color={theme.treeMessage}>
           Selected: {checked.size} {maximumSelections ? `/ ${maximumSelections}` : ''}
-        </text>
+        </Text>
       )}
 
-      {visibleTree.map((item, visibleIndex) => {
-        const actualIndex = scrollOffset + visibleIndex;
+      {visibleTree.map((item) => {
+        const actualIndex = scrollOffset + visibleTree.indexOf(item);
         const isSelected = actualIndex === selectedIndex;
         const isChecked = checked.has(item.node.value);
         const isSelectable = (item.node.isDirectory && allowDirectories) || (!item.node.isDirectory && allowFiles);
 
-        let fg: string = isSelected ? theme.treeHighlightedItem : (isChecked ? theme.treeFullySelectedItem : theme.treeNotSelectedItem);
+        let color: string = isSelected ? theme.treeHighlightedItem : (isChecked ? theme.treeFullySelectedItem : theme.treeNotSelectedItem);
         if (item.node.isDirectory) {
           for (const checkedItem of checked) {
             if (checkedItem.startsWith(item.node.value)) {
-              fg = theme.treePartiallySelectedItem;
+              color = theme.treePartiallySelectedItem;
               break;
             }
           }
         }
 
-        if (!isSelectable && !isSelected) fg = theme.treeNotSelectedItem; // Dim non-selectable items
-
-        const availableWidth = width - (item.depth * 2) - 10;
-        const truncatedName = item.node.name.length <= availableWidth
-          ? item.node.name
-          : item.node.name.substring(0, Math.max(0, availableWidth - 3)) + '...';
+        if (!isSelectable && !isSelected) color = theme.treeNotSelectedItem;
 
         return (
-          <box key={item.node.value}>
-            <text fg={fg}>
+          <Box key={item.node.value}>
+            <Text color={color}>
               {'  '.repeat(item.depth)}{isSelected ? '❯ ' : '  '}
               {item.isLoading ? '⏳ ' : item.node.isDirectory ? (item.isExpanded ? '▼ ' : '▶ ') : '  '}
               {multiple && isSelectable && (isChecked ? '◉ ' : '◯ ')}
-              {truncatedName}
-            </text>
-          </box>
+              {item.node.name}
+            </Text>
+          </Box>
         );
       })}
 
-      {flashMessage && <text fg={theme.confirmNo}>{flashMessage}</text>}
+      {flashMessage && <Text color={theme.confirmNo}>{flashMessage}</Text>}
 
-      <text fg={theme.treeMessage} marginTop={1}>
+      <Text color={theme.treeMessage}>
         Arrows to navigate, Space to {multiple ? 'select/expand' : 'expand'}, Enter to submit
-      </text>
-    </box>
+      </Text>
+    </Box>
   );
 }

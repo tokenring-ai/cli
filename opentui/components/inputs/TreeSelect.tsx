@@ -3,7 +3,7 @@ import {useKeyboard, useTerminalDimensions} from '@opentui/react';
 import type {TreeLeaf, TreeSelectQuestionSchema} from "@tokenring-ai/agent/question";
 import React, {useEffect, useMemo, useState} from 'react';
 import {z} from "zod";
-import {theme} from '../../theme';
+import {theme} from '../../../theme.ts';
 
 export interface TreeSelectProps {
   question: Omit<z.output<typeof TreeSelectQuestionSchema>, "type">;

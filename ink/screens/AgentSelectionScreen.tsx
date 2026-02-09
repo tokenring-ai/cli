@@ -1,4 +1,4 @@
-/** @jsxImportSource @opentui/react */
+import {Box, Text} from 'ink';
 import type Agent from '@tokenring-ai/agent/Agent';
 import type {ParsedTreeSelectQuestion, TreeLeaf} from "@tokenring-ai/agent/question";
 import AgentManager from '@tokenring-ai/agent/services/AgentManager';
@@ -14,8 +14,8 @@ import React, {type ReactNode, useCallback, useMemo, useState} from 'react';
 import {z} from "zod";
 import TreeSelect from "../components/inputs/TreeSelect.tsx";
 import {useResponsiveLayout} from "../hooks/useResponsiveLayout.ts";
-import {CLIConfigSchema} from "../schema.ts";
-import {theme} from '../theme.ts';
+import {CLIConfigSchema} from "../../schema.ts";
+import {theme} from '../../theme.ts';
 
 interface AgentSelectionScreenProps {
   app: TokenRingApp;
@@ -45,10 +45,11 @@ export default function AgentSelectionScreen({
       const enabledTools = ((config as any).chat as z.input<typeof ChatAgentConfigSchema>).enabledTools ?? [];
       if (config) {
         setPreviewElement(
-          <box flexDirection="column" flexGrow={1} borderStyle="rounded" paddingLeft={1} paddingRight={1} title={ config.name }>
-            <text fg={theme.boxTitle}>{ config.description }<br /></text>
-            <text paddingTop={1}><strong>Enabled Tools:</strong><br />{enabledTools.join(", ") || '(none)'}</text>
-          </box>
+          <Box flexDirection="column" flexGrow={1} borderStyle="round" paddingLeft={1} paddingRight={1}>
+            <Text color={theme.boxTitle}>{ config.name }</Text>
+            <Text color={theme.boxTitle}>{ config.description }{'\n'}</Text>
+            <Text>{'\n'}Enabled Tools:{'\n'}{enabledTools.join(", ") || '(none)'}</Text>
+          </Box>
         );
       }
     } else if (action === 'connect') {
@@ -57,19 +58,21 @@ export default function AgentSelectionScreen({
         const executionState = agent.getState(AgentExecutionState);
 
         setPreviewElement(
-          <box flexDirection="column" flexGrow={1} borderStyle="rounded" paddingLeft={1} paddingRight={1} title={`Agent ${agent.id}`}>
-            <text fg={theme.boxTitle}>{ agent.config.name }</text>
-            <text>Agent is { executionState.idle ? 'idle' : 'running' }</text>
-          </box>
+          <Box flexDirection="column" flexGrow={1} borderStyle="round" paddingLeft={1} paddingRight={1}>
+            <Text color={theme.boxTitle}>Agent {agent.id}</Text>
+            <Text color={theme.boxTitle}>{ agent.config.name }</Text>
+            <Text>Agent is { executionState.idle ? 'idle' : 'running' }</Text>
+          </Box>
         );
       }
     } else if (action === 'open') {
       setPreviewElement(
-        <box flexDirection="column" flexGrow={1} borderStyle="rounded" paddingLeft={1} paddingRight={1} title="Web Application">
-          <text fg={theme.boxTitle}>Launch Web Application</text>
-          <text>Selecting this item will launch a web browser on your system connected to the specified application.<br /></text>
-          <text>Or you can click this link to open the application:<br />{ remainder }</text>
-        </box>
+        <Box flexDirection="column" flexGrow={1} borderStyle="round" paddingLeft={1} paddingRight={1}>
+          <Text color={theme.boxTitle}>Web Application</Text>
+          <Text color={theme.boxTitle}>Launch Web Application</Text>
+          <Text>Selecting this item will launch a web browser on your system connected to the specified application.{'\n'}</Text>
+          <Text>Or you can click this link to open the application:{'\n'}{ remainder }</Text>
+        </Box>
       );
     } else if (action === 'workflow') {
       const workflowService = app.getService(WorkflowService);
@@ -78,10 +81,11 @@ export default function AgentSelectionScreen({
         const workflow = workflows.find(w => w.key === remainder);
         if (workflow) {
           setPreviewElement(
-            <box flexDirection="column" flexGrow={1} borderStyle="rounded" paddingLeft={1} paddingRight={1} title="Run Workflow">
-              <text fg={theme.boxTitle}>{ workflow.workflow.name }</text>
-              <text>{ workflow.workflow.description }</text>
-            </box>
+            <Box flexDirection="column" flexGrow={1} borderStyle="round" paddingLeft={1} paddingRight={1}>
+              <Text color={theme.boxTitle}>Run Workflow</Text>
+              <Text color={theme.boxTitle}>{ workflow.workflow.name }</Text>
+              <Text>{ workflow.workflow.description }</Text>
+            </Box>
           );
         }
       }
@@ -103,7 +107,6 @@ export default function AgentSelectionScreen({
             {
               name: `Connect to ${resourceName}`,
               value: `open:${webHostURL}${resource.config.prefix.substring(1)}`,
-              
             }
           );
         }
@@ -114,7 +117,6 @@ export default function AgentSelectionScreen({
       const leaf: TreeLeaf = {
         name: `${config.name} (${type})`,
         value: `spawn:${type}`,
-        
       };
 
       const category = config.category || 'Other';
@@ -132,7 +134,6 @@ export default function AgentSelectionScreen({
       }));
     }
 
-    // Add workflows category
     const workflows = app.getService(WorkflowService);
     if (workflows) {
       const workflowList = workflows.listWorkflows();
@@ -195,47 +196,45 @@ export default function AgentSelectionScreen({
 
   if (layout.minimalMode) {
     return (
-      <box>
-        <text fg={theme.chatSystemWarningMessage}>
+      <Box>
+        <Text color={theme.chatSystemWarningMessage}>
           Terminal too small. Minimum: 40x10
-        </text>
-      </box>
+        </Text>
+      </Box>
     );
   }
 
-
   return (
-    <box
+    <Box
       flexDirection="column"
       width="100%"
       height="100%"
-      backgroundColor={theme.screenBackground}
     >
-      <box flexDirection="row" paddingBottom={layout.isShort ? 0 : 1}>
-        <box flexGrow={1}><text fg={theme.agentSelectionBanner}>{config.screenBanner}</text></box>
-        { layout.isNarrow ? null : <box><text> https://tokenring.ai</text></box> }
-      </box>
-      <box paddingBottom={layout.isShort ? 0 : 1}><text>Select an agent to connect to or spawn</text></box>
-      <box flexDirection={layout.isNarrow ? "column" : "row" } flexGrow={1} >
-        <box flexDirection="column" flexGrow={layout.isNarrow ? 0 : 1}>
+      <Box flexDirection="row" paddingBottom={layout.isShort ? 0 : 1}>
+        <Box flexGrow={1}><Text color={theme.agentSelectionBanner}>{config.screenBanner}</Text></Box>
+        { layout.isNarrow ? null : <Box><Text> https://tokenring.ai</Text></Box> }
+      </Box>
+      <Box paddingBottom={layout.isShort ? 0 : 1}><Text>Select an agent to connect to or spawn</Text></Box>
+      <Box flexDirection={layout.isNarrow ? "column" : "row" } flexGrow={1} >
+        <Box flexDirection="column" flexGrow={layout.isNarrow ? 0 : 1}>
           <TreeSelect question={question}
             onResponse={handleSelect}
             onHighlight={handleHighlight}
           />
-        </box>
+        </Box>
         {previewElement && (
           layout.isNarrow ? (
-            <box width="100%" marginTop={1}>{ previewElement }</box>
+            <Box width="100%">{ previewElement }</Box>
           ) : layout.isShort ? null : (
-            <box flexGrow={1} width="50%" maxWidth={75} marginLeft={1}>{ previewElement }</box>
+            <Box flexGrow={1} width="50%">{ previewElement }</Box>
           )
         )}
-      </box>
+      </Box>
       {err &&
-        <box borderStyle="rounded" paddingLeft={1} paddingRight={1}>
-          <text fg={theme.chatSystemErrorMessage}>{formatLogMessages(['Error selecting agent:',err])}</text>
-        </box>
+        <Box borderStyle="round" paddingLeft={1} paddingRight={1}>
+          <Text color={theme.chatSystemErrorMessage}>{formatLogMessages(['Error selecting agent:',err])}</Text>
+        </Box>
       }
-    </box>
+    </Box>
   );
 }

@@ -3,8 +3,8 @@ import {useTerminalDimensions} from "@opentui/react";
 import React, {useEffect} from 'react';
 import {z} from 'zod';
 
-import {CLIConfigSchema} from "../schema.ts";
-import {theme} from "../theme.ts";
+import {CLIConfigSchema} from "../../schema.ts";
+import {theme} from "../../theme.ts";
 
 interface LoadingScreenProps {
   config: z.output<typeof CLIConfigSchema>;

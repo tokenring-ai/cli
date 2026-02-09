@@ -7,16 +7,19 @@ import readline from "node:readline";
 import {setTimeout} from "node:timers/promises";
 import {z} from "zod";
 import AgentLoop from "./AgentLoop";
-import {renderScreen} from "./renderScreen.tsx";
+import {renderScreen as renderScreenInk} from "./ink/renderScreen.tsx";
+import InkAgentSelectionScreen from "./ink/screens/AgentSelectionScreen.tsx";
+import InkLoadingScreen from "./ink/screens/LoadingScreen.tsx";
+import {renderScreen as renderScreenOpenTUI} from "./opentui/renderScreen.tsx";
+import OpenTUIAgentSelectionScreen from "./opentui/screens/AgentSelectionScreen.tsx";
+import OpenTUILoadingScreen from "./opentui/screens/LoadingScreen.tsx";
 import {CLIConfigSchema} from "./schema.ts";
-import AgentSelectionScreen from "./screens/AgentSelectionScreen.tsx";
-import LoadingScreen from "./screens/LoadingScreen.tsx";
 
 /**
  * AgentCLI is a command-line interface for interacting with an TokenRingApp.
  */
 export default class AgentCLI implements TokenRingService {
-  name = "AgentCLI";
+  readonly name = "AgentCLI";
   description = "Command-line interface for interacting with agents";
 
   private rl!: readline.Interface;
@@ -30,11 +33,15 @@ export default class AgentCLI implements TokenRingService {
   }
 
   async run(signal: AbortSignal): Promise<void> {
+    const renderScreen = this.config.uiFramework === 'ink' ? renderScreenInk : renderScreenOpenTUI;
+    const LoadingScreen = this.config.uiFramework === 'ink' ? InkLoadingScreen : OpenTUILoadingScreen;
+    const AgentSelectionScreen = this.config.uiFramework === 'ink' ? InkAgentSelectionScreen : OpenTUIAgentSelectionScreen;
+
     await renderScreen(LoadingScreen, {
       config: this.config
     }, signal);
 
-    for (let agent = await this.selectOrCreateAgent(signal); agent; agent = await this.selectOrCreateAgent(signal)) {
+    for (let agent = await renderScreen(AgentSelectionScreen, {app: this.app, config: this.config}, signal); agent; agent = await renderScreen(AgentSelectionScreen, {app: this.app, config: this.config}, signal)) {
       try {
         const agentLoop = new AgentLoop(agent, {
           availableCommands: [],
@@ -53,12 +60,5 @@ export default class AgentCLI implements TokenRingService {
     process.stdout.write(`\x1b[${process.stdout.rows || 24};0H`);
     process.stdout.write("Goodbye!");
     process.exit(0);
-  }
-
-  private async selectOrCreateAgent(signal: AbortSignal): Promise<Agent | null> {
-    return renderScreen(AgentSelectionScreen, {
-      app: this.app,
-      config: this.config,
-    }, signal);
   }
 }

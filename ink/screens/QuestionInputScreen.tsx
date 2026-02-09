@@ -1,5 +1,4 @@
-/** @jsxImportSource @opentui/react */
-
+import {Box, Text} from 'ink';
 import {Agent} from "@tokenring-ai/agent";
 import {type ParsedQuestionRequest} from "@tokenring-ai/agent/AgentEvents";
 import React from 'react';
@@ -10,8 +9,8 @@ import TextInput from "../components/inputs/TextInput.tsx";
 import TreeSelect from "../components/inputs/TreeSelect.tsx";
 import {useResponsiveLayout} from "../hooks/useResponsiveLayout.ts";
 
-import {CLIConfigSchema} from "../schema.ts";
-import {theme} from '../theme.ts';
+import {CLIConfigSchema} from "../../schema.ts";
+import {theme} from '../../theme.ts';
 
 type QuestionInputScreenProps = {
   agent: Agent;
@@ -36,33 +35,28 @@ export default function QuestionInputScreen({ agent, request, config, onResponse
       case 'form':
         return <FormInput question={question} agent={agent} onResponse={onResponse} signal={signal}/>;
       default:
-        return <box>
-          <text>Unknown question type</text>
-        </box>;
+        return <Box>
+          <Text>Unknown question type</Text>
+        </Box>;
     }
   }
 
   return (
-  <box
-    flexDirection="column"
-    width="100%"
-    height="100%"
-    backgroundColor={theme.screenBackground}
-  >
-    <box flexDirection="row" paddingBottom={layout.isShort ? 0 : 1}>
-      <box flexGrow={1}><text fg={theme.questionScreenBanner}>{config.screenBanner}</text></box>
-      { layout.isNarrow ? null : <box><text> https://tokenring.ai</text></box> }
-    </box>
-    <box paddingBottom={layout.isShort ? 0 : 1}><text>{ message }</text></box>
-    <box flexDirection="column" flexGrow={1} >
-      <box flexDirection="column" flexGrow={1}>
-        {inputComponent()}
-      </box>
-    </box>
-  </box>
-
-
+    <Box
+      flexDirection="column"
+      width="100%"
+      height="100%"
+    >
+      <Box flexDirection="row" paddingBottom={layout.isShort ? 0 : 1}>
+        <Box flexGrow={1}><Text color={theme.questionScreenBanner}>{config.screenBanner}</Text></Box>
+        { layout.isNarrow ? null : <Box><Text> https://tokenring.ai</Text></Box> }
+      </Box>
+      <Box paddingBottom={layout.isShort ? 0 : 1}><Text>{ message }</Text></Box>
+      <Box flexDirection="column" flexGrow={1} >
+        <Box flexDirection="column" flexGrow={1}>
+          {inputComponent()}
+        </Box>
+      </Box>
+    </Box>
   );
 }
-
-

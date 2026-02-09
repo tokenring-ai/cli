@@ -1,12 +1,11 @@
-/** @jsxImportSource @opentui/react */
-import {useKeyboard} from '@opentui/react';
+import {Box, Text, useInput} from 'ink';
 import React, {useState} from 'react';
-import {useAbortSignal} from "../../hooks/useAbortSignal.ts";
+import {useAbortSignal} from "../../../hooks/useAbortSignal.ts";
 import {useResponsiveLayout} from "../../hooks/useResponsiveLayout.ts";
-import {theme} from '../../theme';
-import FileSelect from './FileSelect';
-import TextInput from './TextInput';
-import TreeSelect from './TreeSelect';
+import {theme} from '../../../theme.ts';
+import FileSelect from './FileSelect.tsx';
+import TextInput from './TextInput.tsx';
+import TreeSelect from './TreeSelect.tsx';
 import type {FormInputProps} from "./types.ts";
 
 export default function FormInput({ question, agent, onResponse, signal }: FormInputProps) {
@@ -41,8 +40,8 @@ export default function FormInput({ question, agent, onResponse, signal }: FormI
     }
   };
 
-  useKeyboard((keyEvent) => {
-    if (keyEvent.name === 'escape') {
+  useInput((input, key) => {
+    if (key.escape) {
       onResponse(null);
       return;
     }
@@ -50,20 +49,20 @@ export default function FormInput({ question, agent, onResponse, signal }: FormI
 
   if (layout.minimalMode) {
     return (
-      <box>
-        <text fg={theme.chatSystemWarningMessage}>
+      <Box>
+        <Text color={theme.chatSystemWarningMessage}>
           Terminal too small. Minimum: 40x10
-        </text>
-      </box>
+        </Text>
+      </Box>
     );
   }
 
   const progressText = `${currentSection.name} (Section ${currentSectionIndex + 1}/${sections.length}, Field ${currentFieldIndex + 1}/${fieldKeys.length})`;
 
   return (
-    <box flexDirection="column">
-      <text fg={theme.treeMessage}>{progressText}</text>
-      <box flexDirection="column" flexGrow={1}>
+    <Box flexDirection="column">
+      <Text color={theme.treeMessage}>{progressText}</Text>
+      <Box flexDirection="column" flexGrow={1}>
         {currentField.type === 'text' && (
           <TextInput
             question={currentField}
@@ -86,8 +85,8 @@ export default function FormInput({ question, agent, onResponse, signal }: FormI
             signal={signal}
           />
         )}
-      </box>
-      <text>(Use Esc to cancel, form will auto-advance)</text>
-    </box>
+      </Box>
+      <Text>(Use Esc to cancel, form will auto-advance)</Text>
+    </Box>
   );
 }

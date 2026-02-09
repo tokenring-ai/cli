@@ -11,9 +11,11 @@ import process from "node:process";
 import readline from "node:readline";
 import {z} from "zod";
 import {commandPrompt, PartialInputError} from "./commandPrompt.ts";
-import {renderScreen} from "./renderScreen.tsx";
+import {renderScreen as renderScreenInk} from "./ink/renderScreen.tsx";
+import InkQuestionInputScreen from "./ink/screens/QuestionInputScreen.tsx";
+import {renderScreen as renderScreenOpenTUI} from "./opentui/renderScreen.tsx";
+import OpenTUIQuestionInputScreen from "./opentui/screens/QuestionInputScreen.tsx";
 import type {CLIConfigSchema} from "./schema.ts";
-import QuestionInputScreen from "./screens/QuestionInputScreen.tsx";
 import {SimpleSpinner} from "./SimpleSpinner.ts";
 import {theme} from "./theme.ts";
 import applyMarkdownStyles from "./utility/applyMarkdownStyles.ts";
@@ -373,6 +375,9 @@ export default class AgentLoop {
 
   private async handleHumanRequest(
     request: ParsedQuestionRequest, signal: AbortSignal): Promise<[request: ParsedQuestionRequest, response: z.output<typeof QuestionResponseSchema>]> {
+
+    const renderScreen = this.options.config.uiFramework === 'ink' ? renderScreenInk : renderScreenOpenTUI;
+    const QuestionInputScreen = this.options.config.uiFramework === 'ink' ? InkQuestionInputScreen : OpenTUIQuestionInputScreen;
 
     const response = await renderScreen(QuestionInputScreen, { request, agent: this.agent, config: this.options.config }, signal);
     return [request, response];
