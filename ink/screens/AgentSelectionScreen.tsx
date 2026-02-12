@@ -40,8 +40,8 @@ export default function AgentSelectionScreen({
     const [, action, remainder] = value.match(/^(.*?):(.*)$/) ?? [];
 
     if (action === 'spawn') {
-      const configs = agentManager.getAgentConfigs();
-      const config = configs[remainder];
+      const configs = agentManager.getAgentConfigEntries();
+      const config = agentManager.getAgentConfig(remainder);
       const enabledTools = ((config as any).chat as z.input<typeof ChatAgentConfigSchema>).enabledTools ?? [];
       if (config) {
         setPreviewElement(
@@ -93,14 +93,12 @@ export default function AgentSelectionScreen({
   }, [agentManager, app]);
 
   const tree: TreeLeaf[] = useMemo(() => {
-    const configs = Object.entries(agentManager.getAgentConfigs());
+    const configs = agentManager.getAgentConfigEntries();
 
     const categories: Record<string, TreeLeaf[]> = {};
 
     if (webHostService) {
-      const webResources = webHostService.getResources();
-      for (const resourceName in webResources) {
-        const resource = webResources[resourceName];
+      for (const [resourceName, resource] of webHostService.getResourceEntries()) {
         if (resource instanceof SPAResource) {
           const webApps = categories['Web Application'] ??= [];
           webApps.push(
