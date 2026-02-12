@@ -1,35 +1,64 @@
-import {AgentCommandService} from "@tokenring-ai/agent";
 import Agent from "@tokenring-ai/agent/Agent";
-import {AgentEventEnvelope, type ParsedQuestionRequest, QuestionResponseSchema} from "@tokenring-ai/agent/AgentEvents";
-import {AgentEventCursor, AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
-import {AgentExecutionState} from "@tokenring-ai/agent/state/agentExecutionState";
-import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
-import {createAsciiTable} from "@tokenring-ai/utility/string/asciiTable";
+import {
+  AgentEventEnvelope,
+  type ParsedQuestionRequest,
+  QuestionResponseSchema,
+} from "@tokenring-ai/agent/AgentEvents";
+import {
+  AgentEventCursor,
+  AgentEventState,
+} from "@tokenring-ai/agent/state/agentEventState";
+import { AgentExecutionState } from "@tokenring-ai/agent/state/agentExecutionState";
+import { CommandHistoryState } from "@tokenring-ai/agent/state/commandHistoryState";
+import { createAsciiTable } from "@tokenring-ai/utility/string/asciiTable";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
 import chalk from "chalk";
 import process from "node:process";
 import readline from "node:readline";
-import {z} from "zod";
-import {commandPrompt, PartialInputError} from "./commandPrompt.ts";
-import {renderScreen as renderScreenInk} from "./ink/renderScreen.tsx";
+import { z } from "zod";
+import { commandPrompt, PartialInputError } from "./commandPrompt.ts";
+import { renderScreen as renderScreenInk } from "./ink/renderScreen.tsx";
 import InkQuestionInputScreen from "./ink/screens/QuestionInputScreen.tsx";
-import {renderScreen as renderScreenOpenTUI} from "./opentui/renderScreen.tsx";
+import { renderScreen as renderScreenOpenTUI } from "./opentui/renderScreen.tsx";
 import OpenTUIQuestionInputScreen from "./opentui/screens/QuestionInputScreen.tsx";
-import type {CLIConfigSchema} from "./schema.ts";
-import {SimpleSpinner} from "./SimpleSpinner.ts";
-import {theme} from "./theme.ts";
+import type { CLIConfigSchema } from "./schema.ts";
+import { SimpleSpinner } from "./SimpleSpinner.ts";
+import { theme } from "./theme.ts";
 import applyMarkdownStyles from "./utility/applyMarkdownStyles.ts";
 
-const outputColors = {
+// ── Theme-derived colours ──────────────────────────────────────────────
+
+const OUTPUT_COLORS = {
   "output.chat": chalk.hex(theme.chatOutputText),
   "output.reasoning": chalk.hex(theme.chatReasoningText),
   "output.info": chalk.hex(theme.chatSystemInfoMessage),
   "output.warning": chalk.hex(theme.chatSystemWarningMessage),
   "output.error": chalk.hex(theme.chatSystemErrorMessage),
-};
-const previousInputColor = chalk.hex(theme.chatPreviousInput);
-const dividerColor = chalk.hex(theme.chatDivider);
-const bannerColor = chalk.hex(theme.agentSelectionBanner);
+} as const;
+
+const PREVIOUS_INPUT_COLOR = chalk.hex(theme.chatPreviousInput);
+const DIVIDER_COLOR = chalk.hex(theme.chatDivider);
+const BANNER_COLOR = chalk.hex(theme.agentSelectionBanner);
+
+type OutputColorKey = keyof typeof OUTPUT_COLORS;
+
+// ── Helpers ────────────────────────────────────────────────────────────
+
+function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+
+    promise.then(
+      (val) => { signal.removeEventListener("abort", onAbort); resolve(val); },
+      (err) => { signal.removeEventListener("abort", onAbort); reject(err); },
+    );
+  });
+}
+
+// ── Public contract ────────────────────────────────────────────────────
 
 export interface AgentLoopOptions {
   availableCommands: string[];
@@ -37,364 +66,442 @@ export interface AgentLoopOptions {
   config: z.infer<typeof CLIConfigSchema>;
 }
 
+// ── Implementation ─────────────────────────────────────────────────────
+
 export default class AgentLoop {
-  // Hoisted variables from runAgentLoop
-  private abortControllerStack: Array<AbortController> = [];
-  private lastWriteHadNewline = true;
-  private currentOutputType: string = "chat";
+  private abort: AbortController | null = null;
+  private inputAbort: AbortController | null = null;
+  private humanAbort: AbortController | null = null;
+
+  private readonly eventCursor: AgentEventCursor = { position: 0 };
+
   private spinner: SimpleSpinner | null = null;
   private spinnerRunning = false;
-  private currentInputPromise: Promise<void> | null = null;
-  private humanInputPromise: Promise<void> | null = null;
-  private eventCursor: AgentEventCursor = { position: 0 };
-  private currentLine: string = "";
+  private lastWriteHadNewline = true;
+  private currentOutputType = "chat";
+  private currentLine = "";
 
-  constructor(readonly agent: Agent, readonly options: AgentLoopOptions) {
-  }
+  private inputPromise: Promise<void> | null = null;
+  private humanPromise: Promise<void> | null = null;
 
-  async run(signal: AbortSignal): Promise<void> {
-    signal.addEventListener("abort", () => {
-      this.abortControllerStack[0]?.abort();
-    })
+  constructor(
+    readonly agent: Agent,
+    readonly options: AgentLoopOptions,
+  ) {}
 
-    const ensureNewline = () => {
-      if (!this.lastWriteHadNewline) {
-        process.stdout.write("\n");
-        this.lastWriteHadNewline = true;
-      }
-    };
+  // ── Entry point ────────────────────────────────────────────────────
 
-    const printHorizontalLine = (message: string) => {
-      const lineChar = "─";
-      const lineWidth = process.stdout.columns ? Math.floor(process.stdout.columns * 0.8) : 60;
-      process.stdout.write(
-        dividerColor(
-          lineChar.repeat(4)
-          + " " + message + " " +
-          lineChar.repeat(lineWidth - 6 - message.length)
-        ) + "\n"
-      );
-      this.lastWriteHadNewline = true;
-    };
+  async run(externalSignal: AbortSignal): Promise<void> {
+    this.abort = new AbortController();
+    const signal = this.abort.signal;
 
-    const turnOffSpinner = () => {
-      if (this.spinnerRunning) {
-        this.spinnerRunning = false;
-        this.spinner?.stop();
-      }
-    }
+    // Forward external cancellation.
+    const onExternalAbort = () => this.abort?.abort();
+    externalSignal.addEventListener("abort", onExternalAbort, { once: true });
 
-    const renderEvent = (event: AgentEventEnvelope) => {
-      // noinspection FallThroughInSwitchStatementJS
-      switch (event.type) {
-        case 'agent.created':
-          turnOffSpinner();
-          ensureNewline();
-          process.stdout.write(outputColors["output.info"](`${this.agent.config.name} created\n`));
-          this.currentLine = "";
-          break;
-        case 'agent.stopped':
-          turnOffSpinner();
-          ensureNewline();
-          process.stdout.write(outputColors["output.info"](`Agent stopped\n`));
-          this.currentLine = "";
-          break;
-        case 'reset':
-          turnOffSpinner();
-          ensureNewline();
-          process.stdout.write(outputColors["output.info"](`Agent reset: ${event.what.join(', ')}\n`));
-          this.currentLine = "";
-          break;
-        case 'abort':
-          turnOffSpinner();
-          ensureNewline();
-          process.stdout.write(outputColors["output.info"](`Agent aborted: ${event.reason}\n`));
-          this.currentLine = "";
-          break;
-        case 'output.artifact':
-          turnOffSpinner();
-          ensureNewline();
-          process.stdout.write(outputColors["output.info"](`Agent generated artifact: ${event.name}\n`));
-          if (event.encoding === "text") {
-            process.stdout.write(event.body.trim());
-            process.stdout.write("\n");
-          }
-          this.currentLine = "";
-          break;
-        case 'output.warning':
-        case 'output.error':
-        case 'output.info':
-          if (! event.message.endsWith("\n")) {
-            event = {
-              ...event,
-              message: event.message + "\n"
-            }
-          }
-        case 'output.chat':
-        case 'output.reasoning':
-          if (this.spinnerRunning) {
-            this.spinner!.stop();
-            this.spinnerRunning = false;
-          }
+    this.redraw(this.agent.getState(AgentEventState));
 
-          if (event.type !== this.currentOutputType) {
-            ensureNewline();
-            if (event.type === 'output.chat') {
-              printHorizontalLine("Chat");
-            } else if (event.type === 'output.reasoning') {
-              printHorizontalLine("Reasoning");
-            }
-            this.currentOutputType = event.type;
-          }
-
-          let outputMessage = event.message;
-
-          for (let i = 0; i < outputMessage.length; i++) {
-            const char = outputMessage[i];
-            if (char === '\n') {
-              const lineToOutput = applyMarkdownStyles(this.currentLine);
-              process.stdout.write(outputColors[event.type as keyof typeof outputColors](lineToOutput + "\n"));
-              this.currentLine = "";
-            } else {
-              this.currentLine += char;
-            }
-          }
-
-          this.lastWriteHadNewline = event.message.endsWith("\n");
-          break;
-        case 'input.handled':
-          if (this.spinnerRunning) {
-            this.spinner!.stop();
-            this.spinnerRunning = false;
-          }
-          ensureNewline();
-          if (event.status === 'cancelled' || event.status === 'error') {
-            process.stdout.write(outputColors['output.error'](event.message));
-            this.lastWriteHadNewline = true;
-          }
-          this.currentLine = "";
-          break;
-        case 'input.received':
-          ensureNewline();
-          process.stdout.write(previousInputColor(createAsciiTable(
-            [
-              ['user >', event.message]
-            ], {
-            columnWidths: [7, process.stdout.columns ? process.stdout.columns - 7 : 65],
-            padding: 0,
-            grid: false
-          })));
-
-          this.lastWriteHadNewline = true;
-          this.currentLine = "";
-          break;
-        case 'question.request':
-        case 'question.response':
-          break;
-
-        default:
-          // noinspection JSUnusedLocalSymbols
-          const foo: never = event;
-      }
-    };
-
-    const redraw = (state: AgentEventState) => {
-      // Clear screen, move to top-left, and wipe scrollback buffer
-      process.stdout.write('\x1b[2J\x1b[0f\x1b[3J');
-      process.stdout.write(bannerColor(this.options.config.chatBanner) + "\n");
-      process.stdout.write(outputColors['output.chat'](
-        "Type your questions and hit Enter. Commands start with /\n" +
-        "Use ↑/↓ for command history, Esc to cancel your current activity\n" +
-        "Ctrl-C to return to the agent selection screen\n\n"
-      ));
-
-      this.lastWriteHadNewline = true;
-      this.currentOutputType = "chat";
-
-      for (const event of state.yieldEventsByCursor({ position: 0 })) {
-        renderEvent(event);
-      }
-
-      this.eventCursor.position = state.events.length;
-      process.stdout.write("\n");
-    };
-
-    const agentCommandService = this.agent.requireServiceByType(AgentCommandService);
-
-    const availableCommands = agentCommandService.getCommandNames().map(cmd => `/${cmd}`);
-    availableCommands.push('/switch');
-
-    redraw(this.agent.getState(AgentEventState));
-
-    const resizeHandler = () => {
-      redraw(this.agent.getState(AgentEventState));
-    };
-
-    process.stdout.on('resize', resizeHandler);
+    const onResize = () => this.redraw(this.agent.getState(AgentEventState));
+    process.stdout.on("resize", onResize);
 
     try {
-      await this.withAbortSignal(async signal => {
-        const eventStateSubscription = this.agent.subscribeStateAsync(AgentEventState, signal);
-        const execStateSubscription = this.agent.subscribeStateAsync(AgentExecutionState, signal);
+      const events$ = this.agent.subscribeStateAsync(AgentEventState, signal);
+      const exec$ = this.agent.subscribeStateAsync(AgentExecutionState, signal);
 
-        const processEvents = async () => {
-          for await (const eventState of eventStateSubscription) {
-            if (signal.aborted) break;
-
-            if (this.currentInputPromise) await this.currentInputPromise;
-            if (this.humanInputPromise) await this.humanInputPromise;
-
-            for (const event of eventState.yieldEventsByCursor(this.eventCursor)) {
-              renderEvent(event);
-            }
-          }
-        };
-
-        const processExecution = async () => {
-          for await (const execState of execStateSubscription) {
-            if (signal.aborted) break;
-
-            if (!execState.busyWith && this.spinner) {
-              if (this.spinnerRunning) {
-                this.spinner.stop();
-                this.spinnerRunning = false;
-              }
-              this.spinner = null;
-            }
-
-            if (!execState.idle && this.currentInputPromise) {
-              this.abortControllerStack[this.abortControllerStack.length - 1].abort();
-            }
-
-            if (execState.waitingOn.length === 0 && this.humanInputPromise) {
-              this.abortControllerStack[this.abortControllerStack.length - 1].abort();
-            }
-
-            if (execState.busyWith && !this.spinner) {
-              this.spinner = new SimpleSpinner(execState.busyWith, theme.chatSpinner);
-              this.spinnerRunning = true;
-              this.spinner.start();
-            }
-
-            if (execState.idle && !this.currentInputPromise) {
-              ensureNewline();
-
-              const createInputPromise = () => {
-                const abortController = new AbortController();
-                this.abortControllerStack.push(abortController);
-
-                return this.gatherInput(abortController.signal)
-                  .finally(() => {
-                    this.abortControllerStack.pop()!.abort();
-                  }).then(message => {
-                    this.currentInputPromise = null;
-                    this.ensureSigintHandlers();
-                    this.agent.handleInput({message});
-                  }).catch(err => {
-                    this.currentInputPromise = null;
-                    if (err instanceof PartialInputError) {
-                      if (err.buffer.trim() === "") {
-                        this.abortControllerStack[this.abortControllerStack.length - 1].abort();
-                      } else {
-                        this.currentInputPromise = createInputPromise();
-                      }
-                    }
-                  });
-              };
-
-              this.currentInputPromise = createInputPromise();
-            }
-
-            if (execState.waitingOn.length > 0 && !this.humanInputPromise) {
-              const abortController = new AbortController();
-              this.abortControllerStack.push(abortController);
-
-              this.humanInputPromise = this.handleHumanRequest(execState.waitingOn[0], abortController.signal)
-                .finally(() => {
-                  this.abortControllerStack.pop()!.abort();
-                }).then(([request, response]) => {
-                  redraw(this.agent.getState(AgentEventState));
-                  this.ensureSigintHandlers();
-                  this.agent.sendQuestionResponse(request.requestId, {result: response});
-                  this.humanInputPromise = null;
-                });
-            }
-          }
-        };
-
-        await Promise.race([processEvents(), processExecution()]);
-        this.spinner?.stop();
-      });
+      await raceAbort(
+        Promise.all([
+          this.consumeEvents(events$, signal),
+          this.consumeExecution(exec$, signal),
+        ]),
+        signal,
+      );
     } catch (e) {
-      if (e instanceof Error && e.name === 'AbortError') {
-        process.stdout.write("Agent session aborted.\n");
+      if (e instanceof DOMException && e.name === "AbortError") {
+        // Normal shutdown — Ctrl-C, agent.stopped, or external signal.
+      } else if (e instanceof Error && e.name === "AbortError") {
+        // Same, different runtime.
       } else {
         process.stderr.write(formatLogMessages(["Error while running agent loop", e as Error]));
       }
     } finally {
-      process.stdout.removeListener('resize', resizeHandler);
+      this.cancelInput();
+      this.cancelHuman();
+      this.stopSpinner();
+      this.abort.abort();
+      this.abort = null;
+      externalSignal.removeEventListener("abort", onExternalAbort);
+      process.stdout.removeListener("resize", onResize);
     }
-    ensureNewline();
+
+    this.ensureNewline();
   }
 
-  private ensureSigintHandlers() {
-    this.options.rl?.close()
-    process.removeAllListeners('SIGINT');
-    process.stdin.removeAllListeners('keypress');
+  /** Shuts down the loop cleanly. Safe to call multiple times. */
+  private shutdown(): void {
+    this.abort?.abort();
+  }
 
-    process.stdin.setRawMode(true); // Switch to raw mode to capture Ctrl+C manually
+  // ── Event stream ───────────────────────────────────────────────────
 
-    this.options.rl = readline.createInterface(process.stdin, process.stdout)
+  private async consumeEvents(
+    subscription: AsyncIterable<AgentEventState>,
+    signal: AbortSignal,
+  ): Promise<void> {
+    for await (const state of subscription) {
+      if (signal.aborted) return;
 
-    this.options.rl.on('SIGINT', () => {
-      if (this.abortControllerStack.length > 0) {
-        this.abortControllerStack[this.abortControllerStack.length - 1].abort();
-      } else {
-        process.stdout.write("Ctrl-C pressed. Exiting...\n");
-        process.exit(0);
+      if (this.inputPromise) await this.inputPromise;
+      if (this.humanPromise) await this.humanPromise;
+
+      for (const event of state.yieldEventsByCursor(this.eventCursor)) {
+        this.renderEvent(event);
       }
-    });
+    }
   }
+
+  // ── Execution-state stream ─────────────────────────────────────────
+
+  private async consumeExecution(
+    subscription: AsyncIterable<AgentExecutionState>,
+    signal: AbortSignal,
+  ): Promise<void> {
+    for await (const exec of subscription) {
+      if (signal.aborted) return;
+
+      this.syncSpinner(exec);
+      this.cancelStalePromises(exec);
+      this.maybeStartInput(exec);
+      this.maybeStartHumanInput(exec);
+    }
+  }
+
+  // ── Spinner management ─────────────────────────────────────────────
+
+  private syncSpinner(exec: AgentExecutionState): void {
+    if (!exec.busyWith && this.spinner) {
+      this.stopSpinner();
+      this.spinner = null;
+      return;
+    }
+
+    if (exec.busyWith && !this.spinner) {
+      this.spinner = new SimpleSpinner(exec.busyWith, theme.chatSpinner);
+      this.spinnerRunning = true;
+      this.spinner.start();
+    }
+  }
+
+  private stopSpinner(): void {
+    if (this.spinnerRunning) {
+      this.spinner?.stop();
+      this.spinnerRunning = false;
+    }
+  }
+
+  // ── Scoped cancellation ────────────────────────────────────────────
+
+  private cancelInput(): void {
+    this.inputAbort?.abort();
+    this.inputAbort = null;
+    this.inputPromise = null;
+  }
+
+  private cancelHuman(): void {
+    this.humanAbort?.abort();
+    this.humanAbort = null;
+    this.humanPromise = null;
+  }
+
+  private cancelStalePromises(exec: AgentExecutionState): void {
+    if (!exec.idle && this.inputPromise) {
+      this.cancelInput();
+    }
+    if (exec.waitingOn.length === 0 && this.humanPromise) {
+      this.cancelHuman();
+    }
+  }
+
+  // ── Input lifecycle ────────────────────────────────────────────────
+
+  private maybeStartInput(exec: AgentExecutionState): void {
+    if (!exec.idle || this.inputPromise) return;
+    this.ensureNewline();
+    this.inputPromise = this.inputLoop();
+  }
+
+  private inputLoop(): Promise<void> {
+    this.inputAbort?.abort();
+    this.inputAbort = new AbortController();
+    const signal = this.inputAbort.signal;
+
+    return this.gatherInput(signal)
+      .then((message) => {
+        this.inputAbort = null;
+        this.inputPromise = null;
+        this.resetSigintHandlers();
+        this.agent.handleInput({ message });
+      })
+      .catch((err) => {
+        this.inputAbort = null;
+        this.inputPromise = null;
+        if (err instanceof PartialInputError) {
+          if (err.buffer.trim() !== "") {
+            this.inputPromise = this.inputLoop();
+            return;
+          }
+        }
+        // Swallow AbortError and empty partial — nothing to do.
+      });
+  }
+
+  private maybeStartHumanInput(exec: AgentExecutionState): void {
+    if (exec.waitingOn.length === 0 || this.humanPromise) return;
+
+    this.humanAbort?.abort();
+    this.humanAbort = new AbortController();
+    const signal = this.humanAbort.signal;
+    const request = exec.waitingOn[0];
+
+    this.humanPromise = this.handleHumanRequest(request, signal)
+      .then(([req, response]) => {
+        this.humanAbort = null;
+        this.humanPromise = null;
+        this.redraw(this.agent.getState(AgentEventState));
+        this.resetSigintHandlers();
+        this.agent.sendQuestionResponse(req.requestId, { result: response });
+      })
+      .catch(() => {
+        this.humanAbort = null;
+        this.humanPromise = null;
+      });
+  }
+
+  // ── Rendering: full redraw ─────────────────────────────────────────
+
+  private redraw(state: AgentEventState): void {
+    this.write("\x1b[2J\x1b[0f\x1b[3J");
+    this.write(BANNER_COLOR(this.options.config.chatBanner) + "\n");
+    this.write(
+      OUTPUT_COLORS["output.chat"](
+        "Type your questions and hit Enter. Commands start with /\n" +
+        "Use ↑/↓ for command history, Esc to cancel your current activity\n" +
+        "Ctrl-C to return to the agent selection screen\n\n",
+      ),
+    );
+
+    this.lastWriteHadNewline = true;
+    this.currentOutputType = "chat";
+    this.currentLine = "";
+
+    for (const event of state.yieldEventsByCursor({ position: 0 })) {
+      this.renderEvent(event);
+    }
+
+    this.eventCursor.position = state.events.length;
+    this.write("\n");
+  }
+
+  // ── Rendering: single event ────────────────────────────────────────
+
+  private renderEvent(event: AgentEventEnvelope): void {
+    switch (event.type) {
+      case "agent.created":
+        this.renderSystemLine(`${this.agent.config.name} created`);
+        break;
+
+      case "agent.stopped":
+        this.shutdown();
+        break;
+
+      case "reset":
+        this.renderSystemLine(`Agent reset: ${event.what.join(", ")}`);
+        break;
+
+      case "abort":
+        this.renderSystemLine(event.message);
+        break;
+
+      case "output.artifact":
+        this.renderArtifact(event);
+        break;
+
+      case "output.warning":
+      case "output.error":
+      case "output.info":
+        this.renderStreamOutput({
+          ...event,
+          message: event.message.endsWith("\n") ? event.message : event.message + "\n",
+        });
+        break;
+
+      case "output.chat":
+      case "output.reasoning":
+        this.renderStreamOutput(event);
+        break;
+
+      case "input.handled":
+        this.renderInputHandled(event);
+        break;
+
+      case "input.received":
+        this.renderInputReceived(event);
+        break;
+
+      case "question.request":
+      case "question.response":
+        break;
+
+      default: {
+        const _exhaustive: never = event;
+        return _exhaustive;
+      }
+    }
+  }
+
+  // ── Rendering helpers ──────────────────────────────────────────────
+
+  private renderSystemLine(message: string): void {
+    this.stopSpinner();
+    this.ensureNewline();
+    this.write(OUTPUT_COLORS["output.info"](`${message}\n`));
+    this.currentLine = "";
+  }
+
+  private renderArtifact(event: AgentEventEnvelope & { type: "output.artifact" }): void {
+    this.stopSpinner();
+    this.ensureNewline();
+    this.write(OUTPUT_COLORS["output.info"](`Agent generated artifact: ${event.name}\n`));
+    if (event.encoding === "text") {
+      this.write(event.body.trim() + "\n");
+    }
+    this.currentLine = "";
+  }
+
+  private renderStreamOutput(event: AgentEventEnvelope & { message: string }): void {
+    this.stopSpinner();
+
+    if (event.type !== this.currentOutputType) {
+      this.ensureNewline();
+      if (event.type === "output.chat") this.printDivider("Chat");
+      else if (event.type === "output.reasoning") this.printDivider("Reasoning");
+      this.currentOutputType = event.type;
+    }
+
+    const color = OUTPUT_COLORS[event.type as OutputColorKey];
+
+    for (const char of event.message) {
+      if (char === "\n") {
+        this.write(color(applyMarkdownStyles(this.currentLine) + "\n"));
+        this.currentLine = "";
+      } else {
+        this.currentLine += char;
+      }
+    }
+
+    this.lastWriteHadNewline = event.message.endsWith("\n");
+  }
+
+  private renderInputHandled(event: AgentEventEnvelope & { type: "input.handled" }): void {
+    this.stopSpinner();
+    this.ensureNewline();
+    if (event.status === "cancelled" || event.status === "error") {
+      this.write(OUTPUT_COLORS["output.error"](event.message));
+      this.lastWriteHadNewline = true;
+    }
+    this.currentLine = "";
+  }
+
+  private renderInputReceived(event: AgentEventEnvelope & { type: "input.received" }): void {
+    this.ensureNewline();
+    this.write(
+      PREVIOUS_INPUT_COLOR(
+        createAsciiTable([["user >", event.message]], {
+          columnWidths: [7, process.stdout.columns ? process.stdout.columns - 7 : 65],
+          padding: 0,
+          grid: false,
+        }),
+      ),
+    );
+    this.lastWriteHadNewline = true;
+    this.currentLine = "";
+  }
+
+  // ── Terminal I/O primitives ────────────────────────────────────────
+
+  private write(data: string): void {
+    process.stdout.write(data);
+  }
+
+  private ensureNewline(): void {
+    if (!this.lastWriteHadNewline) {
+      this.write("\n");
+      this.lastWriteHadNewline = true;
+    }
+  }
+
+  private printDivider(label: string): void {
+    const lineChar = "─";
+    const width = process.stdout.columns ? Math.floor(process.stdout.columns * 0.8) : 60;
+    const tail = Math.max(0, width - 6 - label.length);
+    this.write(
+      DIVIDER_COLOR(lineChar.repeat(4) + " " + label + " " + lineChar.repeat(tail)) + "\n",
+    );
+    this.lastWriteHadNewline = true;
+  }
+
+  // ── Input collection ───────────────────────────────────────────────
 
   private async gatherInput(signal: AbortSignal): Promise<string> {
     const history = this.agent.getState(CommandHistoryState).commands;
+    this.resetSigintHandlers();
 
-    this.ensureSigintHandlers();
-
-    return await commandPrompt(
-      {
-        rl: this.options.rl!,
-        prefix: chalk.yellowBright("user"),
-        message: chalk.yellowBright(">"),
-        autoCompletion: this.options.availableCommands,
-        history,
-        signal,
-      }
-    );
+    return commandPrompt({
+      rl: this.options.rl!,
+      prefix: chalk.yellowBright("user"),
+      message: chalk.yellowBright(">"),
+      autoCompletion: this.options.availableCommands,
+      history,
+      signal,
+    });
   }
 
   private async handleHumanRequest(
-    request: ParsedQuestionRequest, signal: AbortSignal): Promise<[request: ParsedQuestionRequest, response: z.output<typeof QuestionResponseSchema>]> {
+    request: ParsedQuestionRequest,
+    signal: AbortSignal,
+  ): Promise<[ParsedQuestionRequest, z.output<typeof QuestionResponseSchema>]> {
+    const renderScreen =
+      this.options.config.uiFramework === "ink" ? renderScreenInk : renderScreenOpenTUI;
+    const Screen =
+      this.options.config.uiFramework === "ink"
+        ? InkQuestionInputScreen
+        : OpenTUIQuestionInputScreen;
 
-    const renderScreen = this.options.config.uiFramework === 'ink' ? renderScreenInk : renderScreenOpenTUI;
-    const QuestionInputScreen = this.options.config.uiFramework === 'ink' ? InkQuestionInputScreen : OpenTUIQuestionInputScreen;
-
-    const response = await renderScreen(QuestionInputScreen, { request, agent: this.agent, config: this.options.config }, signal);
+    const response = await renderScreen(
+      Screen,
+      { request, agent: this.agent, config: this.options.config },
+      signal,
+    );
     return [request, response];
   }
 
-  private async withAbortSignal<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
-    const abortController = new AbortController();
+  // ── Signal / readline helpers ──────────────────────────────────────
 
-    this.abortControllerStack.push(abortController);
+  private resetSigintHandlers(): void {
+    this.options.rl?.close();
+    process.removeAllListeners("SIGINT");
+    process.stdin.removeAllListeners("keypress");
+    process.stdin.setRawMode(true);
 
-    try {
-      return await fn(abortController.signal);
-    } finally {
-      abortController.abort();
-      this.abortControllerStack.pop();
-    }
+    this.options.rl = readline.createInterface(process.stdin, process.stdout);
+
+    this.options.rl.on("SIGINT", () => {
+      if (this.humanAbort) {
+        this.humanAbort.abort();
+      } else {
+        // Whether we're at the input prompt or not, Ctrl-C exits the loop.
+        // The input prompt will be cleaned up by cancelInput() in finally.
+        this.shutdown();
+      }
+    });
   }
 }
-
-
