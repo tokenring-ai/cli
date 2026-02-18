@@ -1,83 +1,78 @@
-# @tokenring-ai/cli
-
-Command-line interface for interacting with TokenRing AI agents. This package provides an interactive terminal-based interface for managing AI agents, executing commands, handling human interface requests, and real-time agent event rendering.
+# CLI Plugin
 
 ## Overview
 
-A comprehensive command-line interface (CLI) for managing TokenRing AI agents with support for two UI frameworks: **OpenTUI** (default) and **Ink**. This package serves as the primary CLI entry point for the TokenRing AI system, providing an interactive terminal experience with agent management, chat capabilities, custom inputs, and real-time agent event streaming. The CLI centers around two core service classes: `AgentCLI` (main entry point) and `AgentLoop` (agent execution handler).
+The `@tokenring-ai/cli` package provides a comprehensive command-line interface for interacting with TokenRing AI agents. This terminal-based interface enables users to manage agents, execute commands, and handle human interface requests with a rich, responsive UI. The package supports two UI frameworks: **OpenTUI** (default) and **Ink**, allowing you to choose the rendering engine that best fits your needs.
 
-## Installation
+## Chat Commands
 
-```bash
-bun install @tokenring-ai/cli
+Available commands in the agent CLI interface:
+
+### /edit - Open your editor to write a prompt
+
+The `/edit` command opens your system's default text editor to create or edit a prompt. This is useful for writing complex prompts, code examples, or detailed instructions that benefit from proper formatting and editing capabilities.
+
+**Usage:**
+```
+/edit [initial-text]
 ```
 
-## Features
+**Arguments:**
+- **initial-text** (optional): Text to pre-fill in the editor
 
-- **Dual UI Framework Support**: Choose between OpenTUI (default) or Ink rendering engines
-- **Agent Management**: Select from running agents, spawn new agents, connect to existing ones, or execute workflows via tree-based selection interface
-- **Interactive Chat**: Communicate with AI agents through a terminal interface with real-time event streaming
-- **Chat Commands**: Execute slash-prefixed commands (`/edit`, `/multi`) for prompt creation and multi-line input
-- **Human Interface Requests**: Handle confirmations, text inputs, password prompts, form submissions, tree selections, file selections, and custom responses
-- **Responsive Layout**: Automatically adjusts to terminal window size with different layouts for minimal, narrow, short, and wide screens (40x10 minimum)
-- **Keyboard Shortcuts**: Intuitive key combinations for navigation, selection, and interaction
-- **Real-time Event Streaming**: Stream agent outputs (chat, reasoning, system messages, errors) with color-coded formatting via event subscription
-- **Interactive Screens**: Render agent selection, loading, and question input screens
-- **Command History**: Input history with up/down arrow navigation and auto-completion for slash commands
-- **Editor Integration**: Built-in editor commands for complex prompt creation using system editor (`EDITOR` environment variable)
-- **Markdown Styling**: Auto-formatted markdown responses with custom coloring and horizontal line dividers
-- **Loading States**: Visual feedback with spinner animations during agent busy operations
-- **Exit Handling**: Graceful Ctrl-C handling with stack-based abort signal management and terminal cleanup
+**Editor Selection:**
+- Uses the `EDITOR` environment variable if set
+- Falls back to `vi` on Unix/Linux systems
+- Falls back to `notepad` on Windows systems
 
-## UI Frameworks
+**Examples:**
+```
+/edit                    # Open editor with blank content
+/edit Write a story...   # Open editor with initial text
+/edit #include <stdio.h> # Start with code snippet
+```
 
-The CLI supports two rendering frameworks that can be selected via the `uiFramework` configuration option:
+### /multi - Open an editor for multiline input
 
-### OpenTUI (Default)
+The `/multi` command opens your default text editor where you can write and edit multi-line text. This is useful for complex prompts, code examples, or detailed instructions that would be difficult to type line by line.
 
-- **Package**: `@opentui/react` and `@opentui/core`
-- **Features**: Advanced terminal rendering with alternate screen buffer support
-- **Components**: Uses `<box>` and `<text>` JSX elements
-- **Hooks**: `useTerminalDimensions()`, `useKeyboard()`
-- **Best for**: Full-featured terminal applications with complex layouts
+**Usage:**
+```
+/multi
+```
 
-### Ink
+**Behavior:**
+- Opens your system's default text editor (`EDITOR` environment variable)
+- If no `EDITOR` is set, uses `vi` on Unix/Linux, `notepad` on Windows
+- Start with a blank editor or continue from previous input
+- Save and close the editor to submit your text as input
+- If you cancel or provide empty input, nothing will be sent
 
-- **Package**: `ink`
-- **Features**: React-based terminal rendering with simpler API
-- **Components**: Uses `<Box>` and `<Text>` JSX elements (capitalized)
-- **Hooks**: `useStdout()`, `useInput()`
-- **Best for**: Simpler terminal UIs with React-like development experience
+## Plugin Configuration
 
-### Framework Selection
+The CLI plugin supports configuration options that define the user interface behavior and appearance. These options are defined in `schema.ts` as `CLIConfigSchema`.
 
+**Configuration Example:**
 ```typescript
-// Use OpenTUI (default)
 const config = {
   cli: {
-    // ... other config
-    uiFramework: "opentui"
-  }
-};
-
-// Use Ink
-const config = {
-  cli: {
-    // ... other config
-    uiFramework: "ink"
+    chatBanner: "TokenRing CLI",
+    loadingBannerNarrow: "Loading...",
+    loadingBannerWide: "Loading TokenRing CLI...",
+    loadingBannerCompact: "Loading",
+    screenBanner: "TokenRing CLI",
+    uiFramework: "opentui", // or "ink"
+    startAgent: {
+      type: "coder",
+      prompt: "Write a function to calculate Fibonacci",
+      shutdownWhenDone: true
+    }
   }
 };
 ```
 
-Both frameworks provide identical functionality and component interfaces. The choice is primarily based on preference and specific use case requirements.
-
-## Configuration
-
-The CLI configuration is optional and defined via a Zod schema:
-
+**Configuration Schema:**
 ```typescript
-import { z } from "zod";
-
 export const CLIConfigSchema = z.object({
   chatBanner: z.string(),
   loadingBannerNarrow: z.string(),
@@ -85,130 +80,409 @@ export const CLIConfigSchema = z.object({
   loadingBannerCompact: z.string(),
   screenBanner: z.string(),
   uiFramework: z.enum(['ink', 'opentui']).default('opentui'),
+  startAgent: z.object({
+    type: z.string(),
+    prompt: z.string().optional(),
+    shutdownWhenDone: z.boolean().default(true),
+  }).optional(),
+})
+```
+
+**Configuration Options:**
+
+- **chatBanner**: Banner message displayed during agent chat sessions (default: "TokenRing CLI")
+- **loadingBannerNarrow**: Banner message for narrow terminal windows during loading (default: "Loading...")
+- **loadingBannerWide**: Banner message for wide terminal windows during loading (default: "Loading TokenRing CLI...")
+- **loadingBannerCompact**: Banner message for compact terminal layouts during loading (default: "Loading")
+- **screenBanner**: Banner message displayed on all interactive screens (default: "TokenRing CLI")
+- **uiFramework**: UI rendering framework to use - `'opentui'` (default) or `'ink'`
+- **startAgent**: Optional agent to automatically spawn on startup
+  - **type**: Agent type to spawn
+  - **prompt**: Initial prompt to send to the agent
+  - **shutdownWhenDone**: Whether to shutdown after agent completes (default: true)
+
+## Agent Configuration
+
+The CLI service implements `TokenRingService` and can be configured with an agent through the plugin integration.
+
+**Service Interface:**
+```typescript
+class AgentCLI implements TokenRingService {
+  readonly name = "AgentCLI";
+  description = "Command-line interface for interacting with agents";
+  
+  constructor(readonly app: TokenRingApp, readonly config: z.infer<typeof CLIConfigSchema>);
+  
+  async run(signal: AbortSignal): Promise<void>;
+}
+```
+
+## Tools
+
+The CLI package does not define any tools directly. Tools are provided through the agent system and available during agent interactions.
+
+## Services
+
+### AgentCLI Service
+
+The main service that manages CLI operations, including user input, agent selection, and interaction handling.
+
+**Methods:**
+
+| Method | Description | Parameters | Returns |
+|--------|-------------|------------|---------|
+| `run(signal)` | Starts the CLI interface and manages agent interactions | `signal: AbortSignal` | `Promise<void>` |
+
+**Agent Loop Operations:**
+
+The `AgentCLI` service uses an `AgentLoop` instance to handle individual agent interactions:
+
+- **Event Processing**: Consumes agent events and renders them to the terminal
+- **Execution State Sync**: Syncs with agent execution state to show appropriate UI indicators
+- **Input Collection**: Gathers user input via the `commandPrompt` function
+- **Human Request Handling**: Processes human interface requests from agents
+- **Spinner Management**: Displays loading spinners during agent activity
+- **Signal Handling**: Responds to abort signals and handles graceful shutdown
+
+### AgentLoop Service
+
+The `AgentLoop` class handles the interactive loop for individual agents, managing input collection, event rendering, and human request handling.
+
+**Constructor:**
+```typescript
+constructor(
+  readonly agent: Agent,
+  readonly options: AgentLoopOptions
+)
+```
+
+**Methods:**
+
+| Method | Description | Parameters | Returns |
+|--------|-------------|------------|---------|
+| `run(signal)` | Starts the agent interaction loop | `signal: AbortSignal` | `Promise<void>` |
+| `shutdown()` | Shuts down the loop cleanly | - | `void` |
+| `renderEvent(event)` | Renders a single agent event | `event: AgentEventEnvelope` | `void` |
+| `redraw(state)` | Performs a full screen redraw | `state: AgentEventState` | `void` |
+
+**AgentLoopOptions Interface:**
+```typescript
+export interface AgentLoopOptions {
+  availableCommands: string[];
+  rl: readline.Interface;
+  config: z.infer<typeof CLIConfigSchema>;
+}
+```
+
+### commandPrompt Function
+
+Provides a prompt implementation using a shared Node.js readline interface.
+
+**Interface:**
+```typescript
+export interface CommandPromptOptions {
+  rl: readline.Interface;
+  message: string;
+  prefix?: string;
+  history?: string[];
+  autoCompletion?: string[] | ((line: string) => Promise<string[]> | string[]);
+  signal?: AbortSignal;
+}
+
+export async function commandPrompt(options: CommandPromptOptions): Promise<string>
+```
+
+**Usage:**
+```typescript
+const answer = await commandPrompt({
+  rl: readlineInterface,
+  message: "Enter your prompt:",
+  prefix: chalk.yellowBright("user"),
+  history: [],
+  autoCompletion: [],
 });
 ```
 
-### Configuration Options
+## Providers
 
-- **chatBanner**: Banner message displayed during agent chat sessions at the top of the terminal
-- **loadingBannerNarrow**: Banner message for narrow terminal windows (`width < 80` but `not minimal`) during loading states
-- **loadingBannerWide**: Banner message for wide terminals (`width >= 80`) during loading states (default)
-- **loadingBannerCompact**: Banner message for compact terminal layouts (`minimal` mode) during loading
-- **screenBanner**: Banner message displayed on all interactive screens and selection menus
-- **uiFramework**: UI rendering framework to use - `'opentui'` (default) or `'ink'`
+The CLI package does not define any providers that register with a KeyedRegistry.
 
-### Configuration Example
+## RPC Endpoints
+
+The CLI package does not define any RPC endpoints.
+
+## State Management
+
+The CLI package manages the following state components through the agent system:
+
+- **AgentEventCursor**: Tracks current position in the event stream
+- **AgentEventState**: Manages agent event history and rendering state
+- **AgentExecutionState**: Tracks agent execution status and active operations
+- **CommandHistoryState**: Manages input history for command completion
+
+## Configuration
+
+The package uses Zod schemas for configuration validation:
+
+```typescript
+// Schema in pkg/cli/schema.ts
+export const CLIConfigSchema = z.object({
+  chatBanner: z.string(),
+  loadingBannerNarrow: z.string(),
+  loadingBannerWide: z.string(),
+  loadingBannerCompact: z.string(),
+  screenBanner: z.string(),
+  uiFramework: z.enum(['ink', 'opentui']).default('opentui'),
+  startAgent: z.object({
+    type: z.string(),
+    prompt: z.string().optional(),
+    shutdownWhenDone: z.boolean().default(true),
+  }).optional(),
+})
+
+// Plugin configuration
+const packageConfigSchema = z.object({
+  cli: CLIConfigSchema.optional()
+});
+```
+
+## Usage Examples
+
+### Basic CLI Usage with Plugin
 
 ```typescript
 import TokenRingApp from "@tokenring-ai/app";
 import cliPlugin from "@tokenring-ai/cli";
 
-// Create and configure the application
 const app = new TokenRingApp();
 
-// Install CLI plugin with custom configuration
-app.install(cliPlugin, {
+const config = {
   cli: {
     chatBanner: "TokenRing CLI",
     loadingBannerNarrow: "Loading...",
     loadingBannerWide: "Loading TokenRing CLI...",
     loadingBannerCompact: "Loading",
     screenBanner: "TokenRing CLI",
-    uiFramework: "opentui" // or "ink"
+    uiFramework: "opentui",
+    startAgent: {
+      type: "coder",
+      prompt: "Write a function to calculate Fibonacci",
+      shutdownWhenDone: true
+    }
   }
-});
+};
 
-// Start the CLI (blocks until exit)
+app.install(cliPlugin, config);
 await app.start();
 ```
+
+### Manual CLI Usage (without plugin)
+
+```typescript
+import TokenRingApp from "@tokenring-ai/app";
+import AgentCLI from "@tokenring-ai/cli";
+
+const app = new TokenRingApp();
+
+app.addServices(new AgentCLI(app, {
+  chatBanner: "TokenRing CLI",
+  loadingBannerNarrow: "Loading...",
+  loadingBannerWide: "Loading TokenRing CLI...",
+  loadingBannerCompact: "Loading",
+  screenBanner: "TokenRing CLI",
+  uiFramework: "opentui"
+}));
+
+await app.start();
+```
+
+### Starting a Specific Agent
+
+```typescript
+const config = {
+  cli: {
+    chatBanner: "TokenRing CLI",
+    uiFramework: "opentui",
+    startAgent: {
+      type: "coder",
+      prompt: "Help me debug this issue...",
+      shutdownWhenDone: false // Keep agent running after completion
+    }
+  }
+};
+```
+
+## Theme Configuration
+
+The CLI uses a color theme defined in `theme.ts` that controls the appearance of all UI elements:
+
+```typescript
+export const theme = {
+  // Agent selection
+  agentSelectionBanner: '#ffffff',
+  agentSelectionBannerBackground: '#2c2c2c',
+  
+  // Question screen
+  questionScreenBanner: '#ffffff',
+  questionScreenBannerBackground: '#cf6e32',
+  
+  // General panel background style
+  panelBackground: '#1e1e1e',
+  screenBackground: '#1e1e1e',
+  
+  // Ask screen
+  askMessage: '#00BCD4FF',
+  
+  // Confirmation screen
+  confirmYes: '#66BB6AFF',
+  confirmNo: '#EF5350FF',
+  confirmInactive: '#9E9E9EFF',
+  confirmTimeout: '#FFEB3BFF',
+  
+  // Chat styles
+  chatOutputText: '#66BB6AFF',
+  chatReasoningText: '#FFEB3BFF',
+  chatPreviousInput: '#8c6ac6',
+  chatSystemInfoMessage: '#64B5F6FF',
+  chatSystemWarningMessage: '#FFEB3BFF',
+  chatSystemErrorMessage: '#EF5350FF',
+  chatDivider: '#9E9E9EFF',
+  chatSpinner: '#FFEB3BFF',
+  
+  // Box styles
+  boxTitle: '#FFF176FF',
+  
+  // Tree Selection screen
+  treeMessage: '#00BCD4FF',
+  treePartiallySelectedItem: '#FFF176FF',
+  treeFullySelectedItem: '#66BB6AFF',
+  treeNotSelectedItem: '#9E9E9EFF',
+  treeHighlightedItem: '#FFEB3BFF',
+  treeTimeout: '#FFEB3BFF',
+  
+  // Loading screen
+  loadingScreenBackground: '#023683',
+  loadingScreenBannerBackground: '#022f6c',
+  loadingScreenText: '#f0f9ff',
+} as const;
+```
+
+### Theme Usage
+
+The theme is automatically applied to all UI components:
+
+- **OpenTUI components**: Use `fg` and `backgroundColor` props with theme values
+- **Ink components**: Use `color` and `backgroundColor` props with theme values
+- **Terminal output**: Uses `chalk.hex()` with theme values
 
 ## Package Structure
 
 ```
 pkg/cli/
-├── index.ts                         # Main entry point (exports AgentCLI, AgentLoop, CLIConfigSchema)
-├── AgentCLI.ts                      # Main CLI service class with framework selection
-├── AgentLoop.ts                     # Agent execution loop handler with framework selection
-├── commandPrompt.ts                 # Command prompt with history support and partial input error
-├── plugin.ts                        # Token Ring plugin registration
-├── chatCommands.ts                  # Chat commands export (/edit, /multi)
-├── schema.ts                        # Configuration schema definition
-├── theme.ts                         # Color theme definitions for CLI components
-│
-├── opentui/                         # OpenTUI-specific implementations
-│   ├── renderScreen.tsx             # OpenTUI screen rendering utility
-│   ├── components/
-│   │   └── inputs/
-│   │       ├── TextInput.tsx        # Text input component
-│   │       ├── TreeSelect.tsx       # Tree selection component
-│   │       ├── FileSelect.tsx       # File selection component
-│   │       ├── FormInput.tsx        # Form input component
-│   │       └── types.ts             # Component prop types
-│   ├── hooks/
-│   │   └── useResponsiveLayout.ts   # OpenTUI responsive layout hook
-│   └── screens/
-│       ├── AgentSelectionScreen.tsx # Agent selection interface
-│       ├── LoadingScreen.tsx        # Loading screen
-│       └── QuestionInputScreen.tsx  # Question input screen
-│
-├── ink/                             # Ink-specific implementations
-│   ├── renderScreen.tsx             # Ink screen rendering utility
-│   ├── components/
-│   │   └── inputs/
-│   │       ├── TextInput.tsx        # Text input component
-│   │       ├── TreeSelect.tsx       # Tree selection component
-│   │       ├── FileSelect.tsx       # File selection component
-│   │       ├── FormInput.tsx        # Form input component
-│   │       └── types.ts             # Component prop types
-│   ├── hooks/
-│   │   └── useResponsiveLayout.ts   # Ink responsive layout hook
-│   └── screens/
-│       ├── AgentSelectionScreen.tsx # Agent selection interface
-│       ├── LoadingScreen.tsx        # Loading screen
-│       └── QuestionInputScreen.tsx  # Question input screen
-│
-├── hooks/
-│   └── useAbortSignal.ts            # Shared abort signal management hook
-│
-├── utility/
-│   └── applyMarkdownStyles.ts       # Markdown styling utility
-│
-├── commands/
+├── components/                      # UI components (framework-specific)
+│   └── inputs/                      # Input components
+│       ├── FileSelect.tsx
+│       ├── FormInput.tsx
+│       ├── TextInput.tsx
+│       └── types.ts
+├── commands/                        # Chat command implementations
 │   ├── edit.ts                      # /edit command implementation
 │   └── multi.ts                     # /multi command implementation
-│
-├── SimpleSpinner.ts                 # Spinner component for loading states with 10 frames
-├── package.json                     # Package metadata and dependencies
-└── vitest.config.ts                 # Test configuration
+├── hooks/                           # Shared React hooks
+│   ├── useAbortSignal.ts            # Shared abort signal hook
+│   └── useResponsiveLayout.ts       # Shared responsive layout
+├── ink/                             # Ink-specific implementations
+│   ├── components/                  # Ink UI components
+│   ├── hooks/                       # Ink React hooks
+│   ├── screens/                     # Ink screen components
+│   │   ├── AgentSelectionScreen.tsx
+│   │   ├── QuestionInputScreen.tsx
+│   │   └── LoadingScreen.tsx
+│   └── renderScreen.tsx             # Ink screen rendering
+├── opentui/                         # OpenTUI-specific implementations
+│   ├── components/                  # OpenTUI UI components
+│   ├── hooks/                       # OpenTUI React hooks
+│   ├── screens/                     # OpenTUI screen components
+│   │   ├── AgentSelectionScreen.tsx
+│   │   ├── QuestionInputScreen.tsx
+│   │   └── LoadingScreen.tsx
+│   └── renderScreen.tsx             # OpenTUI screen rendering
+├── utility/                         # Utility functions
+│   └── applyMarkdownStyles.ts       # Markdown styling utility
+├── AgentCLI.ts                      # Main CLI service class
+├── AgentLoop.ts                     # Agent interaction loop handler
+├── commandPrompt.ts                 # Command prompt with history support
+├── SimpleSpinner.ts                 # Spinner component for loading states
+├── theme.ts                         # Color theme definitions
+├── chatCommands.ts                  # Chat commands export
+├── plugin.ts                        # Plugin definition
+├── index.ts                         # Main entry point
+├── schema.ts                        # Configuration schema definition
+├── package.json
+└── README.md
 ```
+
+### Key Files
+
+- **AgentCLI.ts**: Main service class that coordinates CLI operations
+- **AgentLoop.ts**: Handles the interaction loop for individual agents
+- **commandPrompt.ts**: Provides readline-based input with history and completion
+- **SimpleSpinner.ts**: Custom spinner implementation that integrates with abort signals
+- **renderScreen.tsx** (both frameworks): Renders interactive UI screens
+- **theme.ts**: Defines the color theme used throughout the CLI
 
 ## Dependencies
 
 ### Core Dependencies
 
-- `@tokenring-ai/app` (0.2.0) - Application framework and plugin system
-- `@tokenring-ai/chat` (0.2.0) - Chat service and tool definitions
-- `@tokenring-ai/agent` (0.2.0) - Agent framework and capabilities
-- `@tokenring-ai/utility` (0.2.0) - Utility functions (formatLogMessage, asciiTable)
-- `zod` (^4.3.6) - Runtime type validation for configuration and schemas
+- `@tokenring-ai/app` (0.2.0)
+- `@tokenring-ai/agent` (0.2.0)
+- `@tokenring-ai/chat` (0.2.0)
+- `@tokenring-ai/utility` (0.2.0)
+- `@tokenring-ai/web-host` (0.2.0)
+- `@tokenring-ai/workflow` (0.2.0)
+- `@tokenring-ai/filesystem` (0.2.0)
 
 ### UI Frameworks
 
-- `@opentui/core` (^0.1.75) - OpenTUI core components and keyboard management
-- `@opentui/react` (^0.1.75) - OpenTUI React bindings and terminal components
-- `ink` (^6.6.0) - Ink terminal rendering framework
-- `react` (^19.2.4) - React library for component implementations
+- `@opentui/core` (^0.1.80)
+- `@opentui/react` (^0.1.80)
+- `ink` (^6.6.0)
+- `react` (^19.2.4)
+- `fullscreen-ink` (^0.1.0)
 
 ### Prompt Handling
 
-- `@inquirer/prompts` (^8.2.0) - Modern interactive prompts for /multi editor
-- `chalk` (^5.6.2) - Terminal coloring and formatting
+- `@inquirer/prompts` (^8.2.1)
 
-### Node.js Utilities
+### Utilities
 
-- `execa` (^9.6.1) - Executable process runner for editor commands (/edit)
-- `open` (^11.0.0) - Opening URLs in default browser
+- `chalk` (^5.6.2)
+- `execa` (^9.6.1)
+- `open` (^11.0.0)
+- `zod` (^4.3.6)
+
+### Development Dependencies
+
+- `vitest` (^4.0.18)
+- `typescript` (^5.9.3)
+- `@types/react` (^19.2.14)
+
+## Testing
+
+The package uses vitest for unit testing:
+
+```bash
+# Run tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run with coverage
+npm run test:coverage
+```
 
 ## License
 
-MIT License - see [package.json](./package.json) file for details.
+MIT License - see LICENSE file for details.
