@@ -1,5 +1,6 @@
 import {Agent} from "@tokenring-ai/agent";
 import {TokenRingAgentCommand} from "@tokenring-ai/agent/types";
+import {CommandFailedError} from "@tokenring-ai/agent/AgentError";
 import {execa} from "execa";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -15,7 +16,7 @@ const description: string = "/edit - Open your editor to write a prompt.";
 /**
  * Executes the edit command to open an editor for prompt creation
  */
-async function execute(remainder: string, agent: Agent): Promise<void> {
+async function execute(remainder: string, agent: Agent): Promise<string> {
 
   // Create a temp file for editing
   const tmpFile = path.join(os.tmpdir(), `aider_edit_${Date.now()}.txt`);
@@ -27,20 +28,16 @@ async function execute(remainder: string, agent: Agent): Promise<void> {
     await execa(editor, [tmpFile], {stdio: "inherit"});
   } catch (error: unknown) {
     const err = error as { shortMessage?: string; message?: string };
-    agent.errorMessage(`Editor process failed: ${err.shortMessage || err.message}`);
     try {
       await fs.unlink(tmpFile);
     } catch {
       /* ignore cleanup error */
     }
-    return;
+    throw new CommandFailedError(`Editor process failed: ${err.shortMessage || err.message}`);
   }
 
   // Read the edited content
   const editedContent = await fs.readFile(tmpFile, "utf8");
-
-  // Output the edited content as a system line
-  agent.infoMessage("Edited prompt:\n" + editedContent);
 
   // Clean up the temporary file
   try {
@@ -48,6 +45,8 @@ async function execute(remainder: string, agent: Agent): Promise<void> {
   } catch {
     /* ignore cleanup error */
   }
+
+  return `Edited prompt:\n${editedContent}`;
 }
 
 /**

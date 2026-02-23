@@ -9,7 +9,7 @@ const description: string =
 /**
  * Executes the multi command to open an editor for multiline input
  */
-async function execute(_args: string, agent: Agent): Promise<void> {
+async function execute(_args: string, agent: Agent): Promise<string> {
   const message = await editor({
     message: "Enter your multiline text (save and close editor to submit):",
     waitForUserInput: false,
@@ -17,7 +17,10 @@ async function execute(_args: string, agent: Agent): Promise<void> {
 
   if (message) {
     agent.handleInput({message});
+    return "Multiline input submitted.";
   }
+  
+  return "Multiline input cancelled.";
 }
 
 /**
