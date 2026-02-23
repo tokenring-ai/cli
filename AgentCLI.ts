@@ -24,6 +24,7 @@ export default class AgentCLI implements TokenRingService {
   description = "Command-line interface for interacting with agents";
 
   private rl!: readline.Interface;
+  private loadingScreenAbortController: AbortController = new AbortController();
 
   /**
    * Creates a new AgentCLI instance.
@@ -31,11 +32,27 @@ export default class AgentCLI implements TokenRingService {
    * @param config The configuration for the CLI.
    */
   constructor(readonly app: TokenRingApp, readonly config: z.infer<typeof CLIConfigSchema>) {
+    if (! this.config.startAgent) {
+      const renderScreen = this.config.uiFramework === 'ink' ? renderScreenInk : renderScreenOpenTUI;
+      const LoadingScreen = this.config.uiFramework === 'ink' ? InkLoadingScreen : OpenTUILoadingScreen;
+
+      app.trackPromise(this, async appAbortSignal => {
+        const abortHandler = () => this.loadingScreenAbortController.abort();
+        try {
+          appAbortSignal.addEventListener("abort", abortHandler);
+          await renderScreen(LoadingScreen, {
+            config: this.config
+          }, this.loadingScreenAbortController.signal);
+        } catch (err) {}
+        appAbortSignal.removeEventListener("abort", abortHandler);
+      })
+    }
   }
 
   async run(signal: AbortSignal): Promise<void> {
+    this.loadingScreenAbortController.abort();
+
     const renderScreen = this.config.uiFramework === 'ink' ? renderScreenInk : renderScreenOpenTUI;
-    const LoadingScreen = this.config.uiFramework === 'ink' ? InkLoadingScreen : OpenTUILoadingScreen;
     const AgentSelectionScreen = this.config.uiFramework === 'ink' ? InkAgentSelectionScreen : OpenTUIAgentSelectionScreen;
 
     let initialAgent: Agent | undefined;
@@ -53,10 +70,6 @@ export default class AgentCLI implements TokenRingService {
         process.stderr.write(formatLogMessages(["Error while spawning agent", error as Error]));
         process.exit(1);
       }
-    } else {
-      await renderScreen(LoadingScreen, {
-        config: this.config
-      }, signal);
     }
 
     for (let agent = initialAgent ?? await renderScreen(AgentSelectionScreen, {app: this.app, config: this.config}, signal); agent; agent = await renderScreen(AgentSelectionScreen, {app: this.app, config: this.config}, signal)) {

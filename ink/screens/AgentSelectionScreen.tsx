@@ -1,4 +1,4 @@
-import {Box, Text} from 'ink';
+import {Box, Text, useStdin} from 'ink';
 import type Agent from '@tokenring-ai/agent/Agent';
 import type {ParsedTreeSelectQuestion, TreeLeaf} from "@tokenring-ai/agent/question";
 import AgentManager from '@tokenring-ai/agent/services/AgentManager';
@@ -10,7 +10,7 @@ import {WebHostService} from "@tokenring-ai/web-host";
 import SPAResource from "@tokenring-ai/web-host/SPAResource";
 import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
 import open from 'open';
-import React, {type ReactNode, useCallback, useMemo, useState} from 'react';
+import React, {type ReactNode, useCallback, useEffect, useMemo, useState} from 'react';
 import {z} from "zod";
 import TreeSelect from "../components/inputs/TreeSelect.tsx";
 import {useResponsiveLayout} from "../hooks/useResponsiveLayout.ts";

@@ -34,6 +34,12 @@ const OUTPUT_COLORS = {
   "output.info": chalk.hex(theme.chatSystemInfoMessage),
   "output.warning": chalk.hex(theme.chatSystemWarningMessage),
   "output.error": chalk.hex(theme.chatSystemErrorMessage),
+  "input.received": chalk.hex(theme.chatInputReceived),
+  "input.handled": chalk.hex(theme.chatInputHandledSuccess),
+  "question.request": chalk.hex(theme.chatQuestionRequest),
+  "question.response": chalk.hex(theme.chatQuestionResponse),
+  "reset": chalk.hex(theme.chatReset),
+  "abort": chalk.hex(theme.chatAbort),
 } as const;
 
 const PREVIOUS_INPUT_COLOR = chalk.hex(theme.chatPreviousInput);
@@ -306,7 +312,7 @@ export default class AgentLoop {
   private renderEvent(event: AgentEventEnvelope): void {
     switch (event.type) {
       case "agent.created":
-        this.renderSystemLine(`${this.agent.config.name} created`);
+        this.renderSystemLine(event.message);
         break;
 
       case "agent.stopped":
@@ -348,7 +354,11 @@ export default class AgentLoop {
         break;
 
       case "question.request":
+        this.renderQuestionRequest(event);
+        break;
+
       case "question.response":
+        this.renderQuestionResponse(event);
         break;
 
       default: {
@@ -406,8 +416,11 @@ export default class AgentLoop {
     this.ensureNewline();
     if (event.status === "cancelled" || event.status === "error") {
       this.write(OUTPUT_COLORS["output.error"](event.message));
-      this.lastWriteHadNewline = true;
+    } else if (event.status === "success") {
+      // Render success message with output.info color (like the frontend)
+      this.write(OUTPUT_COLORS["input.handled"](event.message));
     }
+    this.lastWriteHadNewline = true;
     this.currentLine = "";
   }
 
@@ -415,13 +428,30 @@ export default class AgentLoop {
     this.ensureNewline();
     this.write(
       PREVIOUS_INPUT_COLOR(
-        createAsciiTable([["user >", event.message]], {
+        createAsciiTable([[`user >`, event.message]], {
           columnWidths: [7, process.stdout.columns ? process.stdout.columns - 7 : 65],
           padding: 0,
           grid: false,
         }),
       ),
     );
+    this.lastWriteHadNewline = true;
+    this.currentLine = "";
+  }
+
+  private renderQuestionRequest(event: AgentEventEnvelope & { type: "question.request" }): void {
+    this.stopSpinner();
+    this.ensureNewline();
+    this.write(OUTPUT_COLORS["question.request"](`\n${event.message}\n\n`));
+    this.currentLine = "";
+  }
+
+  private renderQuestionResponse(event: AgentEventEnvelope & { type: "question.response" }): void {
+    this.stopSpinner();
+    this.ensureNewline();
+    // Format the response message for display
+    const responseStr = JSON.stringify(event.result, null, 2);
+    this.write(OUTPUT_COLORS["question.response"](`Response: ${responseStr}\n`));
     this.lastWriteHadNewline = true;
     this.currentLine = "";
   }

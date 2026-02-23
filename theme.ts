@@ -29,6 +29,12 @@ export const theme = {
   chatSystemErrorMessage: '#EF5350FF',
   chatDivider: '#9E9E9EFF',
   chatSpinner: '#FFEB3BFF',
+  chatInputReceived: '#6699CCFF',
+  chatInputHandledSuccess: '#99CC99FF',
+  chatQuestionRequest: '#00BCD4FF',
+  chatQuestionResponse: '#00BCD4FF',
+  chatReset: '#AB47BCFF',
+  chatAbort: '#EF5350FF',
 
   // Box styles
   boxTitle: '#FFF176FF',
@@ -42,7 +48,7 @@ export const theme = {
   treeTimeout: '#FFEB3BFF',
 
   // Loading screen
-  loadingScreenBackground: '#023683',
-  loadingScreenBannerBackground: '#022f6c',
+  loadingScreenBackground: '#27292c',
+  loadingScreenBannerBackground: '#2c2e32',
   loadingScreenText: '#f0f9ff',
 } as const;
