@@ -36,10 +36,11 @@ export default class AgentCLI implements TokenRingService {
       const renderScreen = this.config.uiFramework === 'ink' ? renderScreenInk : renderScreenOpenTUI;
       const LoadingScreen = this.config.uiFramework === 'ink' ? InkLoadingScreen : OpenTUILoadingScreen;
 
-      app.trackPromise(this, async appAbortSignal => {
+      app.runBackgroundTask(this, async appAbortSignal => {
         const abortHandler = () => this.loadingScreenAbortController.abort();
+        appAbortSignal.addEventListener("abort", abortHandler);
+
         try {
-          appAbortSignal.addEventListener("abort", abortHandler);
           await renderScreen(LoadingScreen, {
             config: this.config
           }, this.loadingScreenAbortController.signal);

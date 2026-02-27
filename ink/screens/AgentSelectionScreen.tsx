@@ -1,8 +1,8 @@
-import {Box, Text, useStdin} from 'ink';
+import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
+import {Box, Text} from 'ink';
 import type Agent from '@tokenring-ai/agent/Agent';
 import type {ParsedTreeSelectQuestion, TreeLeaf} from "@tokenring-ai/agent/question";
 import AgentManager from '@tokenring-ai/agent/services/AgentManager';
-import {AgentExecutionState} from "@tokenring-ai/agent/state/agentExecutionState";
 import TokenRingApp from "@tokenring-ai/app";
 import {ChatAgentConfigSchema} from "@tokenring-ai/chat";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
@@ -46,7 +46,7 @@ export default function AgentSelectionScreen({
       if (config) {
         setPreviewElement(
           <Box flexDirection="column" flexGrow={1} borderStyle="round" paddingLeft={1} paddingRight={1}>
-            <Text color={theme.boxTitle}>{ config.name }</Text>
+            <Text color={theme.boxTitle}>{ config.displayName }</Text>
             <Text color={theme.boxTitle}>{ config.description }{'\n'}</Text>
             <Text>{'\n'}Enabled Tools:{'\n'}{enabledTools.join(", ") || '(none)'}</Text>
           </Box>
@@ -55,13 +55,13 @@ export default function AgentSelectionScreen({
     } else if (action === 'connect') {
       const agent = agentManager.getAgent(remainder);
       if (agent) {
-        const executionState = agent.getState(AgentExecutionState);
+        const eventState = agent.getState(AgentEventState);
 
         setPreviewElement(
           <Box flexDirection="column" flexGrow={1} borderStyle="round" paddingLeft={1} paddingRight={1}>
             <Text color={theme.boxTitle}>Agent {agent.id}</Text>
-            <Text color={theme.boxTitle}>{ agent.config.name }</Text>
-            <Text>Agent is { executionState.idle ? 'idle' : 'running' }</Text>
+            <Text color={theme.boxTitle}>{ agent.config.displayName }</Text>
+            <Text>Agent is { eventState.idle ? 'idle' : 'running' }</Text>
           </Box>
         );
       }
@@ -113,7 +113,7 @@ export default function AgentSelectionScreen({
 
     configs.forEach(([type, config]) => {
       const leaf: TreeLeaf = {
-        name: `${config.name} (${type})`,
+        name: `${config.displayName} (${type})`,
         value: `spawn:${type}`,
       };
 
@@ -127,7 +127,7 @@ export default function AgentSelectionScreen({
     const currentAgents = agentManager.getAgents();
     if (currentAgents.length > 0) {
       categories['Current Agents'] = currentAgents.map(agent => ({
-        name: agent.name,
+        name: agent.displayName,
         value: `connect:${agent.id}`,
       }));
     }
