@@ -100,6 +100,7 @@ Opens your system's default text editor to create or edit a prompt. This is usef
 - \`/multi\` - Open editor for multi-line input (simpler interface)`;
 
 export default {
+  name: "edit",
   description,
   execute,
   help,

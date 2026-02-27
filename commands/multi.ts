@@ -56,6 +56,7 @@ Opens your default text editor where you can write and edit multi-line text. Thi
 - Your changes are only sent if you save the file`;
 
 export default {
+  name: "multi",
   description,
   execute,
   help,

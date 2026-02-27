@@ -3,7 +3,7 @@ import {TokenRingPlugin} from "@tokenring-ai/app";
 import {z} from "zod";
 import AgentCLI from "./AgentCLI.ts";
 
-import chatCommands from "./chatCommands.ts";
+import agentCommands from "./commands.ts";
 import packageJSON from './package.json' with {type: 'json'};
 import {CLIConfigSchema} from "./schema.ts";
 
@@ -18,7 +18,7 @@ export default {
   install(app, config) {
     if (config.cli) {
       app.waitForService(AgentCommandService, agentCommandService =>
-        agentCommandService.addAgentCommands(chatCommands)
+        agentCommandService.addAgentCommands(agentCommands)
       );
       app.addServices(new AgentCLI(app, config.cli));
     }

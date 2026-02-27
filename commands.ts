@@ -1,7 +1,7 @@
 import edit from "./commands/edit.ts";
 import multi from "./commands/multi.ts";
 
-export default {
+export default [
   edit,
   multi,
-};
+];
