@@ -1,23 +1,12 @@
 /** @jsxImportSource @opentui/react */
 import {useTerminalDimensions} from "@opentui/react";
-import React, {useEffect, useReducer, useState} from 'react';
+import ridiculousMessages from "@tokenring-ai/utility/string/ridiculousMessages";
+import React, {useEffect, useReducer} from 'react';
 import {z} from 'zod';
 
 import {CLIConfigSchema} from "../../schema.ts";
 import {theme} from "../../theme.ts";
 
-const loadingTasks = [
-  "Reticulating splines",
-  "Charging flux capacitor",
-  "Herding cats",
-  "Downloading more RAM",
-  "Inverting the binary tree",
-  "Locating the 'any' key",
-  "Adjusting the coffee-to-code ratio",
-  "Calculating the ultimate answer",
-  "Polishing pixels",
-  "Feeding the hamsters",
-];
 interface LoadingScreenProps {
   config: z.output<typeof CLIConfigSchema>;
   onResponse: (unused: null) => void;
@@ -66,7 +55,7 @@ export default function LoadingScreen({
       </box>
       <box paddingTop={1} paddingBottom={2}>
         <text fg={theme.loadingScreenText}>
-          {currentSpinner} {loadingTasks[Math.floor(progress / 10) % loadingTasks.length]}
+          {currentSpinner} {ridiculousMessages[Math.floor(progress / 10) % ridiculousMessages.length]}
         </text>
       </box>
     </box>
