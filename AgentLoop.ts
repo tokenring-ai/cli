@@ -39,6 +39,9 @@ const OUTPUT_COLORS = {
   "question.response": chalk.hex(theme.chatQuestionResponse),
   "reset": chalk.hex(theme.chatReset),
   "abort": chalk.hex(theme.chatAbort),
+  "pause": chalk.hex(theme.chatSystemWarningMessage),
+  "resume": chalk.hex(theme.chatSystemInfoMessage),
+  "status": chalk.hex(theme.chatSystemInfoMessage),
 } as const;
 
 const PREVIOUS_INPUT_COLOR = chalk.hex(theme.chatPreviousInput);
@@ -203,14 +206,6 @@ export default class AgentLoop {
         // Do nothing, handled elsewhere
         break;
 
-      case "reset":
-        this.renderSystemLine(`Agent reset: ${event.what.join(", ")}`);
-        break;
-
-      case "abort":
-        this.renderSystemLine(event.message);
-        break;
-
       case "output.artifact":
         this.renderArtifact(event);
         break;
@@ -218,6 +213,7 @@ export default class AgentLoop {
       case "output.warning":
       case "output.error":
       case "output.info":
+      case "status":
         this.renderStreamOutput({
           ...event,
           message: event.message.endsWith("\n") ? event.message : event.message + "\n",
@@ -243,6 +239,15 @@ export default class AgentLoop {
 
       case "question.response":
         this.renderQuestionResponse(event);
+        break;
+
+      case "pause":
+      case "resume":
+      case "abort":
+        this.renderStreamOutput({
+          ...event,
+          message: event.message.endsWith("\n") ? event.message : event.message + "\n",
+        });
         break;
 
       default: {

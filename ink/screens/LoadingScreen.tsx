@@ -1,3 +1,4 @@
+import getRandomItem from "@tokenring-ai/utility/string/getRandomItem";
 import ridiculousMessages from "@tokenring-ai/utility/string/ridiculousMessages";
 import {Box, Text, useStdout} from 'ink';
 import React, {useEffect, useReducer, useState} from 'react';
@@ -61,7 +62,7 @@ export default function LoadingScreen({
       </Box>
       <Box paddingTop={1} paddingBottom={2}>
         <Text color={theme.loadingScreenText}>
-          {currentSpinner} {ridiculousMessages[Math.floor(progress / 10) % ridiculousMessages.length]}
+          {currentSpinner} {getRandomItem(ridiculousMessages, progress / 10)}
         </Text>
       </Box>
     </Box>

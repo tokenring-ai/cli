@@ -16,6 +16,7 @@ The `@tokenring-ai/cli` package provides a comprehensive command-line interface 
 - **Customizable Theme**: Full theming support for colors and styling
 - **Background Loading Screen**: Optional loading screen while agents initialize
 - **Graceful Shutdown**: Proper signal handling and cleanup
+- **Markdown Styling**: Applied markdown formatting to terminal output
 
 ## Installation
 
@@ -219,6 +220,28 @@ const answer = await commandPrompt({
 console.log('User entered:', answer);
 ```
 
+### PartialInputError Class
+
+Error class thrown when input is interrupted but contains non-empty buffer.
+
+**Interface:**
+```typescript
+class PartialInputError extends Error {
+  constructor(public buffer: string);
+}
+```
+
+**Usage:**
+```typescript
+try {
+  const input = await commandPrompt({ rl, message: '>', signal });
+} catch (err) {
+  if (err instanceof PartialInputError) {
+    console.log('Input interrupted with buffer:', err.buffer);
+  }
+}
+```
+
 ### SimpleSpinner Class
 
 Custom spinner class that renders a simple animation in the terminal. Designed to work with abort signals without conflicting with Ctrl-C handling.
@@ -291,7 +314,7 @@ const CLIConfigSchema = z.object({
 | `loadingBannerWide` | string | Yes | - | Banner for wide terminal windows during loading |
 | `loadingBannerCompact` | string | Yes | - | Banner for compact terminal layouts during loading |
 | `screenBanner` | string | Yes | - | Banner message displayed on all interactive screens |
-| `uiFramework` | 'ink' \\| 'opentui' | No | 'opentui' | UI rendering framework to use |
+| `uiFramework` | 'ink' \| 'opentui' | No | 'opentui' | UI rendering framework to use |
 | `startAgent` | object | No | undefined | Optional agent to automatically spawn on startup |
 | `startAgent.type` | string | If startAgent | - | Agent type to spawn |
 | `startAgent.prompt` | string | If startAgent | undefined | Initial prompt to send to the agent |
@@ -546,7 +569,7 @@ pkg/cli/
 ├── commands/                      # Chat command implementations
 │   └── multi.ts                   # /multi command implementation
 ├── components/                    # UI components (framework-specific)
-│   └── inputs/                    # Input components
+│   └── inputs/                    # Input components (shared types)
 │       ├── FileSelect.tsx         # File selection component
 │       ├── FormInput.tsx          # Form input component
 │       ├── TextInput.tsx          # Text input component
@@ -586,6 +609,7 @@ pkg/cli/
 ├── plugin.ts                      # Plugin definition
 ├── index.ts                       # Main entry point
 ├── schema.ts                      # Configuration schema definition
+├── vitest.config.ts               # Vitest test configuration
 ├── package.json
 └── README.md
 ```
@@ -598,11 +622,13 @@ pkg/cli/
 | `AgentLoop.ts` | Handles the interaction loop for individual agents |
 | `commandPrompt.ts` | Provides readline-based input with history and completion |
 | `SimpleSpinner.ts` | Custom spinner implementation that integrates with abort signals |
-| `renderScreen.tsx` | Renders interactive UI screens (both frameworks) |
+| `renderScreen.tsx` | (Framework-specific) Renders interactive UI screens |
 | `theme.ts` | Defines the color theme used throughout the CLI |
 | `schema.ts` | Configuration schema using Zod |
 | `plugin.ts` | Plugin definition for easy installation |
 | `index.ts` | Main entry point exporting `AgentCLI` and `CLIConfigSchema` |
+| `commands.ts` | Exports all chat commands |
+| `applyMarkdownStyles.ts` | Utility for applying markdown styling to terminal output |
 
 ## Integration
 
@@ -708,7 +734,7 @@ Handle errors gracefully in the agent loop:
 try {
   await agentLoop.run(signal);
 } catch (error) {
-  process.stderr.write(formatLogMessages(['Error while running agent loop', error]));
+  process.stderr.write(formatLogMessages(['Error while running agent loop', error as Error]));
   await setTimeout(1000);
 }
 ```
@@ -722,6 +748,17 @@ import { theme } from '@tokenring-ai/cli/theme';
 import chalk from 'chalk';
 
 const errorText = chalk.hex(theme.chatSystemErrorMessage)('Error occurred');
+```
+
+### Markdown Styling
+
+The CLI applies markdown styling to terminal output using `applyMarkdownStyles`:
+
+```typescript
+import applyMarkdownStyles from '@tokenring-ai/cli/utility/applyMarkdownStyles';
+
+const styledText = applyMarkdownStyles('# Heading\n- Item 1\n- Item 2');
+console.log(styledText);
 ```
 
 ## Testing and Development

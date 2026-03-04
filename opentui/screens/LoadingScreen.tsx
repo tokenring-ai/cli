@@ -1,5 +1,6 @@
 /** @jsxImportSource @opentui/react */
 import {useTerminalDimensions} from "@opentui/react";
+import getRandomItem from "@tokenring-ai/utility/string/getRandomItem";
 import ridiculousMessages from "@tokenring-ai/utility/string/ridiculousMessages";
 import React, {useEffect, useReducer} from 'react';
 import {z} from 'zod';
@@ -55,7 +56,7 @@ export default function LoadingScreen({
       </box>
       <box paddingTop={1} paddingBottom={2}>
         <text fg={theme.loadingScreenText}>
-          {currentSpinner} {ridiculousMessages[Math.floor(progress / 10) % ridiculousMessages.length]}
+          {currentSpinner} {getRandomItem(ridiculousMessages, progress / 10)}
         </text>
       </box>
     </box>
