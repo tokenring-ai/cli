@@ -92,7 +92,8 @@ export default class AgentCLI implements TokenRingService {
       if (this.config.startAgent?.shutdownWhenDone) break;
     }
 
-    process.stdout.write(`\x1b[${process.stdout.rows || 24};0H`);
-    process.exit(0);
+    if (! signal.aborted) {
+      this.app.shutdown("User initiated shutdown from CLI");
+    }
   }
 }

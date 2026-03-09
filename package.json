@@ -15,8 +15,8 @@
     "execa": "^9.6.1",
     "chalk": "^5.6.2",
     "open": "^11.0.0",
-    "@opentui/core": "^0.1.84",
-    "@opentui/react": "^0.1.84",
+    "@opentui/core": "^0.1.86",
+    "@opentui/react": "^0.1.86",
     "react": "^19.2.4",
     "ink": "^6.6.0",
     "fullscreen-ink": "^0.1.0"
