@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/react */
 
 import {Agent} from "@tokenring-ai/agent";
-import {type ParsedQuestionRequest} from "@tokenring-ai/agent/AgentEvents";
+import {type ParsedInteractionRequest} from "@tokenring-ai/agent/AgentEvents";
 import React from 'react';
 import {z} from 'zod';
 import FileSelect from "../components/inputs/FileSelect.tsx";
@@ -12,6 +12,8 @@ import {useResponsiveLayout} from "../hooks/useResponsiveLayout.ts";
 
 import {CLIConfigSchema} from "../../schema.ts";
 import {theme} from '../../theme.ts';
+
+type ParsedQuestionRequest = Extract<ParsedInteractionRequest, {type: "question"}>;
 
 type QuestionInputScreenProps = {
   agent: Agent;
@@ -64,5 +66,4 @@ export default function QuestionInputScreen({ agent, request, config, onResponse
 
   );
 }
-
 

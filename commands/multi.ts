@@ -16,7 +16,10 @@ async function execute(_args: string, agent: Agent): Promise<string> {
   });
 
   if (message) {
-    agent.handleInput({message});
+    agent.handleInput({
+      from: "Multiline user input",
+      message
+    });
     return "Multiline input submitted.";
   }
   

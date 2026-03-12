@@ -1,10 +1,8 @@
 import Agent from "@tokenring-ai/agent/Agent";
 import {
   AgentEventEnvelope,
-  InputHandledSchema,
-  type ParsedAgentExecutionState,
-  type ParsedQuestionRequest,
-  QuestionResponseSchema,
+  type ParsedAgentResponse,
+  type ParsedInteractionRequest,
 } from "@tokenring-ai/agent/AgentEvents";
 import {AgentEventCursor, AgentEventState,} from "@tokenring-ai/agent/state/agentEventState";
 import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
@@ -33,15 +31,10 @@ const OUTPUT_COLORS = {
   "output.info": chalk.hex(theme.chatSystemInfoMessage),
   "output.warning": chalk.hex(theme.chatSystemWarningMessage),
   "output.error": chalk.hex(theme.chatSystemErrorMessage),
+  "agent.response": chalk.hex(theme.chatInputHandledSuccess),
   "input.received": chalk.hex(theme.chatInputReceived),
-  "input.handled": chalk.hex(theme.chatInputHandledSuccess),
-  "question.request": chalk.hex(theme.chatQuestionRequest),
-  "question.response": chalk.hex(theme.chatQuestionResponse),
+  "input.interaction": chalk.hex(theme.chatQuestionResponse),
   "reset": chalk.hex(theme.chatReset),
-  "abort": chalk.hex(theme.chatAbort),
-  "pause": chalk.hex(theme.chatSystemWarningMessage),
-  "resume": chalk.hex(theme.chatSystemInfoMessage),
-  "status": chalk.hex(theme.chatSystemInfoMessage),
 } as const;
 
 const PREVIOUS_INPUT_COLOR = chalk.hex(theme.chatPreviousInput);
@@ -49,6 +42,8 @@ const DIVIDER_COLOR = chalk.hex(theme.chatDivider);
 const BANNER_COLOR = chalk.hex(theme.agentSelectionBanner);
 
 type OutputColorKey = keyof typeof OUTPUT_COLORS;
+type QuestionInteraction = Extract<ParsedInteractionRequest, {type: "question"}>;
+type PendingQuestion = {requestId: string; interaction: QuestionInteraction};
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -78,7 +73,7 @@ export interface AgentLoopOptions {
 
 type PromptMode = null
   | { kind: "input"; abort: AbortController; promise: Promise<void> }
-  | { kind: "human"; abort: AbortController; promise: Promise<void>; requestId: string };
+  | { kind: "human"; abort: AbortController; promise: Promise<void>; requestId: string; interactionId: string };
 
 // ── Implementation ─────────────────────────────────────────────────────
 
@@ -147,19 +142,14 @@ export default class AgentLoop {
     subscription: AsyncIterable<AgentEventState>,
     signal: AbortSignal,
   ): Promise<void> {
-    let lastExecutionState: ParsedAgentExecutionState | null = null;
     for await (const state of subscription) {
       if (signal.aborted) return;
 
       for (const event of state.yieldEventsByCursor(this.eventCursor)) {
-        //this.clearPromptLine();
         this.renderEvent(event);
       }
 
-      if (state.latestExecutionState !== lastExecutionState) {
-        this.handleExecutionState(state.latestExecutionState);
-        lastExecutionState = state.latestExecutionState;
-      }
+      this.handleAgentState(state);
     }
   }
 
@@ -187,7 +177,7 @@ export default class AgentLoop {
     }
 
 
-    this.handleExecutionState(state.latestExecutionState);
+    this.handleAgentState(state);
   }
 
   // ── Rendering: single event ────────────────────────────────────────
@@ -202,7 +192,9 @@ export default class AgentLoop {
         this.shutdown();
         break;
 
-      case "agent.execution":
+      case "agent.status":
+      case "input.execution":
+      case "cancel":
         // Do nothing, handled elsewhere
         break;
 
@@ -213,7 +205,6 @@ export default class AgentLoop {
       case "output.warning":
       case "output.error":
       case "output.info":
-      case "status":
         this.renderStreamOutput({
           ...event,
           message: event.message.endsWith("\n") ? event.message : event.message + "\n",
@@ -225,29 +216,16 @@ export default class AgentLoop {
         this.renderStreamOutput(event);
         break;
 
-      case "input.handled":
-        this.renderInputHandled(event);
+      case "agent.response":
+        this.renderAgentResponse(event);
         break;
 
       case "input.received":
         this.renderInputReceived(event);
         break;
 
-      case "question.request":
-        this.renderQuestionRequest(event);
-        break;
-
-      case "question.response":
-        this.renderQuestionResponse(event);
-        break;
-
-      case "pause":
-      case "resume":
-      case "abort":
-        this.renderStreamOutput({
-          ...event,
-          message: event.message.endsWith("\n") ? event.message : event.message + "\n",
-        });
+      case "input.interaction":
+        this.renderInteractionResponse(event);
         break;
 
       default: {
@@ -258,33 +236,34 @@ export default class AgentLoop {
     }
   }
 
-  // ── Execution state handling (replaces consumeExecution) ───────────
+  // ── Agent state handling ───────────────────────────────────────────
 
-  private handleExecutionState(
-    event: ParsedAgentExecutionState,
-  ): void {
-    // Spinner
-    this.syncSpinner(event);
-
-    this.synchronizePrompt(event);
+  private handleAgentState(state: AgentEventState): void {
+    this.syncSpinner(state);
+    this.synchronizePrompt(state);
   }
 
   // ── Spinner management ─────────────────────────────────────────────
 
-  private syncSpinner(
-    exec: ParsedAgentExecutionState,
-  ): void {
-    if (!exec.busyWith && this.spinner) {
-      this.stopSpinner();
-      this.spinner = null;
+  private syncSpinner(state: AgentEventState): void {
+    const currentActivity = state.currentlyExecutingInputItem?.executionState.currentActivity;
+
+    if (!currentActivity) {
+      if (this.spinner) {
+        this.stopSpinner();
+        this.spinner = null;
+      }
       return;
     }
 
-    if (exec.busyWith && !this.spinner) {
-      this.spinner = new SimpleSpinner(exec.busyWith, theme.chatSpinner);
+    if (!this.spinner) {
+      this.spinner = new SimpleSpinner(currentActivity, theme.chatSpinner);
       this.spinnerRunning = true;
       this.spinner.start();
+      return;
     }
+
+    this.spinner.updateMessage(currentActivity);
   }
 
   private stopSpinner(): void {
@@ -301,42 +280,103 @@ export default class AgentLoop {
     this.prompt = null;
   }
 
-  private synchronizePrompt(
-    exec: ParsedAgentExecutionState,
-  ): void {
-    const idle = exec.running && exec.inputQueue.length === 0;
+  private getPendingQuestion(state: AgentEventState): PendingQuestion | null {
+    const currentItem = state.currentlyExecutingInputItem;
+    if (!currentItem) return null;
+
+    const interaction = currentItem.executionState.availableInteractions.find(
+      (availableInteraction): availableInteraction is QuestionInteraction => availableInteraction.type === "question"
+    );
+
+    if (!interaction) return null;
+
+    return {
+      requestId: currentItem.request.requestId,
+      interaction
+    };
+  }
+
+  private isPromptStillPending(
+    state: AgentEventState,
+    prompt: Extract<PromptMode, {kind: "human"}>
+  ): boolean {
+    const pendingQuestion = this.getPendingQuestion(state);
+    return !!pendingQuestion
+      && pendingQuestion.requestId === prompt.requestId
+      && pendingQuestion.interaction.interactionId === prompt.interactionId;
+  }
+
+  private synchronizePrompt(state: AgentEventState): void {
+    const idle = state.status === "running" && state.idle;
+    const pendingQuestion = this.getPendingQuestion(state);
 
     if (this.prompt) {
       if (this.prompt.kind === "human") {
-        // Cancel human prompt if the question it was answering is no longer pending
-        if (exec.waitingOn.length === 0 || exec.waitingOn[0].requestId !== this.prompt.requestId) {
-          this.cancelPrompt()
+        if (!this.isPromptStillPending(state, this.prompt)) {
+          this.cancelPrompt();
         }
-      } else if (this.prompt.kind === "input" && !idle) {
-        // Cancel input prompt if the agent is no longer idle (another user sent input)
-        this.cancelPrompt()
+      } else if (!idle) {
+        this.cancelPrompt();
       }
     }
 
     if (this.prompt) return;
 
-    if (exec.waitingOn.length > 0) {
-      const request = exec.waitingOn[0];
+    if (pendingQuestion) {
       const ac = new AbortController();
-
-      const promise = this.handleHumanRequest(request, ac.signal)
-        .catch((err) => {
-          this.agent.errorMessage("Error while handling human request in CLI: ", err.message);
-          return null;
-        })
+      const promise = this.handleHumanRequest(pendingQuestion.interaction, ac.signal)
         .then((response) => {
-          this.agent.sendQuestionResponse(request.requestId, {result: response});
-          //this.prompt = null;
+          if (ac.signal.aborted) return;
+
+          const latestPendingQuestion = this.getPendingQuestion(this.agent.getState(AgentEventState));
+          if (!latestPendingQuestion
+            || latestPendingQuestion.requestId !== pendingQuestion.requestId
+            || latestPendingQuestion.interaction.interactionId !== pendingQuestion.interaction.interactionId) {
+            return;
+          }
+
+          this.agent.sendInteractionResponse({
+            requestId: pendingQuestion.requestId,
+            interactionId: pendingQuestion.interaction.interactionId,
+            result: response
+          });
+        })
+        .catch((err) => {
+          if (ac.signal.aborted) return;
+
+          this.agent.errorMessage("Error while handling human request in CLI: ", err.message);
+
+          const latestPendingQuestion = this.getPendingQuestion(this.agent.getState(AgentEventState));
+          if (!latestPendingQuestion
+            || latestPendingQuestion.requestId !== pendingQuestion.requestId
+            || latestPendingQuestion.interaction.interactionId !== pendingQuestion.interaction.interactionId) {
+            return;
+          }
+
+          this.agent.sendInteractionResponse({
+            requestId: pendingQuestion.requestId,
+            interactionId: pendingQuestion.interaction.interactionId,
+            result: null
+          });
+        })
+        .finally(() => {
+          if (this.prompt?.kind === "human"
+            && this.prompt.requestId === pendingQuestion.requestId
+            && this.prompt.interactionId === pendingQuestion.interaction.interactionId) {
+            this.prompt = null;
+          }
+
           this.redraw(this.agent.getState(AgentEventState));
           this.resetSigintHandlers();
-        })
+        });
 
-      this.prompt = {kind: "human", abort: ac, promise, requestId: request.requestId};
+      this.prompt = {
+        kind: "human",
+        abort: ac,
+        promise,
+        requestId: pendingQuestion.requestId,
+        interactionId: pendingQuestion.interaction.interactionId
+      };
     } else if (idle) {
       this.ensureNewline();
 
@@ -351,7 +391,10 @@ export default class AgentLoop {
       const message = await this.gatherInput(signal);
       this.prompt = null;
       this.resetSigintHandlers();
-      this.agent.handleInput({ message });
+      this.agent.handleInput({
+        from: "CLI user",
+        message
+      });
     } catch (err) {
       if (err instanceof PartialInputError && err.buffer.trim() !== "") {
         // Retry with a fresh signal if buffer is non-empty
@@ -411,13 +454,13 @@ export default class AgentLoop {
     this.lastWriteHadNewline = message.endsWith("\n");
   }
 
-  private renderInputHandled(event: z.output<typeof InputHandledSchema>): void {
+  private renderAgentResponse(event: ParsedAgentResponse): void {
     this.stopSpinner();
     this.ensureNewline();
     if (event.status === "cancelled" || event.status === "error") {
       this.write(OUTPUT_COLORS["output.error"](event.message.trimEnd() + "\n"));
     } else if (event.status === "success") {
-      this.write(OUTPUT_COLORS["input.handled"](event.message.trimEnd() + "\n"));
+      this.write(OUTPUT_COLORS["agent.response"](event.message.trimEnd() + "\n"));
     }
     this.lastWriteHadNewline = true;
     this.currentLine = "";
@@ -427,7 +470,7 @@ export default class AgentLoop {
     this.ensureNewline();
     this.write(
       PREVIOUS_INPUT_COLOR(
-        createAsciiTable([[`user >`, event.message.trimEnd() + "\n"]], {
+        createAsciiTable([[`user >`, event.input.message.trimEnd() + "\n"]], {
           columnWidths: [7, process.stdout.columns ? process.stdout.columns - 7 : 65],
           padding: 0,
           grid: false,
@@ -438,18 +481,11 @@ export default class AgentLoop {
     this.currentLine = "";
   }
 
-  private renderQuestionRequest(event: AgentEventEnvelope & { type: "question.request" }): void {
-    this.stopSpinner();
-    this.ensureNewline();
-    this.write(OUTPUT_COLORS["question.request"](`\n${event.message}\n\n`));
-    this.currentLine = "";
-  }
-
-  private renderQuestionResponse(event: AgentEventEnvelope & { type: "question.response" }): void {
+  private renderInteractionResponse(event: AgentEventEnvelope & { type: "input.interaction" }): void {
     this.stopSpinner();
     this.ensureNewline();
     const responseStr = JSON.stringify(event.result, null, 2);
-    this.write(OUTPUT_COLORS["question.response"](`Response: ${responseStr}\n`));
+    this.write(OUTPUT_COLORS["input.interaction"](`Response: ${responseStr}\n`));
     this.lastWriteHadNewline = true;
     this.currentLine = "";
   }
@@ -501,9 +537,9 @@ export default class AgentLoop {
   }
 
   private async handleHumanRequest(
-    request: ParsedQuestionRequest,
+    request: QuestionInteraction,
     signal: AbortSignal,
-  ): Promise<z.output<typeof QuestionResponseSchema>> {
+  ): Promise<unknown> {
     const renderScreen =
       this.options.config.uiFramework === "ink" ? renderScreenInk : renderScreenOpenTUI;
     const Screen =

@@ -62,9 +62,15 @@ export default class AgentCLI implements TokenRingService {
         const agentManager = this.app.requireService(AgentManager);
         initialAgent = await agentManager.spawnAgent({agentType: this.config.startAgent.type, headless: true});
         if (this.config.startAgent.prompt) {
-          initialAgent.handleInput({ message: this.config.startAgent.prompt });
+          initialAgent.handleInput({
+            from: "CLI startup prompt",
+            message: this.config.startAgent.prompt
+          });
           if (this.config.startAgent?.shutdownWhenDone) {
-            initialAgent.handleInput({ message: "/agent shutdown" });
+            initialAgent.handleInput({
+              from: "CLI startup prompt",
+              message: "/agent shutdown"
+            });
           }
         }
       } catch (error) {
