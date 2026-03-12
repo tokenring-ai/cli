@@ -34,9 +34,9 @@ export default function applyMarkdownStyles(text: string): string {
   }
 
   // Headings (e.g., # Heading) - Bold + Underline
-  if (result.startsWith('#')) {
-    result = result.replace(/^(#+)\s+(.*)$/, (_, __, content) => {
-      return chalk.bold.underline(content);
+  if (result.trimStart().startsWith('#')) {
+    result = result.replace(/^(\s*)(#+)\s+(.*)$/, (_, indent, __, content) => {
+      return `${indent}${chalk.bold.underline(content)}`;
     });
   }
   // Blockquotes (>)

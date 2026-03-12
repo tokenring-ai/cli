@@ -5,13 +5,12 @@ import AgentManager from '@tokenring-ai/agent/services/AgentManager';
 import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import TokenRingApp from "@tokenring-ai/app";
 import {ChatAgentConfigSchema} from "@tokenring-ai/chat";
-import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
 import {WebHostService} from "@tokenring-ai/web-host";
 import SPAResource from "@tokenring-ai/web-host/SPAResource";
 import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
-import open from 'open';
 import React, {type ReactNode, useCallback, useMemo, useState} from 'react';
 import {z} from "zod";
+import {type AgentSelectionResult, parseAgentSelectionValue} from "../../AgentSelection.ts";
 import TreeSelect from "../components/inputs/TreeSelect.tsx";
 import {useResponsiveLayout} from "../hooks/useResponsiveLayout.ts";
 import {CLIConfigSchema} from "../../schema.ts";
@@ -20,7 +19,7 @@ import {theme} from '../../theme.ts';
 interface AgentSelectionScreenProps {
   app: TokenRingApp;
   config: z.output<typeof CLIConfigSchema>;
-  onResponse: (agent: Agent | null) => void;
+  onResponse: (selection: AgentSelectionResult | null) => void;
 }
 
 export default function AgentSelectionScreen({
@@ -33,7 +32,6 @@ export default function AgentSelectionScreen({
   const webHostService = app.getService(WebHostService);
   const webHostURL = webHostService?.getURL()?.toString() ?? undefined
 
-  const [err, setError] = React.useState<Error | null>(null);
   const [previewElement, setPreviewElement] = useState<ReactNode | null>(null);
 
   const handleHighlight = useCallback((value: string) => {
@@ -150,36 +148,17 @@ export default function AgentSelectionScreen({
       }));
   }, [agentManager, webHostService, app]);
 
-  const handleSelect = useCallback(async (agentType: string[] | null) => {
-    if (!agentType || agentType.length === 0) {
+  const handleSelect = useCallback((selectionValues: string[] | null) => {
+    if (!selectionValues || selectionValues.length === 0) {
       onResponse(null);
       return;
     }
 
-    const [, action, remainder] = agentType[0].match(/^(.*?):(.*)$/) ?? [];
-    if (action === 'spawn') {
-      try {
-        const agent = await agentManager.spawnAgent({ agentType: remainder, headless: false });
-        if (agent) onResponse(agent);
-      } catch (e) {
-        setError(e as Error);
-      }
-    } else if (action === 'connect') {
-      const agent = agentManager.getAgent(remainder);
-      if (agent) onResponse(agent);
-    } else if (action === 'open') {
-      await open(remainder);
-    } else if (action === 'workflow') {
-      try {
-        const workflowService = app.requireService(WorkflowService);
-        const agent = await workflowService.spawnWorkflow(remainder, { headless: false });
-
-        onResponse(agent);
-      } catch (e) {
-        setError(e as Error);
-      }
+    const selection = parseAgentSelectionValue(selectionValues[0]);
+    if (selection) {
+      onResponse(selection);
     }
-  }, [agentManager, webHostService, onResponse, app]);
+  }, [onResponse]);
 
   const question: ParsedTreeSelectQuestion = {
     type: "treeSelect",
@@ -229,11 +208,6 @@ export default function AgentSelectionScreen({
           )
         )}
       </box>
-      {err &&
-        <box borderStyle="rounded" paddingLeft={1} paddingRight={1}>
-          <text fg={theme.chatSystemErrorMessage}>{formatLogMessages(['Error selecting agent:',err])}</text>
-        </box>
-      }
     </box>
   );
 }

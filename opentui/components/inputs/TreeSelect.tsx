@@ -157,7 +157,12 @@ export default function TreeSelect({
         onResponse(Array.from(checked));
       } else {
         const current = flatTree[selectedIndex];
-        if (current) onResponse([current.node.value ?? current.node.name]);
+        if (!current) return;
+        if (current.isParent) {
+          toggleExpand(current.node.value ?? current.node.name);
+          return;
+        }
+        onResponse([current.node.value ?? current.node.name]);
       }
     }
   });

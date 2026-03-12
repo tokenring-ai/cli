@@ -7,6 +7,7 @@ export const CLIConfigSchema = z.object({
   loadingBannerCompact: z.string(),
   screenBanner: z.string(),
   uiFramework: z.enum(['ink', 'opentui']).default('opentui'),
+  verbose: z.boolean().default(false),
   startAgent: z.object({
     type: z.string(),
     prompt: z.string().optional(),
