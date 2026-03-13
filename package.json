@@ -13,13 +13,14 @@
     "@tokenring-ai/web-host": "0.2.0",
     "@tokenring-ai/workflow": "0.2.0",
     "@tokenring-ai/filesystem": "0.2.0",
+    "@mishieck/ink-titled-box": "^0.4.2",
     "execa": "^9.6.1",
     "chalk": "^5.6.2",
     "open": "^11.0.0",
     "@opentui/core": "^0.1.86",
     "@opentui/react": "^0.1.86",
     "react": "^19.2.4",
-    "ink": "^6.6.0",
+    "ink": "^6.8.0",
     "fullscreen-ink": "^0.1.0"
   },
   "devDependencies": {

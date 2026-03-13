@@ -24,12 +24,12 @@ export const renderScreen = async <P, R = P>(
   }
 
   process.stdin.resume();
-  await writeToStdout("\x1b[?1049h");
+  await writeToStdout("\x1b[?1049h\x1b[2J\x1b[H");
+  await new Promise<void>((resolve) => setImmediate(resolve));
 
   return new Promise<R>((resolve, reject) => {
     let finished = false;
-
-    const instance = render(
+    const screen = (
       <FullScreenBox>
         <Component
           {...props}
@@ -38,11 +38,19 @@ export const renderScreen = async <P, R = P>(
           }}
           signal={signal}
         />
-      </FullScreenBox>,
-      {
-        exitOnCtrlC: false,
-      },
+      </FullScreenBox>
     );
+
+    const instance = render(screen, {
+      exitOnCtrlC: false,
+    });
+
+    void (async () => {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      if (finished) return;
+      instance.clear();
+      instance.rerender(screen);
+    })();
 
     const finish = async (settle: () => void): Promise<void> => {
       if (finished) return;

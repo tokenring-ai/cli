@@ -238,12 +238,16 @@ export default function FileSelect({
 
   return (
     <Box flexDirection="column" borderStyle="round" paddingLeft={1} paddingRight={1}>
-      <Text color={theme.treeMessage}>{label}</Text>
-      {multiple && (
-        <Text color={theme.treeMessage}>
-          Selected: {checked.size} {maximumSelections ? `/ ${maximumSelections}` : ''}
-        </Text>
-      )}
+      <Box flexDirection="row" justifyContent="space-between">
+        <Text color={theme.treeMessage}>{label}</Text>
+        {multiple && (
+          <text color={theme.treeMessage}>
+            {checked.size} items selected
+            {minimumSelections && ` (min: ${minimumSelections})`}
+            {maximumSelections && ` (max: ${maximumSelections})`}
+          </text>
+        )}
+      </Box>
 
       {visibleTree.map((item) => {
         const actualIndex = scrollOffset + visibleTree.indexOf(item);

@@ -125,7 +125,7 @@ export default function TreeSelect({
   };
 
   useKeyboard((keyEvent) => {
-    if (keyEvent.name === 'escape' || keyEvent.name === 'q') { onResponse(null); return; }
+    if (keyEvent.name === 'escape' || keyEvent.name === 'q' || (keyEvent.ctrl && keyEvent.name === 'c')) { onResponse(null); return; }
 
     if (keyEvent.name === 'up') setSelectedIndex(prev => Math.max(0, prev - 1));
     else if (keyEvent.name === 'down') setSelectedIndex(prev => Math.min(flatTree.length - 1, prev + 1));
@@ -172,44 +172,55 @@ export default function TreeSelect({
   const visibleTree = flatTree.slice(scrollOffset, scrollOffset + maxVisibleItems);
 
   return (
-    <box flexDirection="column" flexGrow={1} borderStyle="rounded" paddingLeft={1} paddingRight={1} title={label} backgroundColor={theme.panelBackground}>
+    <box
+      flexDirection="column"
+      flexGrow={1}
+      width="100%"
+      height="100%"
+      borderStyle="rounded"
+      paddingLeft={1}
+      paddingRight={1}
+      title={label}
+      backgroundColor={theme.panelBackground}
+    >
       {multiple && (
         <text fg={theme.treeMessage}>
-          Selected: {checked.size}
-          {minimumSelections && ` (min: ${minimumSelections})`}
-          {maximumSelections && ` (max: ${maximumSelections})`}
+          {checked.size} items selected
+          {minimumSelections ? ` (min: ${minimumSelections})` : ''}
+          {maximumSelections ? ` (max: ${maximumSelections})` : ''}
         </text>
       )}
+      <box flexDirection="column" flexGrow={1} width="100%">
+        {visibleTree.map((item, visibleIndex) => {
+          const actualIndex = scrollOffset + visibleIndex;
+          const isSelected = actualIndex === selectedIndex;
+          const itemNodeValue = item.node.value ?? item.node.name;
+          const isChecked = checked.has(itemNodeValue);
 
-      {visibleTree.map((item, visibleIndex) => {
-        const actualIndex = scrollOffset + visibleIndex;
-        const isSelected = actualIndex === selectedIndex;
-        const itemNodeValue = item.node.value ?? item.node.name;
-        const isChecked = checked.has(itemNodeValue);
+          let fg: string = theme.treeNotSelectedItem;
+          if (isSelected) fg = theme.treeHighlightedItem;
+          else if (isChecked) fg = theme.treeFullySelectedItem;
 
-        let fg: string = theme.treeNotSelectedItem;
-        if (isSelected) fg = theme.treeHighlightedItem;
-        else if (isChecked) fg = theme.treeFullySelectedItem;
+          const availableWidth = width - (item.depth * 2) - 10;
+          const truncatedLabel = item.node.name.length <= availableWidth
+            ? item.node.name
+            : item.node.name.substring(0, Math.max(0, availableWidth - 3)) + '...';
 
-        const availableWidth = width - (item.depth * 2) - 10;
-        const truncatedLabel = item.node.name.length <= availableWidth
-          ? item.node.name
-          : item.node.name.substring(0, Math.max(0, availableWidth - 3)) + '...';
-
-        return (
-          <box key={itemNodeValue}>
-            <text fg={fg}>
-              {'  '.repeat(item.depth)}{isSelected ? '❯ ' : '  '}
-              {item.isParent ? (item.isExpanded ? '▼ ' : '▶ ') : '  '}
-              {multiple && (isChecked ? '◉ ' : '◯ ')}{truncatedLabel}
-            </text>
-          </box>
-        );
-      })}
+          return (
+            <box key={itemNodeValue}>
+              <text fg={fg}>
+                {'  '.repeat(item.depth)}{isSelected ? '❯ ' : '  '}
+                {item.isParent ? (item.isExpanded ? '▼ ' : '▶ ') : '  '}
+                {multiple && (isChecked ? '◉ ' : '◯ ')}{truncatedLabel}
+              </text>
+            </box>
+          );
+        })}
+      </box>
 
       {flashMessage && <text fg={theme.confirmNo}>{flashMessage}</text>}
 
-      <box flexGrow={1} flexDirection="row" alignItems="flex-end">
+      <box flexDirection="row" alignItems="flex-end">
         <text>
           ({multiple ? 'Space to toggle branch, Enter to submit' : 'Space/→ to expand, ← to collapse, Enter to select'}), q to exit
         </text>

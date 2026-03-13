@@ -1,5 +1,5 @@
-import {Box, Text, useInput} from 'ink';
 import type {TreeLeaf, TreeSelectQuestionSchema} from "@tokenring-ai/agent/question";
+import {Box, Text, useInput} from 'ink';
 import React, {useEffect, useMemo, useState} from 'react';
 import {z} from "zod";
 import {theme} from '../../../theme.ts';
@@ -19,11 +19,11 @@ interface FlatItem {
 }
 
 export default function TreeSelect({
-  question: { tree, defaultValue, minimumSelections, maximumSelections, label },
-  onResponse,
-  signal,
-  onHighlight
-}: TreeSelectProps) {
+                                     question: {tree, defaultValue, minimumSelections, maximumSelections, label},
+                                     onResponse,
+                                     signal,
+                                     onHighlight
+                                   }: TreeSelectProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set(defaultValue));
@@ -53,7 +53,7 @@ export default function TreeSelect({
       const hasChildren = !!(node.children && node.children.length > 0);
       const nodeValue = node.value ?? node.name;
       const isOpen = expanded.has(nodeValue);
-      result.push({ node, depth, isExpanded: isOpen, isParent: hasChildren });
+      result.push({node, depth, isExpanded: isOpen, isParent: hasChildren});
 
       if (hasChildren && isOpen) {
         node.children!.forEach(child => traverse(child, depth + 1));
@@ -120,7 +120,10 @@ export default function TreeSelect({
   };
 
   useInput((input, key) => {
-    if (key.escape || input === 'q') { onResponse(null); return; }
+    if (key.escape || input === 'q' || (key.ctrl && input === 'c')) {
+      onResponse(null);
+      return;
+    }
 
     if (key.upArrow) setSelectedIndex(prev => Math.max(0, prev - 1));
     else if (key.downArrow) setSelectedIndex(prev => Math.min(flatTree.length - 1, prev + 1));
@@ -166,38 +169,39 @@ export default function TreeSelect({
 
   return (
     <Box flexDirection="column" flexGrow={1} borderStyle="round" paddingLeft={1} paddingRight={1}>
-      <Text color={theme.treeMessage}>{label}</Text>
-      {multiple && (
-        <Text color={theme.treeMessage}>
-          Selected: {checked.size}
-          {minimumSelections && ` (min: ${minimumSelections})`}
-          {maximumSelections && ` (max: ${maximumSelections})`}
-        </Text>
-      )}
+      <Box flexDirection="row" justifyContent="space-between">
+        <Text color={theme.treeMessage}>{label}</Text>
+        {multiple && (
+          <Text color={theme.treeMessage}>
+            {checked.size} items selected
+            {minimumSelections ? ` (min: ${minimumSelections})` : ''}
+            {maximumSelections ? ` (max: ${maximumSelections})` : ''}
+          </Text>
+        )}
+      </Box>
+      <Box flexGrow={1} flexDirection="column">
+        {visibleTree.map((item) => {
+          const itemNodeValue = item.node.value ?? item.node.name;
+          const isSelected = flatTree.indexOf(item) === selectedIndex;
+          const isChecked = checked.has(itemNodeValue);
 
-      {visibleTree.map((item) => {
-        const itemNodeValue = item.node.value ?? item.node.name;
-        const isSelected = flatTree.indexOf(item) === selectedIndex;
-        const isChecked = checked.has(itemNodeValue);
+          let color: string = theme.treeNotSelectedItem;
+          if (isSelected) color = theme.treeHighlightedItem;
+          else if (isChecked) color = theme.treeFullySelectedItem;
 
-        let color: string = theme.treeNotSelectedItem;
-        if (isSelected) color = theme.treeHighlightedItem;
-        else if (isChecked) color = theme.treeFullySelectedItem;
-
-        return (
-          <Box key={itemNodeValue}>
-            <Text color={color}>
-              {'  '.repeat(item.depth)}{isSelected ? '❯ ' : '  '}
-              {item.isParent ? (item.isExpanded ? '▼ ' : '▶ ') : '  '}
-              {multiple && (isChecked ? '◉ ' : '◯ ')}{item.node.name}
-            </Text>
-          </Box>
-        );
-      })}
-
-      {flashMessage && <Text color={theme.confirmNo}>{flashMessage}</Text>}
-
-      <Box flexGrow={1} flexDirection="row">
+          return (
+            <Box key={itemNodeValue}>
+              <Text color={color}>
+                {'  '.repeat(item.depth)}{isSelected ? '❯ ' : '  '}
+                {item.isParent ? (item.isExpanded ? '▼ ' : '▶ ') : '  '}
+                {multiple && (isChecked ? '◉ ' : '◯ ')}{item.node.name}
+              </Text>
+            </Box>
+          );
+        })}
+      </Box>
+      <Box flexGrow={0}>
+        {flashMessage && <Text color={theme.confirmNo}>{flashMessage}</Text>}
         <Text>
           ({multiple ? 'Space to toggle branch, Enter to submit' : 'Space/→ to expand, ← to collapse, Enter to select'}), q to exit
         </Text>

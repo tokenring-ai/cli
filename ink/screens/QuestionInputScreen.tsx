@@ -55,9 +55,7 @@ export default function QuestionInputScreen({ agent, request, config, onResponse
       </Box>
       <Box paddingBottom={layout.isShort ? 0 : 1}><Text>{ message }</Text></Box>
       <Box flexDirection="column" flexGrow={1} >
-        <Box flexDirection="column" flexGrow={1}>
-          {inputComponent()}
-        </Box>
+        {inputComponent()}
       </Box>
     </Box>
   );
