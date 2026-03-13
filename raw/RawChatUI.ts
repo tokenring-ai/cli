@@ -1,5 +1,9 @@
 import Agent from "@tokenring-ai/agent/Agent";
-import {type AgentEventEnvelope} from "@tokenring-ai/agent/AgentEvents";
+import {
+  type AgentEventEnvelope,
+  type ParsedInteractionRequest,
+} from "@tokenring-ai/agent/AgentEvents";
+import type {ParsedFileSelectQuestion} from "@tokenring-ai/agent/question";
 import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
 import {ChatModelRegistry} from "@tokenring-ai/ai-client/ModelRegistry";
@@ -8,10 +12,21 @@ import {ChatService} from "@tokenring-ai/chat";
 import chalk from "chalk";
 import process from "node:process";
 import readline from "node:readline";
+import {setTimeout as sleep} from "node:timers/promises";
 import type {z} from "zod";
+import {renderScreen as renderScreenInk} from "../ink/renderScreen.tsx";
+import InkQuestionInputScreen from "../ink/screens/QuestionInputScreen.tsx";
+import {renderScreen as renderScreenOpenTUI} from "../opentui/renderScreen.tsx";
+import OpenTUIQuestionInputScreen from "../opentui/screens/QuestionInputScreen.tsx";
 import {CLIConfigSchema} from "../schema.ts";
 import {theme} from "../theme.ts";
 import applyMarkdownStyles from "../utility/applyMarkdownStyles.ts";
+import {
+  createInlineQuestionSession,
+  type InlineQuestionSession,
+  type Keypress as InlineKeypress,
+  type RenderBlock,
+} from "./InlineQuestions.ts";
 import {
   type CommandDefinition,
   getCommandCompletionContext,
@@ -36,16 +51,9 @@ type TranscriptEntry = {
   body: string;
   tone: TranscriptTone;
   markdown: boolean;
-  cache?: {
-    width: number;
-    verbose: boolean;
-    rendered: string[];
-  };
 };
 
 type TranscriptEntryKind =
-  | "banner"
-  | "help"
   | "system"
   | "input"
   | "chat"
@@ -64,9 +72,35 @@ type CompletionState = {
 
 type FlashMessage = {
   text: string;
-  tone: Exclude<TranscriptTone, "chat" | "reasoning" | "input" | "success" | "muted"> | "success";
+  tone: Exclude<TranscriptTone, "chat" | "reasoning" | "input" | "muted"> | "muted";
   expiresAt: number;
 };
+
+type FooterSnapshot = {
+  lineCount: number;
+  cursorRow: number;
+  cursorColumn: number;
+  showCursor: boolean;
+};
+
+type TranscriptDelta =
+  | {
+    kind: "none";
+  }
+  | {
+    kind: "append";
+    text: string;
+    footerNeedsLeadingNewline: boolean;
+  }
+  | {
+    kind: "continueStream";
+    text: string;
+    footerNeedsLeadingNewline: boolean;
+    fromColumn: number;
+  };
+
+type FollowupInteraction = Extract<ParsedInteractionRequest, {type: "followup"}>;
+type QuestionInteraction = Extract<ParsedInteractionRequest, {type: "question"}>;
 
 const TONE_COLORS: Record<TranscriptTone, (text: string) => string> = {
   chat: chalk.hex(theme.chatOutputText),
@@ -80,13 +114,17 @@ const TONE_COLORS: Record<TranscriptTone, (text: string) => string> = {
 };
 
 const STATUS_BAR = chalk.hex(theme.chatDivider);
-const BORDER_COLOR = chalk.hex(theme.chatDivider);
 const TITLE_COLOR = chalk.hex(theme.boxTitle).bold;
-const PLACEHOLDER_COLOR = chalk.hex(theme.chatDivider);
 const PROMPT_ARROW_COLOR = chalk.hex(theme.askMessage).bold;
-const TEXT_INDENT = "   ";
-const HEADER_PREFIX = " · ";
+const PLACEHOLDER_COLOR = chalk.hex(theme.chatDivider);
+const RAW_PROMPT_PREFIX = " → ";
+const RAW_CONTINUATION_PREFIX = "   ";
 const PROMPT_PREFIX = ` ${PROMPT_ARROW_COLOR("→")} `;
+const CONTINUATION_PREFIX = RAW_CONTINUATION_PREFIX;
+const HEADER_PREFIX = " · ";
+const TEXT_INDENT = "   ";
+const BRACKETED_PASTE_START = "\x1b[200~";
+const BRACKETED_PASTE_END = "\x1b[201~";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -96,16 +134,16 @@ function trimBoundaryNewlines(text: string): string {
   return text.replace(/^\n+|\n+$/g, "");
 }
 
-function repeat(char: string, count: number): string {
-  return count > 0 ? char.repeat(count) : "";
-}
-
 function visibleLength(text: string): number {
   return Array.from(text).length;
 }
 
-function sliceVisible(text: string, start: number, end: number): string {
-  return Array.from(text).slice(start, end).join("");
+function truncateVisible(text: string, width: number): string {
+  if (width <= 0) return "";
+  const chars = Array.from(text);
+  if (chars.length <= width) return text;
+  if (width <= 1) return chars.slice(0, width).join("");
+  return `${chars.slice(0, width - 1).join("")}…`;
 }
 
 function wrapPlainText(text: string, width: number): string[] {
@@ -129,19 +167,12 @@ function wrapPlainText(text: string, width: number): string[] {
       }
     }
 
-    if (current.length > 0 || line.length === 0) {
+    if (current.length > 0) {
       wrapped.push(current);
     }
   }
 
   return wrapped.length > 0 ? wrapped : [""];
-}
-
-function padOrTrim(text: string, width: number): string {
-  const len = visibleLength(text);
-  if (len === width) return text;
-  if (len > width) return sliceVisible(text, 0, width);
-  return text + repeat(" ", width - len);
 }
 
 function shortenPath(path: string): string {
@@ -173,8 +204,96 @@ function formatCurrency(value: number | null): string {
   return `$${value.toFixed(4)}`;
 }
 
-function getMouseSequencePayloads(text: string): string[] {
-  return Array.from(text.matchAll(/\x1b\[<(\d+;\d+;\d+[mM])/g), (match) => match[1]);
+function formatTimer(timestamp: number): string {
+  const remainingMs = Math.max(0, timestamp - Date.now());
+  const seconds = Math.ceil(remainingMs / 1000);
+  return `auto ${seconds}s`;
+}
+
+function flattenWrappedLines(lines: string[], width: number, prefix = ""): string[] {
+  const result: string[] = [];
+  const innerWidth = Math.max(1, width - visibleLength(prefix));
+
+  for (const line of lines) {
+    for (const wrapped of wrapPlainText(line, innerWidth)) {
+      result.push(`${prefix}${wrapped}`);
+    }
+  }
+
+  return result.length > 0 ? result : [prefix];
+}
+
+function renderEditor(
+  editor: InputEditor,
+  width: number,
+  maxContentLines: number,
+): {
+  visibleLines: string[];
+  cursorRow: number;
+  cursorColumn: number;
+  isEmpty: boolean;
+} {
+  const text = editor.getText();
+  const cursor = editor.getCursor();
+  const lines = [""];
+  let row = 0;
+  let cursorRow = 0;
+  let cursorColumn = 0;
+
+  for (let index = 0; index < text.length; index += 1) {
+    if (index === cursor) {
+      cursorRow = row;
+      cursorColumn = visibleLength(lines[row]);
+    }
+
+    const char = text[index];
+    if (char === "\n") {
+      row += 1;
+      lines.push("");
+      continue;
+    }
+
+    lines[row] += char;
+    if (visibleLength(lines[row]) >= width) {
+      row += 1;
+      lines.push("");
+    }
+  }
+
+  if (cursor === text.length) {
+    cursorRow = row;
+    cursorColumn = visibleLength(lines[row]);
+  }
+
+  const visibleCount = clamp(lines.length, 1, Math.max(1, maxContentLines));
+  const windowStart = clamp(cursorRow - visibleCount + 1, 0, Math.max(0, lines.length - visibleCount));
+  const visibleLines = lines.slice(windowStart, windowStart + visibleCount);
+
+  return {
+    visibleLines,
+    cursorRow: cursorRow - windowStart,
+    cursorColumn,
+    isEmpty: text.length === 0,
+  };
+}
+
+function advanceColumn(currentColumn: number, text: string, columns: number): number {
+  const width = Math.max(1, columns);
+  let column = currentColumn;
+
+  for (const char of Array.from(text)) {
+    if (char === "\n") {
+      column = 0;
+      continue;
+    }
+
+    column += 1;
+    if (column >= width) {
+      column = 0;
+    }
+  }
+
+  return column;
 }
 
 export interface RawChatUIOptions {
@@ -187,13 +306,16 @@ export interface RawChatUIOptions {
 }
 
 export default class RawChatUI {
-  private readonly editor = new InputEditor();
+  private readonly chatEditor = new InputEditor();
   private readonly transcript: TranscriptEntry[] = [];
+  private readonly followupEditors = new Map<string, InputEditor>();
+  private readonly questionSessions = new Map<string, InlineQuestionSession>();
   private readonly options: RawChatUIOptions;
 
   private entryId = 0;
-  private activeStream: {type: "output.chat" | "output.reasoning"; entry: TranscriptEntry} | null = null;
-  private transcriptScrollOffset = 0;
+  private activeTranscriptStream: {type: "output.chat" | "output.reasoning"; entry: TranscriptEntry} | null = null;
+  private activeVisibleStream: {type: "output.chat" | "output.reasoning"; column: number} | null = null;
+  private pendingSeparatorBeforeNextVisibleEntry = false;
   private completionState: CompletionState | null = null;
   private flashMessage: FlashMessage | null = null;
   private historyIndex: number | null = null;
@@ -202,12 +324,25 @@ export default class RawChatUI {
   private spinnerIndex = 0;
   private spinnerTimer: NodeJS.Timeout | null = null;
   private resizeTimer: NodeJS.Timeout | null = null;
-  private pendingMousePayloads: string[] = [];
-  private mouseSuppressionExpiresAt = 0;
   private started = false;
   private suspended = false;
   private rawModeBeforeStart = false;
-  private forceFullRefresh = true;
+  private footerSnapshot: FooterSnapshot = {
+    lineCount: 0,
+    cursorRow: 0,
+    cursorColumn: 0,
+    showCursor: true,
+  };
+  private renderedFooterSignature = "";
+  private fullReplayRequested = true;
+  private latestState: AgentEventState | null = null;
+  private optionalPickerOpen = false;
+  private optionalQuestionIndex = 0;
+  private activeOptionalQuestionId: string | null = null;
+  private inlineScreenAbort: AbortController | null = null;
+  private bracketedPasteBuffer = "";
+  private inBracketedPaste = false;
+  private pasteSuppressionExpiresAt = 0;
 
   private readonly dataHandler = (data: Buffer | string) => {
     if (this.suspended) return;
@@ -226,38 +361,18 @@ export default class RawChatUI {
   constructor(options: RawChatUIOptions) {
     this.options = options;
     this.verbose = options.config.verbose;
-
-    this.addEntry({
-      kind: "banner",
-      title: null,
-      body: options.config.chatBanner,
-      tone: "info",
-      markdown: false,
-    });
-    this.addEntry({
-      kind: "help",
-      title: "Keys",
-      body:
-        "Enter sends, Alt+Enter adds a newline, Tab completes commands.\n" +
-        "Alt+M opens model select, Alt+T opens tools select, Alt+V toggles verbose mode.\n" +
-        "Up/Down edits or browses history, PgUp/PgDn scrolls chat, Esc cancels the current run.",
-      tone: "muted",
-      markdown: false,
-    });
   }
 
   start(): void {
     if (this.started) return;
     this.started = true;
-
     this.attachTerminal();
     this.spinnerTimer = setInterval(() => {
       this.spinnerIndex = (this.spinnerIndex + 1) % 4;
       this.render();
     }, 120);
     this.spinnerTimer.unref();
-
-    this.render();
+    this.requestFullReplay();
   }
 
   stop(): void {
@@ -269,6 +384,12 @@ export default class RawChatUI {
       this.spinnerTimer = null;
     }
 
+    if (this.inlineScreenAbort) {
+      this.inlineScreenAbort.abort();
+      this.inlineScreenAbort = null;
+    }
+
+    this.clearFooter();
     this.detachTerminal();
   }
 
@@ -281,122 +402,30 @@ export default class RawChatUI {
   resume(): void {
     if (!this.started || !this.suspended) return;
     this.suspended = false;
-    this.forceFullRefresh = true;
     this.attachTerminal();
-    this.render();
+    this.requestFullReplay();
   }
 
   renderEvent(event: AgentEventEnvelope): void {
-    this.mutateTranscript(() => {
-      switch (event.type) {
-        case "agent.created":
-          this.clearActiveStream();
-          this.addEntry({
-            kind: "system",
-            title: "System",
-            body: event.message,
-            tone: "info",
-            markdown: false,
-          });
-          break;
+    this.applyTranscriptEvent(event);
 
-        case "agent.stopped":
-        case "agent.status":
-        case "input.execution":
-        case "cancel":
-          this.clearActiveStream();
-          break;
+    if (!this.started || this.suspended || !process.stdout.isTTY) {
+      return;
+    }
 
-        case "output.chat":
-          this.appendStream("output.chat", "Assistant", event.message, "chat");
-          break;
+    if (this.fullReplayRequested) {
+      return;
+    }
 
-        case "output.reasoning":
-          this.appendStream("output.reasoning", "Reasoning", event.message, "reasoning");
-          break;
-
-        case "output.info":
-          this.clearActiveStream();
-          this.addEntry({
-            kind: "info",
-            title: "Info",
-            body: event.message,
-            tone: "info",
-            markdown: false,
-          });
-          break;
-
-        case "output.warning":
-          this.clearActiveStream();
-          this.addEntry({
-            kind: "warning",
-            title: "Warning",
-            body: event.message,
-            tone: "warning",
-            markdown: false,
-          });
-          break;
-
-        case "output.error":
-          this.clearActiveStream();
-          this.addEntry({
-            kind: "error",
-            title: "Error",
-            body: event.message,
-            tone: "error",
-            markdown: false,
-          });
-          break;
-
-        case "output.artifact":
-          this.clearActiveStream();
-          this.addEntry({
-            kind: "artifact",
-            title: `Artifact: ${event.name}`,
-            body:
-              event.encoding === "text"
-                ? event.body
-                : `Generated ${event.mimeType} artifact`,
-            tone: "info",
-            markdown: event.encoding === "text",
-          });
-          break;
-
-        case "agent.response":
-          this.clearActiveStream();
-          this.addEntry({
-            kind: "response",
-            title: event.status === "success" ? "Response" : "Error",
-            body: event.message,
-            tone: event.status === "success" ? "success" : "error",
-            markdown: event.status === "success",
-          });
-          break;
-
-        case "input.received":
-          this.clearActiveStream();
-          this.addEntry({
-            kind: "input",
-            title: "You",
-            body: event.input.message,
-            tone: "input",
-            markdown: false,
-          });
-          break;
-
-        case "input.interaction":
-          this.clearActiveStream();
-          break;
-
-        default: {
-          const exhaustive: never = event;
-          void exhaustive;
-        }
-      }
-    });
+    const delta = this.buildTranscriptDelta(event);
+    if (delta.kind !== "none") {
+      this.renderIncremental(delta);
+    }
   }
 
-  syncState(_state: AgentEventState): void {
+  syncState(state: AgentEventState): void {
+    this.latestState = state;
+    this.cleanupInteractionState();
     this.render();
   }
 
@@ -413,7 +442,6 @@ export default class RawChatUI {
     if (!process.stdin.isTTY || !process.stdout.isTTY) return;
 
     this.rawModeBeforeStart = !!process.stdin.isRaw;
-    this.forceFullRefresh = true;
     readline.emitKeypressEvents(process.stdin);
     process.stdin.resume();
     process.stdin.setRawMode(true);
@@ -421,8 +449,7 @@ export default class RawChatUI {
     process.stdin.on("keypress", this.keypressHandler);
     process.stdout.on("resize", this.resizeHandler);
     process.on("SIGWINCH", this.resizeHandler);
-
-    process.stdout.write("\x1b[?1049h\x1b[?1000h\x1b[?1006h\x1b[?25l\x1b[2J\x1b[H");
+    process.stdout.write("\x1b[?2004h\x1b[?25l");
   }
 
   private detachTerminal(): void {
@@ -440,54 +467,79 @@ export default class RawChatUI {
     if (process.stdout.isTTY) {
       process.stdout.off("resize", this.resizeHandler);
       process.off("SIGWINCH", this.resizeHandler);
-      process.stdout.write("\x1b[?1006l\x1b[?1000l\x1b[?25h\x1b[?1049l");
+      process.stdout.write("\x1b[?2004l\x1b[?25h");
     }
-  }
-
-  private handleResize(): void {
-    this.forceFullRefresh = true;
-    this.render();
-
-    if (this.resizeTimer) {
-      clearTimeout(this.resizeTimer);
-    }
-    this.resizeTimer = setTimeout(() => {
-      this.forceFullRefresh = true;
-      this.render();
-    }, 16);
-    this.resizeTimer.unref();
   }
 
   private handleTerminalData(data: Buffer | string): void {
     const text = typeof data === "string" ? data : data.toString("utf8");
-    const mousePayloads = getMouseSequencePayloads(text);
 
-    let handledMouseScroll = false;
-    for (const payload of mousePayloads) {
-      this.pendingMousePayloads.push(payload);
-      this.mouseSuppressionExpiresAt = Date.now() + 80;
-
-      const code = Number(payload.split(";", 1)[0]);
-      if (code === 64) {
-        this.scrollTranscript(3);
-        handledMouseScroll = true;
-      } else if (code === 65) {
-        this.scrollTranscript(-3);
-        handledMouseScroll = true;
-      }
-    }
-
-    if (handledMouseScroll) {
-      this.completionState = null;
-    }
-  }
-
-  private handleKeypress(input: string, key: readline.Key): void {
-    if (this.shouldSuppressMouseKeypress(input, key)) {
+    if (!this.inBracketedPaste && !text.includes(BRACKETED_PASTE_START)) {
       return;
     }
 
-    if (key.sequence?.startsWith("\x1b[<")) {
+    let remainder = text;
+
+    while (remainder.length > 0) {
+      if (!this.inBracketedPaste) {
+        const startIndex = remainder.indexOf(BRACKETED_PASTE_START);
+        if (startIndex === -1) {
+          return;
+        }
+
+        this.inBracketedPaste = true;
+        this.bracketedPasteBuffer = "";
+        remainder = remainder.slice(startIndex + BRACKETED_PASTE_START.length);
+      }
+
+      const endIndex = remainder.indexOf(BRACKETED_PASTE_END);
+      if (endIndex === -1) {
+        this.bracketedPasteBuffer += remainder;
+        return;
+      }
+
+      this.bracketedPasteBuffer += remainder.slice(0, endIndex);
+      this.insertBracketedPaste(this.bracketedPasteBuffer);
+      this.bracketedPasteBuffer = "";
+      this.inBracketedPaste = false;
+      this.pasteSuppressionExpiresAt = Date.now() + 50;
+      remainder = remainder.slice(endIndex + BRACKETED_PASTE_END.length);
+    }
+  }
+
+  private insertBracketedPaste(text: string): void {
+    const normalized = text.replace(/\r\n?/g, "\n");
+    const activeQuestion = this.getFocusedQuestion();
+    if (activeQuestion) {
+      return;
+    }
+
+    const followup = this.getPrimaryFollowup();
+    if (followup) {
+      this.getFollowupEditor(followup.interactionId).insert(normalized);
+      this.render();
+      return;
+    }
+
+    this.chatEditor.insert(normalized);
+    this.afterChatEdit();
+    this.render();
+  }
+
+  private handleResize(): void {
+    this.requestFullReplay();
+
+    if (this.resizeTimer) {
+      clearTimeout(this.resizeTimer);
+    }
+    this.resizeTimer = globalThis.setTimeout(() => {
+      this.requestFullReplay();
+    }, 16);
+    this.resizeTimer?.unref();
+  }
+
+  private handleKeypress(input: string, key: readline.Key): void {
+    if (this.inBracketedPaste || Date.now() < this.pasteSuppressionExpiresAt) {
       return;
     }
 
@@ -496,40 +548,8 @@ export default class RawChatUI {
       return;
     }
 
-    if (key.name === "escape") {
-      if (this.completionState) {
-        this.completionState = null;
-        this.render();
-        return;
-      }
-
-      if (this.options.onAbortCurrentActivity()) {
-        this.flash("Cancelled the current activity.", "warning");
-      } else {
-        this.flash("No active work to cancel.", "info");
-      }
-      return;
-    }
-
-    if (key.name === "pageup") {
-      this.scrollTranscript(this.getPageScrollDelta());
-      return;
-    }
-    if (key.name === "pagedown") {
-      this.scrollTranscript(-this.getPageScrollDelta());
-      return;
-    }
-    if (key.name === "home" && key.ctrl) {
-      this.scrollToTop();
-      return;
-    }
-    if (key.name === "end" && key.ctrl) {
-      this.scrollToBottom();
-      return;
-    }
-
     if (key.ctrl && key.name === "l") {
-      this.render();
+      this.requestFullReplay();
       return;
     }
 
@@ -548,185 +568,303 @@ export default class RawChatUI {
       return;
     }
 
+    if ((key.meta && key.name === "q") || key.name === "f6") {
+      this.toggleOptionalQuestions();
+      return;
+    }
+
+    const activeQuestion = this.getFocusedQuestion();
+    if (!activeQuestion && this.optionalPickerOpen) {
+      if (this.handleOptionalQuestionPicker(key)) {
+        this.render();
+        return;
+      }
+    }
+
+    if (activeQuestion) {
+      const session = this.getQuestionSession(activeQuestion);
+      const handled = session.handleKeypress(input, key as InlineKeypress);
+      if (handled instanceof Promise) {
+        void handled.then((didHandle) => {
+          if (didHandle) {
+            this.render();
+          }
+        });
+      } else if (handled) {
+        this.render();
+      }
+      return;
+    }
+
+    const followup = this.getPrimaryFollowup();
+    if (followup) {
+      if (this.handleFollowupKeypress(followup, input, key as InlineKeypress)) {
+        this.render();
+      }
+      return;
+    }
+
+    if (this.handleChatComposerKeypress(input, key)) {
+      this.render();
+    }
+  }
+
+  private handleChatComposerKeypress(input: string, key: readline.Key): boolean {
+    if (key.name === "escape") {
+      if (this.completionState) {
+        this.completionState = null;
+        return true;
+      }
+
+      if (this.options.onAbortCurrentActivity()) {
+        this.flash("Cancelled the current activity.", "warning");
+      } else {
+        this.flash("No active work to cancel.", "muted");
+      }
+      return true;
+    }
+
     if (key.name === "tab") {
       if (this.handleTabCompletion()) {
-        return;
+        return true;
       }
 
       if (!this.isCommandInput()) {
-        this.editor.insert("  ");
-        this.afterEdit();
+        this.chatEditor.insert("  ");
+        this.afterChatEdit();
       }
-      return;
+      return true;
     }
 
-    if (key.meta && key.name === "return") {
-      this.editor.insertNewline();
-      this.afterEdit();
-      return;
+    if ((key.meta && key.name === "return") || (key.shift && key.name === "return")) {
+      this.chatEditor.insertNewline();
+      this.afterChatEdit();
+      return true;
     }
 
     if (key.ctrl && key.name === "o") {
-      this.editor.insertNewline();
-      this.afterEdit();
-      return;
+      this.chatEditor.insertNewline();
+      this.afterChatEdit();
+      return true;
     }
 
-    if (key.ctrl && key.name === "a") {
-      this.editor.moveHome();
-      this.afterCursorMove();
-      return;
-    }
-    if (key.ctrl && key.name === "e") {
-      this.editor.moveEnd();
-      this.afterCursorMove();
-      return;
-    }
-    if (key.ctrl && key.name === "u") {
-      this.editor.deleteToStartOfLine();
-      this.afterEdit();
-      return;
-    }
-    if (key.ctrl && key.name === "k") {
-      this.editor.deleteToEndOfLine();
-      this.afterEdit();
-      return;
-    }
-    if (key.ctrl && key.name === "w") {
-      this.editor.deleteWordBackward();
-      this.afterEdit();
-      return;
-    }
-    if (key.ctrl && key.name === "d") {
-      this.editor.deleteForward();
-      this.afterEdit();
-      return;
-    }
     if (key.ctrl && key.name === "p") {
       this.browseHistory(-1);
-      return;
+      return true;
     }
+
     if (key.ctrl && key.name === "n") {
       this.browseHistory(1);
-      return;
+      return true;
     }
 
-    if (key.meta && key.name === "b") {
-      this.editor.moveWordLeft();
-      this.afterCursorMove();
-      return;
-    }
-    if (key.meta && key.name === "f") {
-      this.editor.moveWordRight();
-      this.afterCursorMove();
-      return;
-    }
-
-    if (key.name === "left") {
-      this.editor.moveLeft();
-      this.afterCursorMove();
-      return;
-    }
-    if (key.name === "right") {
-      this.editor.moveRight();
-      this.afterCursorMove();
-      return;
-    }
     if (key.name === "up") {
-      const {lineIndex} = this.editor.getCursorLocation();
+      const {lineIndex} = this.chatEditor.getCursorLocation();
       if (lineIndex > 0) {
-        this.editor.moveUp();
-        this.afterCursorMove();
+        this.chatEditor.moveUp();
       } else {
         this.browseHistory(-1);
       }
-      return;
+      return true;
     }
+
     if (key.name === "down") {
-      const {lineIndex} = this.editor.getCursorLocation();
-      if (lineIndex < this.editor.getLineCount() - 1) {
-        this.editor.moveDown();
-        this.afterCursorMove();
+      const {lineIndex} = this.chatEditor.getCursorLocation();
+      if (lineIndex < this.chatEditor.getLineCount() - 1) {
+        this.chatEditor.moveDown();
       } else {
         this.browseHistory(1);
       }
-      return;
-    }
-    if (key.name === "home") {
-      this.editor.moveHome();
-      this.afterCursorMove();
-      return;
-    }
-    if (key.name === "end") {
-      this.editor.moveEnd();
-      this.afterCursorMove();
-      return;
-    }
-
-    if (key.name === "backspace") {
-      this.editor.backspace();
-      this.afterEdit();
-      return;
-    }
-    if (key.name === "delete") {
-      this.editor.deleteForward();
-      this.afterEdit();
-      return;
+      return true;
     }
 
     if (key.name === "return") {
       this.submitCurrentInput();
-      return;
+      return true;
     }
 
-    if (input && !key.ctrl && !key.meta) {
-      this.editor.insert(input.replace(/\r\n?/g, "\n"));
-      this.afterEdit();
+    if (this.applyEditorKeypress(this.chatEditor, input, key)) {
+      this.afterChatEdit();
+      return true;
     }
+
+    return false;
   }
 
-  private shouldSuppressMouseKeypress(input: string, key: readline.Key): boolean {
-    if (Date.now() > this.mouseSuppressionExpiresAt) {
-      this.pendingMousePayloads = [];
-    }
+  private handleFollowupKeypress(
+    followup: FollowupInteraction,
+    input: string,
+    key: InlineKeypress,
+  ): boolean {
+    const editor = this.getFollowupEditor(followup.interactionId);
 
-    const sequence = key.sequence ?? "";
-    if (sequence.startsWith("\x1b[<")) {
-      return true;
-    }
-
-    const payload = this.pendingMousePayloads[0];
-    if (!payload) return false;
-
-    const candidate = input || sequence;
-    if (!candidate) return false;
-
-    if (candidate === "[" || candidate === "<" || key.name === "escape") {
-      return true;
-    }
-
-    if (payload.startsWith(candidate)) {
-      const remainder = payload.slice(candidate.length);
-      if (remainder.length === 0) {
-        this.pendingMousePayloads.shift();
+    if (key.name === "escape") {
+      if (this.options.onAbortCurrentActivity()) {
+        this.flash("Cancelled the current activity.", "warning");
       } else {
-        this.pendingMousePayloads[0] = remainder;
+        this.flash("No active work to cancel.", "muted");
       }
       return true;
     }
 
-    if (/^[0-9;Mm]+$/.test(candidate)) {
+    if ((key.meta && key.name === "return") || (key.shift && key.name === "return")) {
+      editor.insertNewline();
       return true;
     }
 
-    this.pendingMousePayloads = [];
+    if (key.ctrl && key.name === "o") {
+      editor.insertNewline();
+      return true;
+    }
+
+    if (key.name === "return") {
+      const value = editor.getText().trimEnd();
+      if (value.trim().length === 0) {
+        this.flash("Type a follow-up first.", "muted");
+        return true;
+      }
+
+      this.sendInteractionResponse(followup.interactionId, value);
+      editor.clear();
+      return true;
+    }
+
+    return this.applyEditorKeypress(editor, input, key);
+  }
+
+  private handleOptionalQuestionPicker(key: InlineKeypress): boolean {
+    const optionalQuestions = this.getOptionalQuestions();
+    if (optionalQuestions.length === 0) {
+      this.optionalPickerOpen = false;
+      return false;
+    }
+
+    if (key.name === "escape") {
+      this.optionalPickerOpen = false;
+      return true;
+    }
+    if (key.name === "up") {
+      this.optionalQuestionIndex = clamp(this.optionalQuestionIndex - 1, 0, optionalQuestions.length - 1);
+      return true;
+    }
+    if (key.name === "down") {
+      this.optionalQuestionIndex = clamp(this.optionalQuestionIndex + 1, 0, optionalQuestions.length - 1);
+      return true;
+    }
+    if (key.name === "pageup") {
+      this.optionalQuestionIndex = clamp(this.optionalQuestionIndex - 8, 0, optionalQuestions.length - 1);
+      return true;
+    }
+    if (key.name === "pagedown") {
+      this.optionalQuestionIndex = clamp(this.optionalQuestionIndex + 8, 0, optionalQuestions.length - 1);
+      return true;
+    }
+    if (key.name === "return") {
+      const question = optionalQuestions[this.optionalQuestionIndex];
+      if (question) {
+        this.activeOptionalQuestionId = question.interactionId;
+        this.optionalPickerOpen = false;
+      }
+      return true;
+    }
+
     return false;
+  }
+
+  private applyEditorKeypress(editor: InputEditor, input: string, key: InlineKeypress): boolean {
+    if (key.ctrl && key.name === "a") {
+      editor.moveHome();
+      return true;
+    }
+    if (key.ctrl && key.name === "e") {
+      editor.moveEnd();
+      return true;
+    }
+    if (key.ctrl && key.name === "u") {
+      editor.deleteToStartOfLine();
+      return true;
+    }
+    if (key.ctrl && key.name === "k") {
+      editor.deleteToEndOfLine();
+      return true;
+    }
+    if (key.ctrl && key.name === "w") {
+      editor.deleteWordBackward();
+      return true;
+    }
+    if (key.ctrl && key.name === "d") {
+      editor.deleteForward();
+      return true;
+    }
+    if (key.meta && key.name === "b") {
+      editor.moveWordLeft();
+      return true;
+    }
+    if (key.meta && key.name === "f") {
+      editor.moveWordRight();
+      return true;
+    }
+    if (key.name === "left") {
+      editor.moveLeft();
+      return true;
+    }
+    if (key.name === "right") {
+      editor.moveRight();
+      return true;
+    }
+    if (key.name === "home") {
+      editor.moveHome();
+      return true;
+    }
+    if (key.name === "end") {
+      editor.moveEnd();
+      return true;
+    }
+    if (key.name === "backspace") {
+      editor.backspace();
+      return true;
+    }
+    if (key.name === "delete") {
+      editor.deleteForward();
+      return true;
+    }
+
+    if (input && !key.ctrl && !key.meta) {
+      editor.insert(input.replace(/\r\n?/g, "\n"));
+      return true;
+    }
+
+    return false;
+  }
+
+  private toggleVerboseMode(): void {
+    this.verbose = !this.verbose;
+    this.flash(`Verbose mode ${this.verbose ? "on" : "off"}.`, "info");
+    this.requestFullReplay();
+  }
+
+  private toggleOptionalQuestions(): void {
+    const optionalQuestions = this.getOptionalQuestions();
+    if (optionalQuestions.length === 0) {
+      this.flash("No optional questions are available.", "muted");
+      return;
+    }
+
+    if (this.activeOptionalQuestionId) {
+      this.activeOptionalQuestionId = null;
+      this.optionalPickerOpen = true;
+    } else {
+      this.optionalPickerOpen = !this.optionalPickerOpen;
+    }
+
+    this.optionalQuestionIndex = clamp(this.optionalQuestionIndex, 0, optionalQuestions.length - 1);
+    this.render();
   }
 
   private handleTabCompletion(): boolean {
     const context = getCommandCompletionContext(
-      this.editor.getText(),
-      this.editor.getCursor(),
+      this.chatEditor.getText(),
+      this.chatEditor.getCursor(),
       this.options.commands,
     );
 
@@ -754,11 +892,7 @@ export default class RawChatUI {
         ...this.completionState,
         selectedIndex: nextIndex,
       };
-      this.applyCompletion(
-        context.replacementStart,
-        context.replacementEnd,
-        context.matches[nextIndex].name,
-      );
+      this.applyCompletion(context.replacementStart, context.replacementEnd, context.matches[nextIndex].name);
       return true;
     }
 
@@ -772,7 +906,6 @@ export default class RawChatUI {
       matches: context.matches,
       selectedIndex: 0,
     };
-    this.render();
     return true;
   }
 
@@ -782,26 +915,25 @@ export default class RawChatUI {
   }
 
   private applyCompletion(start: number, end: number, replacement: string): void {
-    const text = this.editor.getText();
+    const text = this.chatEditor.getText();
     const prefix = text.slice(0, start);
     const suffix = text.slice(end);
 
-    this.editor.setText(`${prefix}/${replacement}${suffix}`, prefix.length + replacement.length + 1);
+    this.chatEditor.setText(`${prefix}/${replacement}${suffix}`, prefix.length + replacement.length + 1);
     this.historyIndex = null;
     this.historyDraft = "";
-    this.render();
   }
 
   private browseHistory(direction: -1 | 1): void {
     const history = this.options.agent.getState(CommandHistoryState).commands;
     if (history.length === 0) {
-      this.flash("History is empty.", "info");
+      this.flash("History is empty.", "muted");
       return;
     }
 
     if (direction < 0) {
       if (this.historyIndex === null) {
-        this.historyDraft = this.editor.getText();
+        this.historyDraft = this.chatEditor.getText();
         this.historyIndex = history.length - 1;
       } else {
         this.historyIndex = clamp(this.historyIndex - 1, 0, history.length - 1);
@@ -810,33 +942,29 @@ export default class RawChatUI {
       return;
     } else if (this.historyIndex >= history.length - 1) {
       this.historyIndex = null;
-      this.editor.setText(this.historyDraft);
+      this.chatEditor.setText(this.historyDraft);
       this.completionState = null;
-      this.render();
       return;
     } else {
       this.historyIndex += 1;
     }
 
-    this.editor.setText(history[this.historyIndex]);
+    this.chatEditor.setText(history[this.historyIndex]);
     this.completionState = null;
-    this.render();
   }
 
   private submitCurrentInput(): void {
-    const message = this.editor.getText().trimEnd();
+    const message = this.chatEditor.getText().trimEnd();
     if (message.trim().length === 0) {
-      this.flash("Type a message or command first.", "info");
+      this.flash("Type a message or command first.", "muted");
       return;
     }
 
     this.options.onSubmit(message);
-    this.editor.clear();
+    this.chatEditor.clear();
     this.historyIndex = null;
     this.historyDraft = "";
     this.completionState = null;
-    this.transcriptScrollOffset = 0;
-    this.render();
   }
 
   private triggerShortcutCommand(commandName: string, flashMessage: string): void {
@@ -854,60 +982,228 @@ export default class RawChatUI {
     return this.options.commands.some((command) => command.name === commandName);
   }
 
-  private afterEdit(): void {
+  private afterChatEdit(): void {
     this.historyIndex = null;
     this.historyDraft = "";
     this.completionState = null;
-    this.render();
-  }
-
-  private afterCursorMove(): void {
-    this.render();
-  }
-
-  private scrollTranscript(delta: number): void {
-    const {columns, rows} = this.getTerminalSize();
-    const inputPanel = this.renderInputPanel(columns, rows);
-    const transcriptHeight = Math.max(1, rows - inputPanel.rows.length - 4);
-    const maxOffset = Math.max(0, this.getTotalTranscriptLineCount(columns) - transcriptHeight);
-
-    this.transcriptScrollOffset = clamp(this.transcriptScrollOffset + delta, 0, maxOffset);
-    this.render();
-  }
-
-  private getPageScrollDelta(): number {
-    const {columns, rows} = this.getTerminalSize();
-    const inputPanel = this.renderInputPanel(columns, rows);
-    const transcriptHeight = Math.max(1, rows - inputPanel.rows.length - 4);
-    return Math.max(1, transcriptHeight - 2);
-  }
-
-  private scrollToTop(): void {
-    const {columns, rows} = this.getTerminalSize();
-    const inputPanel = this.renderInputPanel(columns, rows);
-    const transcriptHeight = Math.max(1, rows - inputPanel.rows.length - 4);
-    this.transcriptScrollOffset = Math.max(0, this.getTotalTranscriptLineCount(columns) - transcriptHeight);
-    this.render();
-  }
-
-  private scrollToBottom(): void {
-    this.transcriptScrollOffset = 0;
-    this.render();
   }
 
   private isCommandInput(): boolean {
-    return this.editor.getText().startsWith("/");
+    return this.chatEditor.getText().startsWith("/");
   }
 
-  private mutateTranscript(mutator: () => void): void {
-    const width = this.getTerminalSize().columns;
-    const before = this.transcriptScrollOffset > 0 ? this.getTotalTranscriptLineCount(width) : 0;
-    mutator();
-    const after = this.transcriptScrollOffset > 0 ? this.getTotalTranscriptLineCount(width) : 0;
-    if (this.transcriptScrollOffset > 0 && after > before) {
-      this.transcriptScrollOffset += after - before;
+  private applyTranscriptEvent(event: AgentEventEnvelope): void {
+    switch (event.type) {
+      case "agent.created":
+        this.clearActiveTranscriptStream();
+        this.addEntry({
+          kind: "system",
+          title: "System",
+          body: event.message,
+          tone: "info",
+          markdown: false,
+        });
+        break;
+
+      case "agent.stopped":
+      case "agent.status":
+      case "input.execution":
+      case "cancel":
+        this.clearActiveTranscriptStream();
+        break;
+
+      case "output.chat":
+        this.appendTranscriptStream("output.chat", "Assistant", event.message, "chat");
+        break;
+
+      case "output.reasoning":
+        this.appendTranscriptStream("output.reasoning", "Reasoning", event.message, "reasoning");
+        break;
+
+      case "output.info":
+        this.clearActiveTranscriptStream();
+        this.addEntry({
+          kind: "info",
+          title: "Info",
+          body: event.message,
+          tone: "info",
+          markdown: false,
+        });
+        break;
+
+      case "output.warning":
+        this.clearActiveTranscriptStream();
+        this.addEntry({
+          kind: "warning",
+          title: "Warning",
+          body: event.message,
+          tone: "warning",
+          markdown: false,
+        });
+        break;
+
+      case "output.error":
+        this.clearActiveTranscriptStream();
+        this.addEntry({
+          kind: "error",
+          title: "Error",
+          body: event.message,
+          tone: "error",
+          markdown: false,
+        });
+        break;
+
+      case "output.artifact":
+        this.clearActiveTranscriptStream();
+        this.addEntry({
+          kind: "artifact",
+          title: `Artifact: ${event.name}`,
+          body: event.encoding === "text" ? event.body : `Generated ${event.mimeType} artifact`,
+          tone: "info",
+          markdown: event.encoding === "text",
+        });
+        break;
+
+      case "agent.response":
+        this.clearActiveTranscriptStream();
+        this.addEntry({
+          kind: "response",
+          title: event.status === "success" ? "Response" : "Error",
+          body: event.message,
+          tone: event.status === "success" ? "success" : "error",
+          markdown: event.status === "success",
+        });
+        break;
+
+      case "input.received":
+        this.clearActiveTranscriptStream();
+        this.addEntry({
+          kind: "input",
+          title: "You",
+          body: event.input.message,
+          tone: "input",
+          markdown: false,
+        });
+        break;
+
+      case "input.interaction":
+        this.clearActiveTranscriptStream();
+        break;
     }
-    this.render();
+  }
+
+  private buildTranscriptDelta(event: AgentEventEnvelope): TranscriptDelta {
+    const columns = this.getTerminalSize().columns;
+
+    switch (event.type) {
+      case "agent.created":
+        return this.buildCompleteEntryDelta("System", event.message, "info", false);
+      case "output.chat":
+        return this.buildStreamDelta("output.chat", "Assistant", event.message, "chat", columns);
+      case "output.reasoning":
+        if (!this.verbose) {
+          this.closeVisibleStream();
+          return {kind: "none"};
+        }
+        return this.buildStreamDelta("output.reasoning", "Reasoning", event.message, "reasoning", columns);
+      case "output.info":
+        return this.buildCompleteEntryDelta("Info", event.message, "info", false);
+      case "output.warning":
+        return this.buildCompleteEntryDelta("Warning", event.message, "warning", false);
+      case "output.error":
+        return this.buildCompleteEntryDelta("Error", event.message, "error", false);
+      case "output.artifact":
+        if (!this.verbose) {
+          this.closeVisibleStream();
+          return {kind: "none"};
+        }
+        return this.buildCompleteEntryDelta(
+          `Artifact: ${event.name}`,
+          event.encoding === "text" ? event.body : `Generated ${event.mimeType} artifact`,
+          "info",
+          event.encoding === "text",
+        );
+      case "agent.response":
+        return this.buildCompleteEntryDelta(
+          event.status === "success" ? "Response" : "Error",
+          event.message,
+          event.status === "success" ? "success" : "error",
+          event.status === "success",
+        );
+      case "input.received":
+        return this.buildCompleteEntryDelta("You", event.input.message, "input", false);
+      case "agent.stopped":
+      case "agent.status":
+      case "input.execution":
+      case "cancel":
+      case "input.interaction":
+        this.closeVisibleStream();
+        return {kind: "none"};
+    }
+  }
+
+  private buildCompleteEntryDelta(
+    title: string,
+    body: string,
+    tone: TranscriptTone,
+    markdown: boolean,
+  ): TranscriptDelta {
+    this.closeVisibleStream();
+    const prefix = this.pendingSeparatorBeforeNextVisibleEntry ? "\n" : "";
+    this.pendingSeparatorBeforeNextVisibleEntry = false;
+    return {
+      kind: "append",
+      text: `${prefix}${this.renderEntryText({
+        id: 0,
+        kind: "info",
+        title,
+        body,
+        tone,
+        markdown,
+      })}`,
+      footerNeedsLeadingNewline: false,
+    };
+  }
+
+  private buildStreamDelta(
+    type: "output.chat" | "output.reasoning",
+    title: string,
+    message: string,
+    tone: TranscriptTone,
+    columns: number,
+  ): TranscriptDelta {
+    const {styled, raw} = this.renderStreamChunk(message, tone);
+
+    if (!this.activeVisibleStream || this.activeVisibleStream.type !== type) {
+      const prefix = this.pendingSeparatorBeforeNextVisibleEntry ? "\n" : "";
+      this.pendingSeparatorBeforeNextVisibleEntry = false;
+      const rawBody = `${TEXT_INDENT}${raw}`;
+      this.activeVisibleStream = {
+        type,
+        column: advanceColumn(0, rawBody, columns),
+      };
+      return {
+        kind: "append",
+        text: `${prefix}${TITLE_COLOR(`${HEADER_PREFIX}${title}`)}\n${TONE_COLORS[tone](rawBody)}`,
+        footerNeedsLeadingNewline: true,
+      };
+    }
+
+    const fromColumn = this.activeVisibleStream.column;
+    this.activeVisibleStream.column = advanceColumn(fromColumn, raw, columns);
+    return {
+      kind: "continueStream",
+      text: styled,
+      footerNeedsLeadingNewline: true,
+      fromColumn,
+    };
+  }
+
+  private closeVisibleStream(): void {
+    if (this.activeVisibleStream) {
+      this.activeVisibleStream = null;
+      this.pendingSeparatorBeforeNextVisibleEntry = true;
+    }
   }
 
   private addEntry(entry: Omit<TranscriptEntry, "id">): TranscriptEntry {
@@ -919,19 +1215,18 @@ export default class RawChatUI {
     return fullEntry;
   }
 
-  private clearActiveStream(): void {
-    this.activeStream = null;
+  private clearActiveTranscriptStream(): void {
+    this.activeTranscriptStream = null;
   }
 
-  private appendStream(
+  private appendTranscriptStream(
     type: "output.chat" | "output.reasoning",
     title: string,
     message: string,
     tone: TranscriptTone,
   ): void {
-    if (this.activeStream?.type === type) {
-      this.activeStream.entry.body += message;
-      this.activeStream.entry.cache = undefined;
+    if (this.activeTranscriptStream?.type === type) {
+      this.activeTranscriptStream.entry.body += message;
       return;
     }
 
@@ -942,95 +1237,378 @@ export default class RawChatUI {
       tone,
       markdown: true,
     });
-    this.activeStream = {type, entry};
+    this.activeTranscriptStream = {type, entry};
   }
 
-  private toggleVerboseMode(): void {
-    const width = this.getTerminalSize().columns;
-    const before = this.transcriptScrollOffset > 0 ? this.getTotalTranscriptLineCount(width) : 0;
+  private requestFullReplay(): void {
+    this.fullReplayRequested = true;
+    this.render();
+  }
 
-    this.verbose = !this.verbose;
-    this.invalidateTranscriptCache();
+  private render(): void {
+    if (!this.started || this.suspended || !process.stdout.isTTY) return;
+    const footerSignature = this.getFooterSignature();
+    if (!this.fullReplayRequested && this.renderedFooterSignature !== footerSignature) {
+      this.fullReplayRequested = true;
+    }
+    if (this.fullReplayRequested) {
+      this.renderFullReplay();
+      return;
+    }
+    this.renderFooterOnly();
+  }
 
-    const after = this.transcriptScrollOffset > 0 ? this.getTotalTranscriptLineCount(width) : 0;
-    if (this.transcriptScrollOffset > 0 && after > before) {
-      this.transcriptScrollOffset += after - before;
+  private renderFullReplay(): void {
+    if (!process.stdout.isTTY) return;
+
+    if (this.latestState) {
+      this.rebuildTranscriptFromEvents(this.latestState.events);
     }
 
-    this.flash(`Verbose mode ${this.verbose ? "on" : "off"}.`, "info");
-  }
+    const {columns, rows} = this.getTerminalSize();
+    const footerSignature = this.getFooterSignature();
+    const footer = this.renderFooter(columns, rows);
 
-  private invalidateTranscriptCache(): void {
-    for (const entry of this.transcript) {
-      entry.cache = undefined;
-    }
-  }
-
-  private getVisibleTranscript(): TranscriptEntry[] {
-    if (this.verbose) return this.transcript;
-    return this.transcript.filter((entry) => entry.kind !== "reasoning");
-  }
-
-  private getDisplayBody(entry: TranscriptEntry): string | null {
-    if (! this.verbose && entry.kind === "artifact") return null;
-    return trimBoundaryNewlines(entry.body);
-  }
-
-  private getRenderedEntry(entry: TranscriptEntry, width: number): string[] {
-    if (entry.cache?.width === width && entry.cache.verbose === this.verbose) {
-      return entry.cache.rendered;
+    if (columns < 40 || rows < 10) {
+      const output = `\x1b[?25l\x1b[3J\x1b[2J\x1b[H${TONE_COLORS.warning("Terminal too small. Resize to at least 40x10.")}\x1b[?25h`;
+      process.stdout.write(output);
+      this.footerSnapshot = {
+        lineCount: 1,
+        cursorRow: 0,
+        cursorColumn: 0,
+        showCursor: false,
+      };
+      this.fullReplayRequested = false;
+      return;
     }
 
-    const lines: string[] = [];
-    if (entry.title) {
-      lines.push(TITLE_COLOR(`${HEADER_PREFIX}${entry.title}`));
+    const {text, activeStream} = this.renderTranscriptReplay(columns);
+    let output = "\x1b[?25l\x1b[3J\x1b[2J\x1b[H";
+    output += text;
+
+    if (footer.lines.length > 0) {
+      if (text.length > 0 && activeStream) {
+        output += "\n";
+      }
+      output += footer.lines.join("\n");
+      output += this.getFooterCursorSequence(footer);
+    } else {
+      output += "\x1b[?25h";
     }
 
-    const contentWidth = Math.max(1, width - visibleLength(TEXT_INDENT));
-    const rawBody = this.getDisplayBody(entry);
-    if (rawBody) {
-      const sourceLines = (rawBody.length > 0 ? rawBody : "").split("\n");
-      for (const sourceLine of sourceLines) {
-        const wrappedBody = wrapPlainText(sourceLine, contentWidth);
-        for (const line of wrappedBody) {
-          const bodyText = line;
-          const styledBody = entry.markdown
-            ? TONE_COLORS[entry.tone](applyMarkdownStyles(bodyText))
-            : TONE_COLORS[entry.tone](bodyText);
-          lines.push(`${TEXT_INDENT}${styledBody}`);
-        }
+    process.stdout.write(output);
+    this.footerSnapshot = {
+      lineCount: footer.lines.length,
+      cursorRow: footer.cursorRow ?? Math.max(0, footer.lines.length - 1),
+      cursorColumn: footer.cursorColumn ?? 0,
+      showCursor: footer.showCursor !== false,
+    };
+    this.renderedFooterSignature = footerSignature;
+    this.activeVisibleStream = activeStream;
+    this.pendingSeparatorBeforeNextVisibleEntry = false;
+    this.fullReplayRequested = false;
+  }
+
+  private renderFooterOnly(): void {
+    this.renderIncremental({kind: "none"});
+  }
+
+  private renderIncremental(delta: TranscriptDelta): void {
+    if (!process.stdout.isTTY) return;
+
+    const {columns, rows} = this.getTerminalSize();
+    const footer = this.renderFooter(columns, rows);
+
+    if (columns < 40 || rows < 10) {
+      this.requestFullReplay();
+      return;
+    }
+
+    let output = "\x1b[?25l";
+    output += this.moveToFooterTop();
+    output += "\x1b[J";
+
+    if (delta.kind === "continueStream") {
+      output += `\x1b[1F\x1b[${delta.fromColumn + 1}G`;
+      output += delta.text;
+      if (footer.lines.length > 0 && delta.footerNeedsLeadingNewline) {
+        output += "\n";
+      }
+    } else if (delta.kind === "append") {
+      output += delta.text;
+      if (footer.lines.length > 0 && delta.footerNeedsLeadingNewline) {
+        output += "\n";
       }
     }
 
-    lines.push(TEXT_INDENT);
-    entry.cache = {width, verbose: this.verbose, rendered: lines};
-    return lines;
+    if (footer.lines.length > 0) {
+      output += footer.lines.join("\n");
+      output += this.getFooterCursorSequence(footer);
+    } else {
+      output += "\x1b[?25h";
+    }
+
+    process.stdout.write(output);
+    this.footerSnapshot = {
+      lineCount: footer.lines.length,
+      cursorRow: footer.cursorRow ?? Math.max(0, footer.lines.length - 1),
+      cursorColumn: footer.cursorColumn ?? 0,
+      showCursor: footer.showCursor !== false,
+    };
+    this.renderedFooterSignature = this.getFooterSignature();
   }
 
-  private getTotalTranscriptLineCount(width: number): number {
-    return this.getVisibleTranscript().reduce((total, entry) => total + this.getRenderedEntry(entry, width).length, 0);
+  private clearFooter(): void {
+    if (!process.stdout.isTTY || this.footerSnapshot.lineCount === 0) return;
+    const output = `${this.moveToFooterTop()}\x1b[J\r\n`;
+    process.stdout.write(output);
+    this.footerSnapshot = {
+      lineCount: 0,
+      cursorRow: 0,
+      cursorColumn: 0,
+      showCursor: true,
+    };
+    this.renderedFooterSignature = "";
   }
 
-  private getViewportTranscript(width: number, height: number): string[] {
+  private moveToFooterTop(): string {
+    if (this.footerSnapshot.lineCount === 0) {
+      return "";
+    }
+
+    let output = "\r";
+    if (this.footerSnapshot.cursorRow > 0) {
+      output += `\x1b[${this.footerSnapshot.cursorRow}F`;
+    }
+    return output;
+  }
+
+  private getFooterCursorSequence(block: RenderBlock): string {
+    const lineCount = block.lines.length;
+    if (lineCount === 0) {
+      return block.showCursor === false ? "\x1b[?25l" : "\x1b[?25h";
+    }
+
+    const cursorRow = block.cursorRow ?? Math.max(0, lineCount - 1);
+    const cursorColumn = block.cursorColumn ?? 0;
+    const moveUp = Math.max(0, lineCount - 1 - cursorRow);
+
+    let output = "\r";
+    if (moveUp > 0) {
+      output += `\x1b[${moveUp}F`;
+    }
+    output += `\x1b[${cursorColumn + 1}G`;
+    output += block.showCursor === false ? "\x1b[?25l" : "\x1b[?25h";
+    return output;
+  }
+
+  private renderFooter(columns: number, rows: number): RenderBlock {
+    if (columns < 40 || rows < 10) {
+      return {
+        lines: [TONE_COLORS.warning("Terminal too small. Resize to at least 40x10.")],
+        showCursor: false,
+      };
+    }
+
+    const sections: RenderBlock[] = [];
+    const question = this.getFocusedQuestion();
+
+    if (question) {
+      sections.push(this.renderQuestionSection(question, columns, rows));
+    } else if (this.optionalPickerOpen) {
+      sections.push({
+        lines: [this.getHintLine(columns)],
+        showCursor: false,
+      });
+      sections.push(this.renderOptionalQuestionPicker(columns, rows));
+    } else {
+      const followup = this.getPrimaryFollowup();
+      sections.push({
+        lines: [this.getHintLine(columns)],
+        showCursor: false,
+      });
+      sections.push(followup
+        ? this.renderFollowupComposer(followup, columns, rows)
+        : this.renderChatComposer(columns, rows));
+    }
+
+    sections.push({
+      lines: [this.getStatusLine(columns)],
+      showCursor: false,
+    });
+
+    const footerContent = this.combineBlocks(sections);
+    const transcriptVisibleRows = this.getVisibleTranscriptViewportLineCount(
+      Math.max(0, rows - footerContent.lines.length),
+    );
+    const spacerCount = Math.max(0, rows - footerContent.lines.length - transcriptVisibleRows);
+
+    if (spacerCount === 0) {
+      return footerContent;
+    }
+
+    return {
+      lines: [
+        ...Array.from({length: spacerCount}, () => ""),
+        ...footerContent.lines,
+      ],
+      cursorRow: footerContent.cursorRow === undefined ? undefined : footerContent.cursorRow + spacerCount,
+      cursorColumn: footerContent.cursorColumn,
+      showCursor: footerContent.showCursor,
+    };
+  }
+
+  private combineBlocks(blocks: RenderBlock[]): RenderBlock {
     const lines: string[] = [];
-    let remainingOffset = this.transcriptScrollOffset;
-    const visibleTranscript = this.getVisibleTranscript();
+    let cursorRow: number | undefined;
+    let cursorColumn: number | undefined;
+    let showCursor = false;
 
-    for (let entryIndex = visibleTranscript.length - 1; entryIndex >= 0 && lines.length < height; entryIndex -= 1) {
-      const entryLines = this.getRenderedEntry(visibleTranscript[entryIndex], width);
-      for (let lineIndex = entryLines.length - 1; lineIndex >= 0 && lines.length < height; lineIndex -= 1) {
-        if (remainingOffset > 0) {
-          remainingOffset -= 1;
-          continue;
-        }
-        lines.push(entryLines[lineIndex]);
+    for (const block of blocks) {
+      if (block.lines.length === 0) continue;
+      if (lines.length > 0) {
+        lines.push("");
+      }
+
+      const offset = lines.length;
+      lines.push(...block.lines);
+
+      if (block.cursorRow !== undefined) {
+        cursorRow = offset + block.cursorRow;
+        cursorColumn = block.cursorColumn ?? 0;
+        showCursor = block.showCursor !== false;
       }
     }
 
-    return lines.reverse();
+    return {
+      lines,
+      cursorRow,
+      cursorColumn,
+      showCursor,
+    };
   }
 
-  private getHintLine(width: number): string {
+  private renderChatComposer(columns: number, rows: number): RenderBlock {
+    const promptPrefixWidth = visibleLength(RAW_PROMPT_PREFIX);
+    const continuationPrefixWidth = visibleLength(RAW_CONTINUATION_PREFIX);
+    const innerWidth = Math.max(10, columns - promptPrefixWidth);
+    const maxContentLines = clamp(Math.floor(rows * 0.25), 1, 8);
+    const renderedInput = renderEditor(this.chatEditor, innerWidth, maxContentLines);
+    const lines: string[] = [];
+
+    renderedInput.visibleLines.forEach((line, index) => {
+      const prefix = index === 0 ? PROMPT_PREFIX : CONTINUATION_PREFIX;
+      const body = renderedInput.isEmpty && index === 0
+        ? PLACEHOLDER_COLOR("Write a message or /command")
+        : line;
+      lines.push(`${prefix}${body}`);
+    });
+
+    return {
+      lines,
+      cursorRow: renderedInput.cursorRow,
+      cursorColumn: (renderedInput.cursorRow === 0 ? promptPrefixWidth : continuationPrefixWidth) + renderedInput.cursorColumn,
+      showCursor: true,
+    };
+  }
+
+  private renderFollowupComposer(
+    followup: FollowupInteraction,
+    columns: number,
+    rows: number,
+  ): RenderBlock {
+    const editor = this.getFollowupEditor(followup.interactionId);
+    const promptPrefixWidth = visibleLength(RAW_PROMPT_PREFIX);
+    const continuationPrefixWidth = visibleLength(RAW_CONTINUATION_PREFIX);
+    const innerWidth = Math.max(10, columns - promptPrefixWidth);
+    const maxContentLines = clamp(Math.floor(rows * 0.25), 1, 8);
+    const renderedInput = renderEditor(editor, innerWidth, maxContentLines);
+    const lines = [
+      TITLE_COLOR(`${HEADER_PREFIX}Follow-up`),
+      ...flattenWrappedLines([followup.message], columns, TEXT_INDENT).map((line) => TONE_COLORS.info(line)),
+    ];
+
+    renderedInput.visibleLines.forEach((line, index) => {
+      const prefix = index === 0 ? PROMPT_PREFIX : CONTINUATION_PREFIX;
+      const body = renderedInput.isEmpty && index === 0
+        ? PLACEHOLDER_COLOR("Reply to continue the current run")
+        : line;
+      lines.push(`${prefix}${body}`);
+    });
+
+    return {
+      lines,
+      cursorRow: lines.length - renderedInput.visibleLines.length + renderedInput.cursorRow,
+      cursorColumn: (renderedInput.cursorRow === 0 ? promptPrefixWidth : continuationPrefixWidth) + renderedInput.cursorColumn,
+      showCursor: true,
+    };
+  }
+
+  private renderQuestionSection(
+    question: QuestionInteraction,
+    columns: number,
+    rows: number,
+  ): RenderBlock {
+    const session = this.getQuestionSession(question);
+    const child = session.render({columns, rows});
+    const childIndent = question.question.type === "treeSelect" ? "" : TEXT_INDENT;
+    const indentedChildLines = child.lines.map((line) => `${childIndent}${line}`);
+    const title = this.getQuestionTitle(question);
+    const lines = [
+      TITLE_COLOR(`${HEADER_PREFIX}${title}`),
+      "",
+      ...flattenWrappedLines([question.message], columns, TEXT_INDENT).map((line) => TONE_COLORS.info(line)),
+      "",
+    ];
+
+    if (question.autoSubmitAt) {
+      lines.push(TONE_COLORS.warning(`${TEXT_INDENT}${formatTimer(question.autoSubmitAt)}`));
+      lines.push("");
+    }
+
+    const offset = lines.length;
+    lines.push(...indentedChildLines);
+
+    return {
+      lines,
+      cursorRow: child.cursorRow === undefined ? undefined : child.cursorRow + offset,
+      cursorColumn: child.cursorColumn === undefined ? undefined : child.cursorColumn + visibleLength(childIndent),
+      showCursor: child.showCursor,
+    };
+  }
+
+  private renderOptionalQuestionPicker(columns: number, rows: number): RenderBlock {
+    const optionalQuestions = this.getOptionalQuestions();
+    const maxVisibleItems = Math.max(4, rows - 10);
+    const visibleQuestions = optionalQuestions.slice(
+      clamp(this.optionalQuestionIndex - maxVisibleItems + 1, 0, Math.max(0, optionalQuestions.length - maxVisibleItems)),
+      clamp(this.optionalQuestionIndex - maxVisibleItems + 1, 0, Math.max(0, optionalQuestions.length - maxVisibleItems)) + maxVisibleItems,
+    );
+    const start = clamp(this.optionalQuestionIndex - maxVisibleItems + 1, 0, Math.max(0, optionalQuestions.length - maxVisibleItems));
+
+    const lines = [
+      TITLE_COLOR(`${HEADER_PREFIX}Optional Questions`),
+      TONE_COLORS.info(`${TEXT_INDENT}${optionalQuestions.length} available`),
+    ];
+
+    visibleQuestions.forEach((question, index) => {
+      const actualIndex = start + index;
+      const prefix = actualIndex === this.optionalQuestionIndex ? "›" : " ";
+      const timer = question.autoSubmitAt ? ` · ${formatTimer(question.autoSubmitAt)}` : "";
+      const label = truncateVisible(`${this.getQuestionLabel(question)}${timer}`, Math.max(10, columns - 6));
+      lines.push(`${prefix} ${label}`);
+      lines.push(...flattenWrappedLines([question.message], Math.max(20, columns - 4), "  ").map((line) => TONE_COLORS.muted(line)));
+    });
+
+    lines.push(TONE_COLORS.muted("Enter open · Esc close"));
+
+    return {
+      lines,
+      showCursor: false,
+    };
+  }
+
+  private getHintLine(columns: number): string {
     if (this.flashMessage && this.flashMessage.expiresAt <= Date.now()) {
       this.flashMessage = null;
     }
@@ -1038,32 +1616,42 @@ export default class RawChatUI {
     let text: string;
     let tone: TranscriptTone = "muted";
 
+    const optionalCount = this.getOptionalQuestions().length;
+    const optionalHint = optionalCount > 0 ? `  Alt+Q optional ${optionalCount}` : "";
+    const activeQuestion = this.getFocusedQuestion();
+    const followup = this.getPrimaryFollowup();
+
     if (this.flashMessage) {
       text = this.flashMessage.text;
       tone = this.flashMessage.tone;
     } else if (this.completionState && this.completionState.matches.length > 0) {
-      const completionState = this.completionState;
-      const selected = completionState.matches[completionState.selectedIndex];
-      const suggestions = completionState.matches
+      const selected = this.completionState.matches[this.completionState.selectedIndex];
+      const suggestions = this.completionState.matches
         .slice(0, 4)
-        .map((command, index) => (index === completionState.selectedIndex ? `[/${command.name}]` : `/${command.name}`))
+        .map((command, index) => (index === this.completionState?.selectedIndex ? `[/${command.name}]` : `/${command.name}`))
         .join("  ");
       text = `${suggestions}  ·  ${selected.description}`;
       tone = "info";
-    } else if (this.transcriptScrollOffset > 0) {
-      text = `Viewing earlier output · PgDn follows latest · Ctrl+End jumps to the bottom`;
-      tone = "warning";
+    } else if (activeQuestion) {
+      text = `Waiting for input${optionalHint}`;
+      tone = "muted";
+    } else if (this.optionalPickerOpen) {
+      text = `Optional question picker  ·  Enter open  Esc close`;
+      tone = "info";
+    } else if (followup) {
+      text = `Follow-up ready  ·  Enter send  Alt+Enter newline${optionalHint}`;
+      tone = "info";
     } else {
       const activity = this.getActivityLabel();
-      text = `${activity} · Alt+M model · Alt+T tools · Alt+V ${this.verbose ? "verbose on" : "verbose off"} · Enter send · Alt+Enter newline · Tab complete · PgUp/PgDn scroll · Esc cancel`;
+      text = `${activity}  ·  Alt+M model  Alt+T tools  Alt+V ${this.verbose ? "verbose on" : "verbose off"}  ·  Tab complete  Enter send${optionalHint}`;
       tone = "muted";
     }
 
-    return TONE_COLORS[tone](padOrTrim(`${TEXT_INDENT}${text}`, width));
+    return TONE_COLORS[tone](truncateVisible(text, columns));
   }
 
   private getActivityLabel(): string {
-    const state = this.options.agent.getState(AgentEventState);
+    const state = this.latestState ?? this.options.agent.getState(AgentEventState);
     if (state.currentlyExecutingInputItem?.executionState.currentActivity) {
       const frames = ["-", "\\", "|", "/"];
       return `${frames[this.spinnerIndex]} ${state.currentlyExecutingInputItem.executionState.currentActivity}`;
@@ -1071,7 +1659,15 @@ export default class RawChatUI {
     return "Ready";
   }
 
-  private getStatusLine(width: number): string {
+  private getStatusLine(columns: number): string {
+    const activeQuestion = this.getFocusedQuestion();
+    if (activeQuestion) {
+      const cancelHint = activeQuestion.question.type === "treeSelect"
+        ? "Waiting for input  ·  Esc or q to cancel"
+        : "Waiting for input  ·  Esc to cancel";
+      return STATUS_BAR(truncateVisible(cancelHint, columns));
+    }
+
     const segments = [
       this.getCurrentModelLabel(),
       formatPercentLeft(this.getRemainingContextPercent()),
@@ -1081,7 +1677,33 @@ export default class RawChatUI {
       shortenPath(this.options.agent.app.config.app.workingDirectory),
     ];
 
-    return STATUS_BAR(padOrTrim(`${TEXT_INDENT}${segments.join(" · ")}`, width));
+    return STATUS_BAR(truncateVisible(segments.join(" · "), columns));
+  }
+
+  private getFooterSignature(): string {
+    const activeQuestion = this.getFocusedQuestion();
+    if (activeQuestion) {
+      return `question:${activeQuestion.interactionId}:${activeQuestion.question.type}`;
+    }
+
+    if (this.optionalPickerOpen) {
+      return `optional-picker:${this.getOptionalQuestions().map((question) => question.interactionId).join(",")}`;
+    }
+
+    const followup = this.getPrimaryFollowup();
+    if (followup) {
+      return `followup:${followup.interactionId}`;
+    }
+
+    return "chat";
+  }
+
+  private getQuestionTitle(question: QuestionInteraction): string {
+    const inner = question.question;
+    if ("label" in inner && typeof inner.label === "string" && inner.label.trim().length > 0) {
+      return inner.label.trim();
+    }
+    return question.optional ? "Optional Question" : "Question";
   }
 
   private getCurrentModelLabel(): string {
@@ -1143,83 +1765,6 @@ export default class RawChatUI {
     return messages.reduce((total, message) => total + (message.response.cost.total ?? 0), 0);
   }
 
-  private renderInputPanel(columns: number, rows: number): {
-    rows: string[];
-    cursorRow: number;
-    cursorColumn: number;
-  } {
-    const promptPrefixWidth = visibleLength(" → ");
-    const continuationPrefixWidth = visibleLength(TEXT_INDENT);
-    const innerWidth = Math.max(10, columns - promptPrefixWidth);
-    const maxContentLines = clamp(Math.floor(rows * 0.25), 1, 8);
-
-    const renderedInput = this.renderEditor(innerWidth, maxContentLines);
-    const contentRows = renderedInput.visibleLines.map((line, index) => {
-      const prefix = index === 0 ? PROMPT_PREFIX : TEXT_INDENT;
-      const body = renderedInput.isEmpty && index === 0
-        ? PLACEHOLDER_COLOR(padOrTrim("Write a message or /command", innerWidth))
-        : padOrTrim(line, innerWidth);
-      return `${prefix}${body}`;
-    });
-
-    return {
-      rows: contentRows,
-      cursorRow: renderedInput.cursorRow,
-      cursorColumn: (renderedInput.cursorRow === 0 ? promptPrefixWidth : continuationPrefixWidth) + renderedInput.cursorColumn,
-    };
-  }
-
-  private renderEditor(innerWidth: number, maxContentLines: number): {
-    visibleLines: string[];
-    cursorRow: number;
-    cursorColumn: number;
-    isEmpty: boolean;
-  } {
-    const text = this.editor.getText();
-    const cursor = this.editor.getCursor();
-
-    const lines = [""];
-    let row = 0;
-    let cursorRow = 0;
-    let cursorColumn = 0;
-
-    for (let index = 0; index < text.length; index += 1) {
-      if (index === cursor) {
-        cursorRow = row;
-        cursorColumn = visibleLength(lines[row]);
-      }
-
-      const char = text[index];
-      if (char === "\n") {
-        row += 1;
-        lines.push("");
-        continue;
-      }
-
-      lines[row] += char;
-      if (visibleLength(lines[row]) >= innerWidth) {
-        row += 1;
-        lines.push("");
-      }
-    }
-
-    if (cursor === text.length) {
-      cursorRow = row;
-      cursorColumn = visibleLength(lines[row]);
-    }
-
-    const visibleCount = clamp(lines.length, 1, maxContentLines);
-    const windowStart = clamp(cursorRow - visibleCount + 1, 0, Math.max(0, lines.length - visibleCount));
-    const visibleLines = lines.slice(windowStart, windowStart + visibleCount);
-
-    return {
-      visibleLines,
-      cursorRow: cursorRow - windowStart,
-      cursorColumn,
-      isEmpty: text.length === 0,
-    };
-  }
-
   private getTerminalSize(): {columns: number; rows: number} {
     return {
       columns: process.stdout.columns ?? 80,
@@ -1227,49 +1772,282 @@ export default class RawChatUI {
     };
   }
 
-  render(): void {
-    if (!this.started || this.suspended || !process.stdout.isTTY) return;
+  private rebuildTranscriptFromEvents(events: AgentEventEnvelope[]): void {
+    this.transcript.length = 0;
+    this.entryId = 0;
+    this.activeTranscriptStream = null;
 
-    const {columns, rows} = this.getTerminalSize();
-    if (columns < 40 || rows < 10) {
-      const message = padOrTrim("Terminal too small. Resize to at least 40x10.", columns);
-      process.stdout.write(`\x1b[?25l\x1b[H${TONE_COLORS.warning(message)}\x1b[K\x1b[?25h`);
+    for (const event of events) {
+      this.applyTranscriptEvent(event);
+    }
+  }
+
+  private renderTranscriptReplay(columns: number): {
+    text: string;
+    activeStream: {type: "output.chat" | "output.reasoning"; column: number} | null;
+  } {
+    const visibleEntries = this.getVisibleTranscript();
+    const activeEntry = this.activeTranscriptStream && this.isEntryVisible(this.activeTranscriptStream.entry)
+      ? this.activeTranscriptStream.entry
+      : null;
+
+    let text = "";
+    for (const entry of visibleEntries) {
+      text += this.renderEntryText(entry, activeEntry?.id === entry.id);
+    }
+
+    const activeStream = activeEntry && this.activeTranscriptStream
+      ? {
+        type: this.activeTranscriptStream.type,
+        column: advanceColumn(0, `${TEXT_INDENT}${this.getRawStreamText(activeEntry.body)}`, columns),
+      }
+      : null;
+
+    return {text, activeStream};
+  }
+
+  private getVisibleTranscript(): TranscriptEntry[] {
+    if (this.verbose) return this.transcript;
+    return this.transcript.filter((entry) => entry.kind !== "reasoning" && entry.kind !== "artifact");
+  }
+
+  private getVisibleTranscriptViewportLineCount(maxRows: number): number {
+    if (maxRows <= 0) return 0;
+
+    const visibleEntries = this.getVisibleTranscript();
+    const activeEntryId = this.activeTranscriptStream && this.isEntryVisible(this.activeTranscriptStream.entry)
+      ? this.activeTranscriptStream.entry.id
+      : null;
+
+    let totalLines = 0;
+    for (const entry of visibleEntries) {
+      totalLines += this.getRenderedEntryLineCount(entry, activeEntryId === entry.id);
+    }
+
+    return Math.min(maxRows, totalLines);
+  }
+
+  private isEntryVisible(entry: TranscriptEntry): boolean {
+    return this.verbose || (entry.kind !== "reasoning" && entry.kind !== "artifact");
+  }
+
+  private getRenderedEntryLineCount(entry: TranscriptEntry, keepOpen = false): number {
+    let count = 0;
+
+    if (entry.title) {
+      count += 1;
+    }
+
+    const body = trimBoundaryNewlines(entry.body);
+    if (body.length > 0) {
+      count += body.split("\n").length;
+    }
+
+    if (!keepOpen) {
+      count += 1;
+    }
+
+    return count;
+  }
+
+  private renderEntryText(entry: TranscriptEntry, keepOpen = false): string {
+    const lines: string[] = [];
+
+    if (entry.title) {
+      lines.push(TITLE_COLOR(`${HEADER_PREFIX}${entry.title}`));
+    }
+
+    const body = trimBoundaryNewlines(entry.body);
+    if (body.length > 0) {
+      for (const sourceLine of body.split("\n")) {
+        const styled = entry.markdown
+          ? TONE_COLORS[entry.tone](applyMarkdownStyles(sourceLine))
+          : TONE_COLORS[entry.tone](sourceLine);
+        lines.push(`${TEXT_INDENT}${styled}`);
+      }
+    }
+
+    if (keepOpen) {
+      return lines.join("\n");
+    }
+
+    return `${lines.join("\n")}\n\n`;
+  }
+
+  private renderStreamChunk(message: string, tone: TranscriptTone): {styled: string; raw: string} {
+    const raw = this.getRawStreamText(message);
+    return {
+      styled: TONE_COLORS[tone](raw),
+      raw,
+    };
+  }
+
+  private getRawStreamText(message: string): string {
+    return message.replace(/\n/g, `\n${TEXT_INDENT}`);
+  }
+
+  private getAvailableInteractions(): ParsedInteractionRequest[] {
+    return this.latestState?.currentlyExecutingInputItem?.executionState.availableInteractions ?? [];
+  }
+
+  private getPrimaryFollowup(): FollowupInteraction | null {
+    return this.getAvailableInteractions().find(
+      (interaction): interaction is FollowupInteraction => interaction.type === "followup",
+    ) ?? null;
+  }
+
+  private getRequiredQuestions(): QuestionInteraction[] {
+    return this.getAvailableInteractions()
+      .filter((interaction): interaction is QuestionInteraction => interaction.type === "question" && !interaction.optional)
+      .sort((left, right) => left.timestamp - right.timestamp);
+  }
+
+  private getOptionalQuestions(): QuestionInteraction[] {
+    return this.getAvailableInteractions()
+      .filter((interaction): interaction is QuestionInteraction => interaction.type === "question" && interaction.optional)
+      .sort((left, right) => left.timestamp - right.timestamp);
+  }
+
+  private getFocusedQuestion(): QuestionInteraction | null {
+    const required = this.getRequiredQuestions();
+    if (required.length > 0) {
+      this.activeOptionalQuestionId = null;
+      this.optionalPickerOpen = false;
+      return required[0];
+    }
+
+    if (this.activeOptionalQuestionId) {
+      return this.getOptionalQuestions().find((question) => question.interactionId === this.activeOptionalQuestionId) ?? null;
+    }
+
+    return null;
+  }
+
+  private getQuestionLabel(question: QuestionInteraction): string {
+    switch (question.question.type) {
+      case "text":
+      case "treeSelect":
+      case "fileSelect":
+        return question.question.label;
+      case "form":
+        return "Form";
+    }
+  }
+
+  private cleanupInteractionState(): void {
+    const interactions = this.getAvailableInteractions();
+    const interactionIds = new Set(interactions.map((interaction) => interaction.interactionId));
+
+    for (const interactionId of this.followupEditors.keys()) {
+      if (!interactionIds.has(interactionId)) {
+        this.followupEditors.delete(interactionId);
+      }
+    }
+
+    for (const interactionId of this.questionSessions.keys()) {
+      if (!interactionIds.has(interactionId)) {
+        this.questionSessions.delete(interactionId);
+      }
+    }
+
+    if (this.activeOptionalQuestionId && !interactionIds.has(this.activeOptionalQuestionId)) {
+      this.activeOptionalQuestionId = null;
+    }
+
+    const optionalQuestions = this.getOptionalQuestions();
+    if (optionalQuestions.length === 0) {
+      this.optionalPickerOpen = false;
+      this.optionalQuestionIndex = 0;
+    } else {
+      this.optionalQuestionIndex = clamp(this.optionalQuestionIndex, 0, optionalQuestions.length - 1);
+    }
+  }
+
+  private getFollowupEditor(interactionId: string): InputEditor {
+    let editor = this.followupEditors.get(interactionId);
+    if (!editor) {
+      editor = new InputEditor();
+      this.followupEditors.set(interactionId, editor);
+    }
+    return editor;
+  }
+
+  private getQuestionSession(question: QuestionInteraction): InlineQuestionSession {
+    let session = this.questionSessions.get(question.interactionId);
+    if (session) return session;
+
+    session = createInlineQuestionSession(question.question, {
+      onSubmit: (result) => this.sendInteractionResponse(question.interactionId, result),
+      onCancel: () => this.sendInteractionResponse(question.interactionId, null),
+      onRender: () => this.render(),
+      openFileSelect: (fileQuestion, message) => this.openInlineFileSelector(fileQuestion, question, message),
+    }, question.message);
+
+    this.questionSessions.set(question.interactionId, session);
+    return session;
+  }
+
+  private sendInteractionResponse(interactionId: string, result: unknown): void {
+    const requestId = this.latestState?.currentlyExecutingInputItem?.request.requestId;
+    if (!requestId) {
+      this.flash("No active interaction is waiting for a response.", "warning");
       return;
     }
 
-    const inputPanel = this.renderInputPanel(columns, rows);
-    const transcriptHeight = Math.max(1, rows - inputPanel.rows.length - 4);
-    const totalTranscriptLines = this.getTotalTranscriptLineCount(columns);
-    const maxOffset = Math.max(0, totalTranscriptLines - transcriptHeight);
-    this.transcriptScrollOffset = clamp(this.transcriptScrollOffset, 0, maxOffset);
-    const transcriptLines = this.getViewportTranscript(columns, transcriptHeight);
-    const paddedTranscript = [...transcriptLines];
-    while (paddedTranscript.length < transcriptHeight) {
-      paddedTranscript.push("");
+    if (interactionId === this.activeOptionalQuestionId) {
+      this.activeOptionalQuestionId = null;
     }
 
-    const frameRows = [
-      ...paddedTranscript,
-      this.getHintLine(columns),
-      "",
-      ...inputPanel.rows,
-      "",
-      this.getStatusLine(columns),
-    ];
-
-    let output = `\x1b[?25l${this.forceFullRefresh ? "\x1b[2J" : ""}\x1b[H`;
-    frameRows.forEach((line, index) => {
-      output += line + "\x1b[K";
-      if (index < frameRows.length - 1) {
-        output += "\n";
-      }
+    this.optionalPickerOpen = false;
+    this.options.agent.sendInteractionResponse({
+      requestId,
+      interactionId,
+      result,
     });
+  }
 
-    const cursorRow = transcriptHeight + 2 + inputPanel.cursorRow;
-    const cursorColumn = clamp(inputPanel.cursorColumn, 0, Math.max(0, columns - 1));
-    output += `\x1b[${cursorRow + 1};${cursorColumn + 1}H\x1b[?25h`;
+  private async openInlineFileSelector(
+    question: ParsedFileSelectQuestion,
+    parentQuestion: QuestionInteraction,
+    message: string,
+  ): Promise<string[] | null> {
+    const renderScreen =
+      this.options.config.uiFramework === "ink" ? renderScreenInk : renderScreenOpenTUI;
+    const Screen =
+      this.options.config.uiFramework === "ink"
+        ? InkQuestionInputScreen
+        : OpenTUIQuestionInputScreen;
 
-    this.forceFullRefresh = false;
-    process.stdout.write(output);
+    const abort = new AbortController();
+    this.inlineScreenAbort = abort;
+    this.suspend();
+
+    try {
+      await sleep(60);
+      return await renderScreen(
+        Screen as any,
+        {
+          request: {
+            type: "question",
+            interactionId: parentQuestion.interactionId,
+            timestamp: Date.now(),
+            message,
+            optional: parentQuestion.optional,
+            autoSubmitAt: parentQuestion.autoSubmitAt,
+            question,
+          },
+          agent: this.options.agent,
+          config: this.options.config,
+        } as any,
+        abort.signal,
+      );
+    } catch {
+      return null;
+    } finally {
+      if (this.inlineScreenAbort === abort) {
+        this.inlineScreenAbort = null;
+      }
+      this.resume();
+    }
   }
 }

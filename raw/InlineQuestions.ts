@@ -1,0 +1,846 @@
+import type {
+  ParsedFileSelectQuestion,
+  ParsedFormQuestion,
+  ParsedTextQuestion,
+  ParsedTreeSelectQuestion,
+  TreeLeaf,
+} from "@tokenring-ai/agent/question";
+import chalk from "chalk";
+import InputEditor from "./InputEditor.ts";
+import {theme} from "../theme.ts";
+
+export type Keypress = {
+  name?: string;
+  ctrl?: boolean;
+  meta?: boolean;
+  shift?: boolean;
+  sequence?: string;
+};
+
+export type RenderLayout = {
+  columns: number;
+  rows: number;
+};
+
+export type RenderBlock = {
+  lines: string[];
+  cursorRow?: number;
+  cursorColumn?: number;
+  showCursor?: boolean;
+};
+
+export type InlineQuestionCallbacks = {
+  onSubmit: (result: unknown) => void;
+  onCancel: () => void;
+  onRender: () => void;
+  openFileSelect: (
+    question: ParsedFileSelectQuestion,
+    message: string,
+  ) => Promise<string[] | null>;
+};
+
+export interface InlineQuestionSession {
+  render(layout: RenderLayout): RenderBlock;
+  handleKeypress(input: string, key: Keypress): boolean | Promise<boolean>;
+}
+
+type PrimitiveQuestion =
+  | ParsedTextQuestion
+  | ParsedTreeSelectQuestion
+  | ParsedFileSelectQuestion;
+
+type ParsedQuestion =
+  | ParsedTextQuestion
+  | ParsedTreeSelectQuestion
+  | ParsedFileSelectQuestion
+  | ParsedFormQuestion;
+
+const QUESTION_COLOR = chalk.hex(theme.chatQuestionRequest);
+const MUTED_COLOR = chalk.hex(theme.chatDivider);
+const ERROR_COLOR = chalk.hex(theme.chatSystemErrorMessage);
+const TREE_COLOR = chalk.hex(theme.treeMessage);
+const TREE_HIGHLIGHT = chalk.hex(theme.treeHighlightedItem);
+const TREE_SELECTED = chalk.hex(theme.treeFullySelectedItem);
+const TREE_PARTIAL = chalk.hex(theme.treePartiallySelectedItem);
+const TREE_IDLE = chalk.hex(theme.treeNotSelectedItem);
+const PROMPT_COLOR = chalk.hex(theme.askMessage).bold;
+const TEXT_INDENT = "  ";
+const RAW_PROMPT_PREFIX = " → ";
+const RAW_CONTINUATION_PREFIX = "   ";
+const PROMPT_PREFIX = ` ${PROMPT_COLOR("→")} `;
+const CONTINUATION_PREFIX = RAW_CONTINUATION_PREFIX;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function visibleLength(text: string): number {
+  return Array.from(text).length;
+}
+
+function truncateVisible(text: string, width: number): string {
+  if (width <= 0) return "";
+  const chars = Array.from(text);
+  if (chars.length <= width) return text;
+  if (width <= 1) return chars.slice(0, width).join("");
+  return `${chars.slice(0, width - 1).join("")}…`;
+}
+
+function wrapPlainText(text: string, width: number): string[] {
+  if (width <= 0) return [""];
+
+  const lines = text.replace(/\t/g, "  ").split("\n");
+  const wrapped: string[] = [];
+
+  for (const line of lines) {
+    if (line.length === 0) {
+      wrapped.push("");
+      continue;
+    }
+
+    let current = "";
+    for (const char of Array.from(line)) {
+      current += char;
+      if (visibleLength(current) >= width) {
+        wrapped.push(current);
+        current = "";
+      }
+    }
+
+    if (current.length > 0) {
+      wrapped.push(current);
+    }
+  }
+
+  return wrapped.length > 0 ? wrapped : [""];
+}
+
+function flattenWrappedLines(lines: string[], width: number, prefix = ""): string[] {
+  const result: string[] = [];
+  const innerWidth = Math.max(1, width - visibleLength(prefix));
+  for (const line of lines) {
+    for (const wrapped of wrapPlainText(line, innerWidth)) {
+      result.push(`${prefix}${wrapped}`);
+    }
+  }
+  return result.length > 0 ? result : [prefix];
+}
+
+function renderEditor(
+  editor: InputEditor,
+  options: {
+    width: number;
+    maxContentLines: number;
+    placeholder: string;
+    masked?: boolean;
+  },
+): {
+  lines: string[];
+  cursorRow: number;
+  cursorColumn: number;
+  isEmpty: boolean;
+} {
+  const width = Math.max(4, options.width);
+  const text = editor.getText();
+  const cursor = editor.getCursor();
+  const source = options.masked ? "*".repeat(text.length) : text;
+
+  const lines = [""];
+  let row = 0;
+  let cursorRow = 0;
+  let cursorColumn = 0;
+
+  for (let index = 0; index < source.length; index += 1) {
+    if (index === cursor) {
+      cursorRow = row;
+      cursorColumn = visibleLength(lines[row]);
+    }
+
+    const char = source[index];
+    if (char === "\n") {
+      row += 1;
+      lines.push("");
+      continue;
+    }
+
+    lines[row] += char;
+    if (visibleLength(lines[row]) >= width) {
+      row += 1;
+      lines.push("");
+    }
+  }
+
+  if (cursor === source.length) {
+    cursorRow = row;
+    cursorColumn = visibleLength(lines[row]);
+  }
+
+  const visibleCount = clamp(lines.length, 1, Math.max(1, options.maxContentLines));
+  const windowStart = clamp(cursorRow - visibleCount + 1, 0, Math.max(0, lines.length - visibleCount));
+  const visibleLines = lines.slice(windowStart, windowStart + visibleCount);
+
+  return {
+    lines: visibleLines,
+    cursorRow: cursorRow - windowStart,
+    cursorColumn,
+    isEmpty: text.length === 0,
+  };
+}
+
+function applyEditorKeypress(editor: InputEditor, input: string, key: Keypress): boolean {
+  if (key.ctrl && key.name === "a") {
+    editor.moveHome();
+    return true;
+  }
+  if (key.ctrl && key.name === "e") {
+    editor.moveEnd();
+    return true;
+  }
+  if (key.ctrl && key.name === "u") {
+    editor.deleteToStartOfLine();
+    return true;
+  }
+  if (key.ctrl && key.name === "k") {
+    editor.deleteToEndOfLine();
+    return true;
+  }
+  if (key.ctrl && key.name === "w") {
+    editor.deleteWordBackward();
+    return true;
+  }
+  if (key.ctrl && key.name === "d") {
+    editor.deleteForward();
+    return true;
+  }
+  if (key.meta && key.name === "b") {
+    editor.moveWordLeft();
+    return true;
+  }
+  if (key.meta && key.name === "f") {
+    editor.moveWordRight();
+    return true;
+  }
+  if (key.name === "left") {
+    editor.moveLeft();
+    return true;
+  }
+  if (key.name === "right") {
+    editor.moveRight();
+    return true;
+  }
+  if (key.name === "up") {
+    const {lineIndex} = editor.getCursorLocation();
+    if (lineIndex > 0) {
+      editor.moveUp();
+      return true;
+    }
+    return false;
+  }
+  if (key.name === "down") {
+    const {lineIndex} = editor.getCursorLocation();
+    if (lineIndex < editor.getLineCount() - 1) {
+      editor.moveDown();
+      return true;
+    }
+    return false;
+  }
+  if (key.name === "home") {
+    editor.moveHome();
+    return true;
+  }
+  if (key.name === "end") {
+    editor.moveEnd();
+    return true;
+  }
+  if (key.name === "backspace") {
+    editor.backspace();
+    return true;
+  }
+  if (key.name === "delete") {
+    editor.deleteForward();
+    return true;
+  }
+
+  if (input && !key.ctrl && !key.meta) {
+    editor.insert(input.replace(/\r\n?/g, "\n"));
+    return true;
+  }
+
+  return false;
+}
+
+class TextQuestionSession implements InlineQuestionSession {
+  private readonly editor: InputEditor;
+  private flashMessage: string | null = null;
+
+  constructor(
+    private readonly question: ParsedTextQuestion,
+    private readonly callbacks: InlineQuestionCallbacks,
+  ) {
+    this.editor = new InputEditor(question.defaultValue);
+  }
+
+  render(layout: RenderLayout): RenderBlock {
+    const lines: string[] = [];
+    const innerWidth = Math.max(10, layout.columns - visibleLength(RAW_PROMPT_PREFIX));
+    const maxContentLines = clamp(
+      this.question.expectedLines > 1 ? this.question.expectedLines : 1,
+      1,
+      Math.max(3, Math.min(10, Math.floor(layout.rows * 0.35))),
+    );
+
+    lines.push(QUESTION_COLOR(this.question.label));
+    if (this.question.description) {
+      lines.push(...flattenWrappedLines([this.question.description], layout.columns, TEXT_INDENT).map((line) => MUTED_COLOR(line)));
+    }
+
+    const editorView = renderEditor(this.editor, {
+      width: innerWidth,
+      maxContentLines,
+      placeholder: this.question.required ? "Type a response" : "Type a response or leave blank",
+      masked: this.question.masked,
+    });
+
+    editorView.lines.forEach((line, index) => {
+      const prefix = index === 0 ? PROMPT_PREFIX : CONTINUATION_PREFIX;
+      const body = editorView.isEmpty && index === 0
+        ? MUTED_COLOR(editorView.lines[index].length === 0 ? editorView.lines[index] : editorView.lines[index])
+        : line;
+      lines.push(`${prefix}${body || (editorView.isEmpty && index === 0 ? MUTED_COLOR(editorView.isEmpty ? this.question.required ? "Required response" : "Optional response" : "") : "")}`);
+    });
+
+    if (editorView.isEmpty) {
+      const placeholder = this.question.required ? "Required response" : "Optional response";
+      lines[lines.length - editorView.lines.length] = `${PROMPT_PREFIX}${MUTED_COLOR(placeholder)}`;
+    }
+
+    if (this.flashMessage) {
+      lines.push(ERROR_COLOR(this.flashMessage));
+    }
+
+    lines.push(MUTED_COLOR(this.question.expectedLines > 1
+      ? "Enter submit  Alt+Enter newline  Esc cancel"
+      : "Enter submit  Esc cancel"));
+
+    const promptStart = lines.length - editorView.lines.length - (this.flashMessage ? 2 : 1);
+    return {
+      lines,
+      cursorRow: promptStart + editorView.cursorRow,
+      cursorColumn: (editorView.cursorRow === 0 ? visibleLength(RAW_PROMPT_PREFIX) : visibleLength(RAW_CONTINUATION_PREFIX)) + editorView.cursorColumn,
+      showCursor: true,
+    };
+  }
+
+  handleKeypress(input: string, key: Keypress): boolean {
+    if (key.name === "escape") {
+      this.callbacks.onCancel();
+      return true;
+    }
+
+    if (key.meta && key.name === "return") {
+      this.editor.insertNewline();
+      this.flashMessage = null;
+      return true;
+    }
+
+    if (key.ctrl && key.name === "o") {
+      this.editor.insertNewline();
+      this.flashMessage = null;
+      return true;
+    }
+
+    if (key.name === "return") {
+      const value = this.editor.getText().trimEnd();
+      if (this.question.required && value.trim().length === 0) {
+        this.flashMessage = "A response is required.";
+        return true;
+      }
+
+      this.callbacks.onSubmit(value.trim().length === 0 ? null : value);
+      return true;
+    }
+
+    const handled = applyEditorKeypress(this.editor, input, key);
+    if (handled) {
+      this.flashMessage = null;
+    }
+    return handled;
+  }
+}
+
+type FlatTreeItem = {
+  key: string;
+  depth: number;
+  node: TreeLeaf & { children: any };
+  isExpanded: boolean;
+  isParent: true;
+  descendantLeafCount: number;
+  selectedLeafCount: number;
+} | {
+  key: string;
+  depth: number;
+  node: TreeLeaf & { value: string };
+  isParent: false;
+  isExpanded?: never;
+  descendantLeafCount?: never;
+  selectedLeafCount?: never;
+};
+
+function getNodeKey(node: TreeLeaf, ancestry: string[]): string {
+  if ("value" in node) return node.value;
+  return [...ancestry, node.name].join("/");
+}
+
+function countLeafNodes(node: TreeLeaf): number {
+  if ("children" in node) {
+    return node.children.reduce((total, child) => total + countLeafNodes(child), 0);
+  }
+  return 1;
+}
+
+function countSelectedLeafNodes(node: TreeLeaf, checked: Set<string>): number {
+  if ("children" in node) {
+    return node.children.reduce((total, child) => total + countSelectedLeafNodes(child, checked), 0);
+  }
+  return checked.has(node.value) ? 1 : 0;
+}
+
+class TreeQuestionSession implements InlineQuestionSession {
+  private selectedIndex = 0;
+  private scrollOffset = 0;
+  private readonly expanded: Set<string>;
+  private readonly checked: Set<string>;
+  private flashMessage: string | null = null;
+
+  constructor(
+    private readonly question: ParsedTreeSelectQuestion,
+    private readonly callbacks: InlineQuestionCallbacks,
+  ) {
+    this.checked = new Set(question.defaultValue);
+    this.expanded = new Set();
+  }
+
+  render(layout: RenderLayout): RenderBlock {
+    const flatTree = this.getFlatTree();
+    const maxVisibleItems = Math.max(4, Math.min(flatTree.length, layout.rows - 10));
+
+    if (this.selectedIndex < this.scrollOffset) {
+      this.scrollOffset = this.selectedIndex;
+    } else if (this.selectedIndex >= this.scrollOffset + maxVisibleItems) {
+      this.scrollOffset = this.selectedIndex - maxVisibleItems + 1;
+    }
+
+    const visibleTree = flatTree.slice(this.scrollOffset, this.scrollOffset + maxVisibleItems);
+    const multiple = this.question.maximumSelections !== 1;
+    const lines: string[] = [];
+
+    for (let index = 0; index < visibleTree.length; index += 1) {
+      const item = visibleTree[index];
+      const actualIndex = this.scrollOffset + index;
+      const isSelected = actualIndex === this.selectedIndex;
+      const isChecked = "value" in item.node && this.checked.has(item.node.value);
+      //const childCount = item.isParent ? item.descendantLeafCount : 0;
+      //const childSelected = item.isParent ? item.selectedLeafCount - (item.isParent ? 0 : isChecked ? 1 : 0);
+
+      const treeGlyph = item.isParent
+        ? multiple
+          ? item.selectedLeafCount > 0
+            ? "◐"
+            : "○"
+          : (item.isExpanded ? "▾" : "▸")
+        : isChecked
+            ? "●"
+            : "-";
+
+
+
+      const pointer = isSelected ? "›" : " ";
+      const indent = "  ".repeat(item.depth);
+      const countSuffix = multiple && item.isParent && item.descendantLeafCount > 0 ? ` (${item.selectedLeafCount}/${item.descendantLeafCount})` : "";
+      const availableWidth = Math.max(10, layout.columns - visibleLength(indent) - 8);
+      const label = truncateVisible(`${item.node.name}${countSuffix}`, availableWidth);
+
+      let color = TREE_IDLE;
+      if (isSelected) {
+        color = TREE_HIGHLIGHT;
+      } else if (isChecked) {
+        color = TREE_SELECTED;
+      } else if (item.isParent && item.selectedLeafCount > 0) {
+        color = TREE_PARTIAL;
+      }
+
+      lines.push(color(` ${pointer} ${indent}${treeGlyph} ${label}`));
+    }
+
+    if (multiple) {
+      const min = this.question.minimumSelections ? `  min ${this.question.minimumSelections}` : "";
+      const max = this.question.maximumSelections ? `  max ${this.question.maximumSelections}` : "";
+      lines.push(TREE_COLOR(`Selected ${this.checked.size}${min}${max}`));
+    }
+
+    if (this.flashMessage) {
+      lines.push(ERROR_COLOR(this.flashMessage));
+    }
+
+    return {
+      lines,
+      showCursor: false,
+    };
+  }
+
+  handleKeypress(_input: string, key: Keypress): boolean {
+    const flatTree = this.getFlatTree();
+    const current = flatTree[this.selectedIndex];
+    const multiple = this.question.maximumSelections !== 1;
+
+    if (key.name === "escape" || key.name === "q") {
+      this.callbacks.onCancel();
+      return true;
+    }
+
+    if (key.name === "up") {
+      this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+      this.flashMessage = null;
+      return true;
+    }
+    if (key.name === "down") {
+      this.selectedIndex = Math.min(flatTree.length - 1, this.selectedIndex + 1);
+      this.flashMessage = null;
+      return true;
+    }
+    if (key.name === "pageup") {
+      this.selectedIndex = Math.max(0, this.selectedIndex - 8);
+      this.flashMessage = null;
+      return true;
+    }
+    if (key.name === "pagedown") {
+      this.selectedIndex = Math.min(flatTree.length - 1, this.selectedIndex + 8);
+      this.flashMessage = null;
+      return true;
+    }
+    if (key.name === "right") {
+      if (current?.isParent && !current.isExpanded) {
+        this.expanded.add(current.key);
+        this.flashMessage = null;
+        return true;
+      }
+      return false;
+    }
+    if (key.name === "left") {
+      if (current?.isParent && current.isExpanded) {
+        this.expanded.delete(current.key);
+        this.flashMessage = null;
+        return true;
+      }
+      return false;
+    }
+    if (key.name === "space") {
+      if (!current) return false;
+
+      if (multiple) {
+        this.toggleSelection(current.node);
+        return true;
+      }
+
+      if (current.isParent) {
+        if (current.isExpanded) {
+          this.expanded.delete(current.key);
+        } else {
+          this.expanded.add(current.key);
+        }
+        return true;
+      }
+
+      this.callbacks.onSubmit([current.node.value]);
+      return true;
+    }
+    if (key.name === "return") {
+      if (!current) return false;
+
+      if (multiple) {
+        if (this.question.minimumSelections && this.checked.size < this.question.minimumSelections) {
+          this.flashMessage = `Select at least ${this.question.minimumSelections} item${this.question.minimumSelections === 1 ? "" : "s"}.`;
+          return true;
+        }
+
+        this.callbacks.onSubmit(Array.from(this.checked));
+        return true;
+      }
+
+      if (current.isParent) {
+        if (current.isExpanded) {
+          this.expanded.delete(current.key);
+        } else {
+          this.expanded.add(current.key);
+        }
+        return true;
+      }
+
+      this.callbacks.onSubmit([current.node.value ?? current.node.name]);
+      return true;
+    }
+
+    return false;
+  }
+
+  private getFlatTree(): FlatTreeItem[] {
+    const result: FlatTreeItem[] = [];
+    const walk = (node: TreeLeaf, depth: number, ancestry: string[]) => {
+      const key = getNodeKey(node, ancestry);
+
+      let resultItem: FlatTreeItem;
+      if ("children" in node) {
+        resultItem ={
+          key,
+          node,
+          depth,
+          isExpanded: this.expanded.has(key),
+          isParent: true,
+          descendantLeafCount: countLeafNodes(node),
+          selectedLeafCount: countSelectedLeafNodes(node, this.checked),
+        };
+      } else {
+        resultItem = {
+          key,
+          node,
+          depth,
+          isParent: false,
+        };
+      }
+      result.push(resultItem);
+
+      if (resultItem.isParent && resultItem.isExpanded) {
+        for (const child of resultItem.node.children ?? []) {
+          walk(child, depth + 1, [...ancestry, node.name]);
+        }
+      }
+    };
+
+    for (const node of this.question.tree) {
+      walk(node, 0, []);
+    }
+
+    return result;
+  }
+
+  private getDescendantValues(node: TreeLeaf): string[] {
+    if ("children" in node) {
+      return node.children.flatMap((child) => this.getDescendantValues(child));
+    }
+    return [node.value];
+  }
+
+  private toggleSelection(node: TreeLeaf): void {
+    const values = this.getDescendantValues(node);
+    const currentlyChecked = values.every((value) => this.checked.has(value));
+
+    if (currentlyChecked) {
+      const nextSize = this.checked.size - values.filter((value) => this.checked.has(value)).length;
+      if (this.question.minimumSelections && nextSize < this.question.minimumSelections) {
+        this.flashMessage = `At least ${this.question.minimumSelections} item${this.question.minimumSelections === 1 ? "" : "s"} must remain selected.`;
+        return;
+      }
+
+      values.forEach((value) => this.checked.delete(value));
+      this.flashMessage = null;
+      return;
+    }
+
+    const nextSize = this.checked.size + values.filter((value) => !this.checked.has(value)).length;
+    if (this.question.maximumSelections && nextSize > this.question.maximumSelections) {
+      this.flashMessage = `Select at most ${this.question.maximumSelections} item${this.question.maximumSelections === 1 ? "" : "s"}.`;
+      return;
+    }
+
+    values.forEach((value) => this.checked.add(value));
+    this.flashMessage = null;
+  }
+}
+
+class FileQuestionSession implements InlineQuestionSession {
+  private selected: string[];
+  private opening = false;
+
+  constructor(
+    private readonly question: ParsedFileSelectQuestion,
+    private readonly callbacks: InlineQuestionCallbacks,
+    private readonly message: string,
+  ) {
+    this.selected = question.defaultValue.slice();
+  }
+
+  render(layout: RenderLayout): RenderBlock {
+    const lines: string[] = [];
+
+    lines.push(QUESTION_COLOR(this.question.label));
+    if (this.question.description) {
+      lines.push(...flattenWrappedLines([this.question.description], layout.columns, TEXT_INDENT).map((line) => MUTED_COLOR(line)));
+    }
+
+    if (this.selected.length > 0) {
+      lines.push(TREE_COLOR(`Selected ${this.selected.length} path${this.selected.length === 1 ? "" : "s"}`));
+      for (const path of this.selected.slice(0, 4)) {
+        lines.push(`${TEXT_INDENT}${truncateVisible(path, Math.max(10, layout.columns - visibleLength(TEXT_INDENT)))}`);
+      }
+      if (this.selected.length > 4) {
+        lines.push(MUTED_COLOR(`${TEXT_INDENT}+${this.selected.length - 4} more`));
+      }
+    } else {
+      lines.push(MUTED_COLOR("No files selected yet."));
+    }
+
+    lines.push(this.opening ? TREE_COLOR("Opening the file selector…") : MUTED_COLOR("Enter or Ctrl+O opens the fullscreen file selector. Esc cancels."));
+
+    return {
+      lines,
+      showCursor: false,
+    };
+  }
+
+  async handleKeypress(_input: string, key: Keypress): Promise<boolean> {
+    if (key.name === "escape") {
+      this.callbacks.onCancel();
+      return true;
+    }
+
+    if (this.opening) {
+      return true;
+    }
+
+    if (key.name === "return" || (key.ctrl && key.name === "o")) {
+      this.opening = true;
+      this.callbacks.onRender();
+
+      try {
+        const result = await this.callbacks.openFileSelect({...this.question, defaultValue: this.selected}, this.message);
+        if (result) {
+          this.selected = result;
+          this.callbacks.onSubmit(result);
+        }
+      } finally {
+        this.opening = false;
+        this.callbacks.onRender();
+      }
+      return true;
+    }
+
+    return false;
+  }
+}
+
+class FormQuestionSession implements InlineQuestionSession {
+  private currentSectionIndex = 0;
+  private currentFieldIndex = 0;
+  private readonly responses: Record<string, Record<string, unknown>> = {};
+  private currentSession: InlineQuestionSession;
+
+  constructor(
+    private readonly question: ParsedFormQuestion,
+    private readonly callbacks: InlineQuestionCallbacks,
+  ) {
+    this.currentSession = this.createCurrentSession();
+  }
+
+  render(layout: RenderLayout): RenderBlock {
+    const currentSection = this.question.sections[this.currentSectionIndex];
+    const fieldKeys = Object.keys(currentSection.fields);
+    const currentFieldKey = fieldKeys[this.currentFieldIndex];
+    const child = this.currentSession.render(layout);
+
+    const lines = [
+      QUESTION_COLOR(`${currentSection.name}  ${this.currentSectionIndex + 1}/${this.question.sections.length}`),
+      MUTED_COLOR(`Field ${this.currentFieldIndex + 1}/${fieldKeys.length}  ${currentFieldKey}`),
+    ];
+
+    if (currentSection.description) {
+      lines.push(...flattenWrappedLines([currentSection.description], layout.columns, TEXT_INDENT).map((line) => MUTED_COLOR(line)));
+    }
+
+    const offset = lines.length;
+    lines.push(...child.lines);
+
+    return {
+      lines,
+      cursorRow: child.cursorRow === undefined ? undefined : child.cursorRow + offset,
+      cursorColumn: child.cursorColumn,
+      showCursor: child.showCursor,
+    };
+  }
+
+  handleKeypress(input: string, key: Keypress): boolean | Promise<boolean> {
+    if (key.name === "escape") {
+      this.callbacks.onCancel();
+      return true;
+    }
+
+    return this.currentSession.handleKeypress(input, key);
+  }
+
+  private createCurrentSession(): InlineQuestionSession {
+    const currentSection = this.question.sections[this.currentSectionIndex];
+    const fieldKeys = Object.keys(currentSection.fields);
+    const fieldKey = fieldKeys[this.currentFieldIndex];
+    const field = currentSection.fields[fieldKey];
+
+    return createPrimitiveSession(field, {
+      onCancel: () => this.callbacks.onCancel(),
+      onRender: this.callbacks.onRender,
+      openFileSelect: this.callbacks.openFileSelect,
+      onSubmit: (result) => {
+        const sectionName = currentSection.name;
+        this.responses[sectionName] ??= {};
+        this.responses[sectionName][fieldKey] = result;
+        this.advance();
+      },
+    }, field.label);
+  }
+
+  private advance(): void {
+    const currentSection = this.question.sections[this.currentSectionIndex];
+    const fieldKeys = Object.keys(currentSection.fields);
+
+    if (this.currentFieldIndex < fieldKeys.length - 1) {
+      this.currentFieldIndex += 1;
+      this.currentSession = this.createCurrentSession();
+      this.callbacks.onRender();
+      return;
+    }
+
+    if (this.currentSectionIndex < this.question.sections.length - 1) {
+      this.currentSectionIndex += 1;
+      this.currentFieldIndex = 0;
+      this.currentSession = this.createCurrentSession();
+      this.callbacks.onRender();
+      return;
+    }
+
+    this.callbacks.onSubmit(this.responses);
+  }
+}
+
+function createPrimitiveSession(
+  question: PrimitiveQuestion,
+  callbacks: InlineQuestionCallbacks,
+  message: string,
+): InlineQuestionSession {
+  switch (question.type) {
+    case "text":
+      return new TextQuestionSession(question, callbacks);
+    case "treeSelect":
+      return new TreeQuestionSession(question, callbacks);
+    case "fileSelect":
+      return new FileQuestionSession(question, callbacks, message);
+  }
+}
+
+export function createInlineQuestionSession(
+  question: ParsedQuestion,
+  callbacks: InlineQuestionCallbacks,
+  message: string,
+): InlineQuestionSession {
+  if (question.type === "form") {
+    return new FormQuestionSession(question, callbacks);
+  }
+
+  return createPrimitiveSession(question, callbacks, message);
+}

@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/react */
 import {useKeyboard, useTerminalDimensions} from '@opentui/react';
-import type {TreeLeaf, TreeSelectQuestionSchema} from "@tokenring-ai/agent/question";
+import {getTreeNodeValue, isTreeBranch, type TreeLeaf, type TreeSelectQuestionSchema} from "@tokenring-ai/agent/question";
 import React, {useEffect, useMemo, useState} from 'react';
 import {z} from "zod";
 import {theme} from '../../../theme.ts';
@@ -53,13 +53,13 @@ export default function TreeSelect({
   const flatTree = useMemo<FlatItem[]>(() => {
     const result: FlatItem[] = [];
     const traverse = (node: TreeLeaf, depth: number) => {
-      const hasChildren = !!(node.children && node.children.length > 0);
-      const nodeValue = node.value ?? node.name;
+      const hasChildren = isTreeBranch(node) && node.children.length > 0;
+      const nodeValue = getTreeNodeValue(node);
       const isOpen = expanded.has(nodeValue);
       result.push({ node, depth, isExpanded: isOpen, isParent: hasChildren });
 
       if (hasChildren && isOpen) {
-        node.children!.forEach(child => traverse(child, depth + 1));
+        node.children.forEach((child: TreeLeaf) => traverse(child, depth + 1));
       }
     };
     tree.forEach(root => traverse(root, 0));
@@ -68,7 +68,7 @@ export default function TreeSelect({
 
   useEffect(() => {
     const current = flatTree[selectedIndex];
-    if (current && onHighlight) onHighlight(current.node.value ?? current.node.name);
+    if (current && onHighlight) onHighlight(getTreeNodeValue(current.node));
   }, [selectedIndex, flatTree, onHighlight]);
 
   useEffect(() => {
@@ -89,16 +89,16 @@ export default function TreeSelect({
   };
 
   const getDescendantValues = (node: TreeLeaf): string[] => {
-    const values: string[] = [node.value ?? node.name];
-    if (node.children) {
-      node.children.forEach(child => values.push(...getDescendantValues(child)));
+    const values: string[] = [getTreeNodeValue(node)];
+    if (isTreeBranch(node)) {
+      node.children.forEach((child: TreeLeaf) => values.push(...getDescendantValues(child)));
     }
     return values;
   };
 
   const handleToggleSelection = (node: TreeLeaf) => {
     const descendantValues = getDescendantValues(node);
-    const nodeValue = node.value ?? node.name;
+    const nodeValue = getTreeNodeValue(node);
     const isCurrentlyChecked = checked.has(nodeValue);
 
     setChecked(prev => {
@@ -133,20 +133,20 @@ export default function TreeSelect({
     else if (keyEvent.name === 'pagedown') setSelectedIndex(prev => Math.min(flatTree.length - 1, prev + Math.floor(maxVisibleItems / 2)));
     else if (keyEvent.name === 'right') {
       const current = flatTree[selectedIndex];
-      if (current?.isParent && !current.isExpanded) toggleExpand(current.node.value ?? current.node.name);
+      if (current?.isParent && !current.isExpanded) toggleExpand(getTreeNodeValue(current.node));
     } else if (keyEvent.name === 'left') {
       const current = flatTree[selectedIndex];
-      if (current?.isExpanded) toggleExpand(current.node.value ?? current.node.name);
+      if (current?.isExpanded) toggleExpand(getTreeNodeValue(current.node));
     } else if (keyEvent.name === 'space') {
       const current = flatTree[selectedIndex];
       if (!current) return;
 
       if (multiple) {
-        const currentNodeValue = current.node.value ?? current.node.name;
-        const rootNode = tree.find(root => (root.value ?? root.name) === currentNodeValue);
+        const currentNodeValue = getTreeNodeValue(current.node);
+        const rootNode = tree.find(root => getTreeNodeValue(root) === currentNodeValue);
         handleToggleSelection(rootNode ?? current.node);
       } else if (current.isParent) {
-        toggleExpand(current.node.value ?? current.node.name);
+        toggleExpand(getTreeNodeValue(current.node));
       }
     } else if (keyEvent.name === 'return') {
       if (multiple) {
@@ -159,10 +159,10 @@ export default function TreeSelect({
         const current = flatTree[selectedIndex];
         if (!current) return;
         if (current.isParent) {
-          toggleExpand(current.node.value ?? current.node.name);
+          toggleExpand(getTreeNodeValue(current.node));
           return;
         }
-        onResponse([current.node.value ?? current.node.name]);
+        onResponse([getTreeNodeValue(current.node)]);
       }
     }
   });
@@ -194,7 +194,7 @@ export default function TreeSelect({
         {visibleTree.map((item, visibleIndex) => {
           const actualIndex = scrollOffset + visibleIndex;
           const isSelected = actualIndex === selectedIndex;
-          const itemNodeValue = item.node.value ?? item.node.name;
+          const itemNodeValue = getTreeNodeValue(item.node);
           const isChecked = checked.has(itemNodeValue);
 
           let fg: string = theme.treeNotSelectedItem;
