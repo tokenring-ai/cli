@@ -2,6 +2,7 @@ import Agent from "@tokenring-ai/agent/Agent";
 import {
   AgentEventEnvelope,
 } from "@tokenring-ai/agent/AgentEvents";
+import AgentManager from "@tokenring-ai/agent/services/AgentManager";
 import {AgentEventCursor, AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
 import process from "node:process";
@@ -39,6 +40,7 @@ export default class AgentLoop {
   private abort: AbortController | null = null;
   private eventCursor: AgentEventCursor = {position: 0};
   private ui: RawChatUI | null = null;
+  private exitAction: "select-agent" | "delete-agent" | null = null;
 
   constructor(
     readonly agent: Agent,
@@ -47,6 +49,7 @@ export default class AgentLoop {
 
   async run(externalSignal: AbortSignal): Promise<void> {
     this.abort = new AbortController();
+    this.exitAction = null;
     const signal = this.abort.signal;
 
     const onExternalAbort = () => this.abort?.abort();
@@ -65,7 +68,14 @@ export default class AgentLoop {
           message,
         });
       },
-      onExit: () => this.shutdown(),
+      onOpenAgentSelection: () => {
+        this.exitAction = "select-agent";
+        this.shutdown();
+      },
+      onDeleteIdleAgent: () => {
+        this.exitAction = "delete-agent";
+        this.shutdown();
+      },
       onAbortCurrentActivity: () => this.agent.abortCurrentOperation("Cancelled from CLI"),
     });
 
@@ -81,12 +91,10 @@ export default class AgentLoop {
       await raceAbort(this.consumeEvents(events$, signal), signal);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
-        return;
+      } else if (error instanceof Error && error.name === "AbortError") {
+      } else {
+        process.stderr.write(formatLogMessages(["Error while running agent loop", error as Error]));
       }
-      if (error instanceof Error && error.name === "AbortError") {
-        return;
-      }
-      process.stderr.write(formatLogMessages(["Error while running agent loop", error as Error]));
     } finally {
       this.ui?.stop();
       this.ui = null;
@@ -94,10 +102,24 @@ export default class AgentLoop {
       this.abort = null;
       externalSignal.removeEventListener("abort", onExternalAbort);
     }
+
+    if (this.exitAction === "delete-agent") {
+      await this.deleteCurrentAgent();
+    }
+    this.exitAction = null;
   }
 
   private shutdown(): void {
     this.abort?.abort();
+  }
+
+  private async deleteCurrentAgent(): Promise<void> {
+    try {
+      const agentManager = this.agent.app.requireService(AgentManager);
+      await agentManager.deleteAgent(this.agent.id, "Agent was shut down from the CLI");
+    } catch (error) {
+      process.stderr.write(formatLogMessages(["Error while deleting agent from CLI", error as Error]));
+    }
   }
 
   private async consumeEvents(

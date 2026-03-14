@@ -9,6 +9,7 @@ import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState
 import {ChatModelRegistry} from "@tokenring-ai/ai-client/ModelRegistry";
 import {parseModelAndSettings} from "@tokenring-ai/ai-client/util/modelSettings";
 import {ChatService} from "@tokenring-ai/chat";
+import {FileSystemService} from "@tokenring-ai/filesystem";
 import chalk from "chalk";
 import process from "node:process";
 import readline from "node:readline";
@@ -27,6 +28,13 @@ import {
   type Keypress as InlineKeypress,
   type RenderBlock,
 } from "./InlineQuestions.ts";
+import {
+  compareFilePathsForBrowsing,
+  findActiveFileSearchToken,
+  getFileSearchMatches,
+  replaceFileSearchToken,
+  type FileSearchToken,
+} from "./FileSearch.ts";
 import {
   type CommandDefinition,
   getCommandCompletionContext,
@@ -68,6 +76,14 @@ type CompletionState = {
   sourceQuery: string;
   matches: CommandDefinition[];
   selectedIndex: number;
+};
+
+type FileSearchState = {
+  token: FileSearchToken;
+  matches: string[];
+  selectedIndex: number;
+  loading: boolean;
+  error: string | null;
 };
 
 type FlashMessage = {
@@ -117,6 +133,8 @@ const STATUS_BAR = chalk.hex(theme.chatDivider);
 const TITLE_COLOR = chalk.hex(theme.boxTitle).bold;
 const PROMPT_ARROW_COLOR = chalk.hex(theme.askMessage).bold;
 const PLACEHOLDER_COLOR = chalk.hex(theme.chatDivider);
+const FILE_SEARCH_SELECTED = chalk.hex(theme.treeHighlightedItem).bold;
+const FILE_SEARCH_IDLE = chalk.hex(theme.chatSystemInfoMessage);
 const RAW_PROMPT_PREFIX = " → ";
 const RAW_CONTINUATION_PREFIX = "   ";
 const PROMPT_PREFIX = ` ${PROMPT_ARROW_COLOR("→")} `;
@@ -301,7 +319,8 @@ export interface RawChatUIOptions {
   config: z.output<typeof CLIConfigSchema>;
   commands: CommandDefinition[];
   onSubmit: (message: string) => void;
-  onExit: () => void;
+  onOpenAgentSelection: () => void;
+  onDeleteIdleAgent: () => void;
   onAbortCurrentActivity: () => boolean;
 }
 
@@ -317,6 +336,7 @@ export default class RawChatUI {
   private activeVisibleStream: {type: "output.chat" | "output.reasoning"; column: number} | null = null;
   private pendingSeparatorBeforeNextVisibleEntry = false;
   private completionState: CompletionState | null = null;
+  private fileSearchState: FileSearchState | null = null;
   private flashMessage: FlashMessage | null = null;
   private historyIndex: number | null = null;
   private historyDraft = "";
@@ -343,6 +363,10 @@ export default class RawChatUI {
   private bracketedPasteBuffer = "";
   private inBracketedPaste = false;
   private pasteSuppressionExpiresAt = 0;
+  private workspaceFiles: string[] | null = null;
+  private workspaceFilesLoadError: string | null = null;
+  private workspaceFilesPromise: Promise<void> | null = null;
+  private dismissedFileSearchSignature: string | null = null;
 
   private readonly dataHandler = (data: Buffer | string) => {
     if (this.suspended) return;
@@ -544,12 +568,21 @@ export default class RawChatUI {
     }
 
     if (key.ctrl && key.name === "c") {
-      this.options.onExit();
+      if (this.options.onAbortCurrentActivity()) {
+        this.flash("Cancelled the current activity.", "warning");
+      } else {
+        this.options.onDeleteIdleAgent();
+      }
       return;
     }
 
     if (key.ctrl && key.name === "l") {
       this.requestFullReplay();
+      return;
+    }
+
+    if ((key.meta && key.name === "a") || key.name === "f1") {
+      this.options.onOpenAgentSelection();
       return;
     }
 
@@ -610,6 +643,33 @@ export default class RawChatUI {
   }
 
   private handleChatComposerKeypress(input: string, key: readline.Key): boolean {
+    if (this.fileSearchState) {
+      if (key.name === "escape") {
+        this.dismissFileSearch();
+        return true;
+      }
+
+      if (key.name === "tab") {
+        return this.insertSelectedFileSearchMatch();
+      }
+
+      if (key.name === "up" || (key.ctrl && key.name === "p")) {
+        return this.moveFileSearchSelection(-1);
+      }
+
+      if (key.name === "down" || (key.ctrl && key.name === "n")) {
+        return this.moveFileSearchSelection(1);
+      }
+
+      if (key.name === "pageup") {
+        return this.moveFileSearchSelection(-5);
+      }
+
+      if (key.name === "pagedown") {
+        return this.moveFileSearchSelection(5);
+      }
+    }
+
     if (key.name === "escape") {
       if (this.completionState) {
         this.completionState = null;
@@ -662,6 +722,7 @@ export default class RawChatUI {
       const {lineIndex} = this.chatEditor.getCursorLocation();
       if (lineIndex > 0) {
         this.chatEditor.moveUp();
+        this.afterChatEdit();
       } else {
         this.browseHistory(-1);
       }
@@ -672,6 +733,7 @@ export default class RawChatUI {
       const {lineIndex} = this.chatEditor.getCursorLocation();
       if (lineIndex < this.chatEditor.getLineCount() - 1) {
         this.chatEditor.moveDown();
+        this.afterChatEdit();
       } else {
         this.browseHistory(1);
       }
@@ -679,6 +741,9 @@ export default class RawChatUI {
     }
 
     if (key.name === "return") {
+      if (this.fileSearchState) {
+        return this.insertSelectedFileSearchMatch();
+      }
       this.submitCurrentInput();
       return true;
     }
@@ -922,6 +987,7 @@ export default class RawChatUI {
     this.chatEditor.setText(`${prefix}/${replacement}${suffix}`, prefix.length + replacement.length + 1);
     this.historyIndex = null;
     this.historyDraft = "";
+    this.syncChatFileSearchState();
   }
 
   private browseHistory(direction: -1 | 1): void {
@@ -944,6 +1010,7 @@ export default class RawChatUI {
       this.historyIndex = null;
       this.chatEditor.setText(this.historyDraft);
       this.completionState = null;
+      this.syncChatFileSearchState();
       return;
     } else {
       this.historyIndex += 1;
@@ -951,6 +1018,7 @@ export default class RawChatUI {
 
     this.chatEditor.setText(history[this.historyIndex]);
     this.completionState = null;
+    this.syncChatFileSearchState();
   }
 
   private submitCurrentInput(): void {
@@ -965,6 +1033,7 @@ export default class RawChatUI {
     this.historyIndex = null;
     this.historyDraft = "";
     this.completionState = null;
+    this.syncChatFileSearchState();
   }
 
   private triggerShortcutCommand(commandName: string, flashMessage: string): void {
@@ -986,6 +1055,149 @@ export default class RawChatUI {
     this.historyIndex = null;
     this.historyDraft = "";
     this.completionState = null;
+    this.syncChatFileSearchState();
+  }
+
+  private syncChatFileSearchState(): void {
+    const token = findActiveFileSearchToken(this.chatEditor.getText(), this.chatEditor.getCursor());
+
+    if (!token) {
+      this.fileSearchState = null;
+      this.dismissedFileSearchSignature = null;
+      return;
+    }
+
+    const tokenSignature = this.getFileSearchTokenSignature(token);
+    if (this.dismissedFileSearchSignature && this.dismissedFileSearchSignature !== tokenSignature) {
+      this.dismissedFileSearchSignature = null;
+    }
+
+    if (this.dismissedFileSearchSignature === tokenSignature) {
+      this.fileSearchState = null;
+      return;
+    }
+
+    const previousSelection = this.fileSearchState?.matches[this.fileSearchState.selectedIndex] ?? null;
+    const matches = this.workspaceFiles
+      ? getFileSearchMatches(this.workspaceFiles, token.query, 48)
+      : [];
+
+    let selectedIndex = 0;
+    if (matches.length > 0) {
+      if (previousSelection) {
+        const nextIndex = matches.indexOf(previousSelection);
+        if (nextIndex !== -1) {
+          selectedIndex = nextIndex;
+        } else if (this.fileSearchState?.token.query === token.query) {
+          selectedIndex = clamp(this.fileSearchState.selectedIndex, 0, matches.length - 1);
+        }
+      } else if (this.fileSearchState?.token.query === token.query) {
+        selectedIndex = clamp(this.fileSearchState.selectedIndex, 0, matches.length - 1);
+      }
+    }
+
+    this.fileSearchState = {
+      token,
+      matches,
+      selectedIndex,
+      loading: !this.workspaceFiles && !this.workspaceFilesLoadError,
+      error: this.workspaceFilesLoadError,
+    };
+
+    if (!this.workspaceFiles && !this.workspaceFilesPromise) {
+      void this.loadWorkspaceFiles();
+    }
+  }
+
+  private getFileSearchTokenSignature(token: FileSearchToken): string {
+    return `${token.start}:${token.end}:${token.query}`;
+  }
+
+  private dismissFileSearch(): void {
+    if (!this.fileSearchState) return;
+
+    this.dismissedFileSearchSignature = this.getFileSearchTokenSignature(this.fileSearchState.token);
+    this.fileSearchState = null;
+  }
+
+  private moveFileSearchSelection(offset: number): boolean {
+    if (!this.fileSearchState || this.fileSearchState.matches.length === 0) {
+      return true;
+    }
+
+    this.fileSearchState = {
+      ...this.fileSearchState,
+      selectedIndex: clamp(
+        this.fileSearchState.selectedIndex + offset,
+        0,
+        this.fileSearchState.matches.length - 1,
+      ),
+    };
+    return true;
+  }
+
+  private insertSelectedFileSearchMatch(): boolean {
+    if (!this.fileSearchState) return false;
+
+    if (this.fileSearchState.loading) {
+      this.flash("Indexing workspace files...", "muted");
+      return true;
+    }
+
+    if (this.fileSearchState.error) {
+      this.flash(this.fileSearchState.error, "warning");
+      return true;
+    }
+
+    const selectedPath = this.fileSearchState.matches[this.fileSearchState.selectedIndex];
+    if (!selectedPath) {
+      this.flash("No matching files.", "muted");
+      return true;
+    }
+
+    const nextValue = replaceFileSearchToken(
+      this.chatEditor.getText(),
+      this.fileSearchState.token,
+      selectedPath,
+    );
+
+    this.chatEditor.setText(nextValue.text, nextValue.cursor);
+    this.dismissedFileSearchSignature = null;
+    this.afterChatEdit();
+    return true;
+  }
+
+  private async loadWorkspaceFiles(): Promise<void> {
+    if (this.workspaceFilesPromise) {
+      return this.workspaceFilesPromise;
+    }
+
+    const fileSystem = this.options.agent.getServiceByType(FileSystemService);
+    if (!fileSystem) {
+      this.workspaceFilesLoadError = "Workspace file search is unavailable.";
+      this.syncChatFileSearchState();
+      this.render();
+      return;
+    }
+
+    this.workspaceFilesLoadError = null;
+    this.workspaceFilesPromise = (async () => {
+      try {
+        const files = await fileSystem.glob("**/*", {includeDirectories: false}, this.options.agent);
+        this.workspaceFiles = Array.from(new Set(files)).sort(compareFilePathsForBrowsing);
+      } catch (error) {
+        this.workspaceFiles = null;
+        this.workspaceFilesLoadError = error instanceof Error
+          ? `Workspace file search failed: ${error.message}`
+          : "Workspace file search failed.";
+      } finally {
+        this.workspaceFilesPromise = null;
+        this.syncChatFileSearchState();
+        this.render();
+      }
+    })();
+
+    return this.workspaceFilesPromise;
   }
 
   private isCommandInput(): boolean {
@@ -1427,6 +1639,9 @@ export default class RawChatUI {
         lines: [this.getHintLine(columns)],
         showCursor: false,
       });
+      if (!followup && this.fileSearchState) {
+        sections.push(this.renderFileSearchPicker(columns, rows));
+      }
       sections.push(followup
         ? this.renderFollowupComposer(followup, columns, rows)
         : this.renderChatComposer(columns, rows));
@@ -1509,6 +1724,60 @@ export default class RawChatUI {
       cursorRow: renderedInput.cursorRow,
       cursorColumn: (renderedInput.cursorRow === 0 ? promptPrefixWidth : continuationPrefixWidth) + renderedInput.cursorColumn,
       showCursor: true,
+    };
+  }
+
+  private renderFileSearchPicker(columns: number, rows: number): RenderBlock {
+    const state = this.fileSearchState;
+    if (!state) {
+      return {lines: [], showCursor: false};
+    }
+
+    const indexedCount = this.workspaceFiles?.length ?? 0;
+    const lines = [
+      TITLE_COLOR(`${HEADER_PREFIX}Workspace Files`),
+      TONE_COLORS.muted(`${TEXT_INDENT}${shortenPath(this.options.agent.app.config.app.workingDirectory)}`),
+    ];
+
+    if (state.loading) {
+      lines.push(TONE_COLORS.info(`${TEXT_INDENT}Indexing workspace files...`));
+      return {lines, showCursor: false};
+    }
+
+    if (state.error) {
+      lines.push(TONE_COLORS.warning(`${TEXT_INDENT}${state.error}`));
+      return {lines, showCursor: false};
+    }
+
+    if (state.matches.length === 0) {
+      lines.push(TONE_COLORS.muted(`${TEXT_INDENT}No matches for @${state.token.query}`));
+      return {lines, showCursor: false};
+    }
+
+    lines.push(TONE_COLORS.muted(`${TEXT_INDENT}${state.matches.length} matches · ${indexedCount} indexed`));
+
+    const maxVisibleItems = clamp(rows - 16, 3, 6);
+    const windowStart = clamp(
+      state.selectedIndex - maxVisibleItems + 1,
+      0,
+      Math.max(0, state.matches.length - maxVisibleItems),
+    );
+    const visibleMatches = state.matches.slice(windowStart, windowStart + maxVisibleItems);
+
+    visibleMatches.forEach((match, index) => {
+      const actualIndex = windowStart + index;
+      const prefix = actualIndex === state.selectedIndex ? "›" : " ";
+      const label = truncateVisible(match, Math.max(10, columns - 4));
+      lines.push(
+        actualIndex === state.selectedIndex
+          ? FILE_SEARCH_SELECTED(`${prefix} ${label}`)
+          : FILE_SEARCH_IDLE(`${prefix} ${label}`),
+      );
+    });
+
+    return {
+      lines,
+      showCursor: false,
     };
   }
 
@@ -1624,6 +1893,17 @@ export default class RawChatUI {
     if (this.flashMessage) {
       text = this.flashMessage.text;
       tone = this.flashMessage.tone;
+    } else if (this.fileSearchState) {
+      if (this.fileSearchState.loading) {
+        text = `@ file search  ·  Indexing workspace files...  Esc close`;
+        tone = "info";
+      } else if (this.fileSearchState.error) {
+        text = `@ file search  ·  ${this.fileSearchState.error}  Esc close`;
+        tone = "warning";
+      } else {
+        text = `@ file search  ·  Up/Down move  Tab or Enter insert  Esc close`;
+        tone = "info";
+      }
     } else if (this.completionState && this.completionState.matches.length > 0) {
       const selected = this.completionState.matches[this.completionState.selectedIndex];
       const suggestions = this.completionState.matches
@@ -1641,6 +1921,10 @@ export default class RawChatUI {
     } else if (followup) {
       text = `Follow-up ready  ·  Enter send  Alt+Enter newline${optionalHint}`;
       tone = "info";
+    } else if (this.isAgentExecuting()) {
+      const activity = this.getActivityLabel();
+      text = `${activity}  ·  Alt+A Agent Selection  Ctrl+C Cancel${optionalHint}`;
+      tone = "muted";
     } else {
       const activity = this.getActivityLabel();
       text = `${activity}  ·  Alt+M model  Alt+T tools  Alt+V ${this.verbose ? "verbose on" : "verbose off"}  ·  Tab complete  Enter send${optionalHint}`;
@@ -1657,6 +1941,11 @@ export default class RawChatUI {
       return `${frames[this.spinnerIndex]} ${state.currentlyExecutingInputItem.executionState.currentActivity}`;
     }
     return "Ready";
+  }
+
+  private isAgentExecuting(): boolean {
+    const state = this.latestState ?? this.options.agent.getState(AgentEventState);
+    return state.currentlyExecutingInputItem !== null;
   }
 
   private getStatusLine(columns: number): string {
@@ -1693,6 +1982,10 @@ export default class RawChatUI {
     const followup = this.getPrimaryFollowup();
     if (followup) {
       return `followup:${followup.interactionId}`;
+    }
+
+    if (this.fileSearchState) {
+      return `file-search:${this.fileSearchState.token.start}:${this.fileSearchState.token.end}:${this.fileSearchState.token.query}:${this.fileSearchState.selectedIndex}:${this.fileSearchState.loading}:${this.fileSearchState.error ?? ""}:${this.fileSearchState.matches.length}:${this.fileSearchState.matches.slice(0, 8).join(",")}`;
     }
 
     return "chat";

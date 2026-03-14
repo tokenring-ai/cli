@@ -17,6 +17,10 @@ The `@tokenring-ai/cli` package provides a comprehensive command-line interface 
 - **Background Loading Screen**: Optional loading screen while agents initialize
 - **Graceful Shutdown**: Proper signal handling and cleanup
 - **Markdown Styling**: Applied markdown formatting to terminal output
+- **File Selection**: Interactive file system browser for file selection questions
+- **Tree Selection**: Hierarchical tree-based selection for complex choices
+- **Multi-field Forms**: Support for multi-section forms with various field types
+- **Bracketed Paste**: Support for bracketed paste mode for efficient text input
 
 ## Installation
 
@@ -29,21 +33,23 @@ bun add @tokenring-ai/cli
 ### Runtime Dependencies
 
 - `@tokenring-ai/app` (0.2.0)
+- `@tokenring-ai/ai-client` (0.2.0)
 - `@tokenring-ai/chat` (0.2.0)
+- `zod` (^4.3.6)
+- `@inquirer/prompts` (^8.3.0)
 - `@tokenring-ai/agent` (0.2.0)
 - `@tokenring-ai/utility` (0.2.0)
 - `@tokenring-ai/web-host` (0.2.0)
 - `@tokenring-ai/workflow` (0.2.0)
 - `@tokenring-ai/filesystem` (0.2.0)
-- `zod` (^4.3.6)
-- `@inquirer/prompts` (^8.3.0)
+- `@mishieck/ink-titled-box` (^0.4.2)
 - `execa` (^9.6.1)
 - `chalk` (^5.6.2)
 - `open` (^11.0.0)
-- `@opentui/core` (^0.1.84)
-- `@opentui/react` (^0.1.84)
+- `@opentui/core` (^0.1.86)
+- `@opentui/react` (^0.1.86)
 - `react` (^19.2.4)
-- `ink` (^6.6.0)
+- `ink` (^6.8.0)
 - `fullscreen-ink` (^0.1.0)
 
 ### Development Dependencies
@@ -76,7 +82,6 @@ The `/multi` command opens your default text editor where you can write and edit
 ```
 /multi                    # Open editor with blank content
 /multi Write a story...   # Open editor with initial text
-/multi #include <stdio.h> # Start with code snippet
 ```
 
 ## Core Components/API
@@ -136,15 +141,14 @@ class AgentLoop {
 **AgentLoopOptions Interface:**
 ```typescript
 interface AgentLoopOptions {
-  availableCommands: string[];
-  rl: readline.Interface;
+  availableCommands: CommandDefinition[];
   config: z.infer<typeof CLIConfigSchema>;
 }
 ```
 
 **Properties:**
 - `agent`: The `Agent` instance to interact with
-- `options`: Configuration including available commands, readline interface, and CLI config
+- `options`: Configuration including available commands and CLI config
 
 **Methods:**
 
@@ -156,21 +160,87 @@ interface AgentLoopOptions {
 The `AgentLoop` processes the following agent events:
 - `agent.created`: Display agent creation message
 - `agent.stopped`: Shutdown the interaction loop
-- `reset`: Display reset message
-- `abort`: Display abort message
-- `output.artifact`: Display artifact information
 - `output.chat`: Stream chat output with formatting
 - `output.reasoning`: Stream reasoning output with formatting
 - `output.info/warning/error`: Display system messages
+- `output.artifact`: Display artifact information
 - `input.received`: Display user input
-- `input.handled`: Display input handling status
 - `question.request`: Display agent question to user
 - `question.response`: Display response to agent question
 
-**Spinner Management:**
-- Automatically starts/stops spinner based on agent execution state
-- Uses `SimpleSpinner` for visual feedback during busy operations
-- Syncs with `exec.busyWith` property from execution state
+**State Management:**
+- Tracks event cursor for incremental updates
+- Subscribes to `AgentEventState` for real-time updates
+- Handles abort signals for graceful cancellation
+
+### RawChatUI Class
+
+The main chat UI component that handles terminal rendering, input editing, and interaction management. This is a raw terminal-based UI that works directly with ANSI escape codes.
+
+**Interface:**
+```typescript
+class RawChatUI {
+  constructor(options: RawChatUIOptions);
+
+  start(): void;
+  stop(): void;
+  suspend(): void;
+  resume(): void;
+  renderEvent(event: AgentEventEnvelope): void;
+  syncState(state: AgentEventState): void;
+  flash(text: string, tone?: FlashMessage["tone"], durationMs?: number): void;
+}
+```
+
+**RawChatUIOptions Interface:**
+```typescript
+interface RawChatUIOptions {
+  agent: Agent;
+  config: z.output<typeof CLIConfigSchema>;
+  commands: CommandDefinition[];
+  onSubmit: (message: string) => void;
+  onExit: () => void;
+  onAbortCurrentActivity: () => boolean;
+}
+```
+
+**Properties:**
+- `chatEditor`: Multi-line input editor for chat messages
+- `transcript`: Array of transcript entries showing conversation history
+- `followupEditors`: Map of editors for follow-up interactions
+- `questionSessions`: Map of inline question sessions
+
+**Methods:**
+
+| Method | Description | Parameters |
+|--------|-------------|------------|
+| `start` | Attaches terminal and starts rendering | - |
+| `stop` | Detaches terminal and stops rendering | - |
+| `suspend` | Temporarily detaches terminal | - |
+| `resume` | Re-attaches terminal and replays UI | - |
+| `renderEvent` | Renders an agent event to the transcript | `event: AgentEventEnvelope` |
+| `syncState` | Synchronizes UI with agent state | `state: AgentEventState` |
+| `flash` | Shows a temporary flash message | `text: string`, `tone?: FlashMessage["tone"]`, `durationMs?: number` |
+
+**Keyboard Shortcuts:**
+- `Ctrl+C`: Exit the CLI
+- `Ctrl+L`: Clear and replay the screen
+- `Alt+M` / `F3`: Open model selector
+- `Alt+T` / `F4`: Open tools selector
+- `Alt+V` / `F5`: Toggle verbose mode
+- `Alt+Q` / `F6`: Toggle optional questions
+- `Tab`: Command completion
+- `Escape`: Cancel current activity
+- `Ctrl+O`: Insert newline
+- `Ctrl+P` / `Up`: Browse command history (previous)
+- `Ctrl+N` / `Down`: Browse command history (next)
+
+**Input Editor Features:**
+- Multi-line text editing
+- Word navigation (Alt+B/F or Ctrl+Left/Right)
+- Line navigation (Home/End)
+- Delete operations (Ctrl+U/K/W/D)
+- Bracketed paste support
 
 ### commandPrompt Function
 
@@ -297,6 +367,7 @@ const CLIConfigSchema = z.object({
   loadingBannerCompact: z.string(),
   screenBanner: z.string(),
   uiFramework: z.enum(['ink', 'opentui']).default('opentui'),
+  verbose: z.boolean().default(false),
   startAgent: z.object({
     type: z.string(),
     prompt: z.string().optional(),
@@ -315,6 +386,7 @@ const CLIConfigSchema = z.object({
 | `loadingBannerCompact` | string | Yes | - | Banner for compact terminal layouts during loading |
 | `screenBanner` | string | Yes | - | Banner message displayed on all interactive screens |
 | `uiFramework` | 'ink' \| 'opentui' | No | 'opentui' | UI rendering framework to use |
+| `verbose` | boolean | No | false | Enable verbose output including reasoning and artifacts |
 | `startAgent` | object | No | undefined | Optional agent to automatically spawn on startup |
 | `startAgent.type` | string | If startAgent | - | Agent type to spawn |
 | `startAgent.prompt` | string | If startAgent | undefined | Initial prompt to send to the agent |
@@ -551,6 +623,22 @@ const config = {
 };
 ```
 
+### Enable Verbose Mode
+
+```typescript
+const config = {
+  cli: {
+    chatBanner: 'TokenRing CLI',
+    uiFramework: 'opentui',
+    verbose: true, // Show reasoning and artifacts
+    loadingBannerNarrow: 'Loading...',
+    loadingBannerWide: 'Loading TokenRing CLI...',
+    loadingBannerCompact: 'Loading',
+    screenBanner: 'TokenRing CLI',
+  },
+};
+```
+
 ### Custom Theme Usage
 
 ```typescript
@@ -562,53 +650,191 @@ const warningColor = theme.chatSystemWarningMessage;
 const errorColor = theme.chatSystemErrorMessage;
 ```
 
+## Input Components
+
+The CLI package provides several interactive input components for handling agent questions and requests.
+
+### TreeSelect Component
+
+A hierarchical tree selection component for navigating complex option structures.
+
+**Features:**
+- Expandable/collapsible tree nodes
+- Single or multi-select modes
+- Minimum and maximum selection constraints
+- Visual feedback for selected/partially selected items
+- Keyboard navigation (arrow keys, space, enter)
+
+**Usage:**
+```typescript
+import TreeSelect from '@tokenring-ai/cli/opentui/components/inputs/TreeSelect';
+
+<TreeSelect
+  question={{
+    label: 'Select Tools',
+    tree: [
+      {
+        name: 'Code',
+        children: [
+          { name: 'TypeScript', value: 'typescript' },
+          { name: 'JavaScript', value: 'javascript' },
+        ],
+      },
+    ],
+    minimumSelections: 1,
+    maximumSelections: 3,
+    defaultValue: [],
+  }}
+  onResponse={(selected) => console.log(selected)}
+/>
+```
+
+### FileSelect Component
+
+An interactive file browser for selecting files and directories from the filesystem.
+
+**Features:**
+- Async directory loading
+- Expandable directory tree
+- File and directory selection
+- Visual loading indicators
+- Integration with FileSystemService
+
+**Usage:**
+```typescript
+import FileSelect from '@tokenring-ai/cli/opentui/components/inputs/FileSelect';
+
+<FileSelect
+  agent={agent}
+  question={{
+    label: 'Select Files',
+    allowFiles: true,
+    allowDirectories: false,
+    minimumSelections: 1,
+    maximumSelections: 5,
+    defaultValue: [],
+  }}
+  onResponse={(selectedPaths) => console.log(selectedPaths)}
+/>
+```
+
+### TextInput Component
+
+A multi-line text input component for collecting text responses.
+
+**Features:**
+- Multi-line text editing
+- Cursor navigation
+- Submit with Ctrl+D, cancel with Escape
+- Responsive layout adaptation
+
+**Usage:**
+```typescript
+import TextInput from '@tokenring-ai/cli/opentui/components/inputs/TextInput';
+
+<TextInput
+  question={{
+    label: 'Your Response',
+    description: 'Enter your detailed response here',
+    required: true,
+    expectedLines: 3,
+    defaultValue: '',
+    masked: false,
+  }}
+  onResponse={(response) => console.log(response)}
+/>
+```
+
+### FormInput Component
+
+A multi-section form component that combines multiple field types.
+
+**Features:**
+- Multi-section navigation
+- Auto-advance on field completion
+- Support for text, treeSelect, and fileSelect fields
+- Progress tracking
+
+**Usage:**
+```typescript
+import FormInput from '@tokenring-ai/cli/opentui/components/inputs/FormInput';
+
+<FormInput
+  agent={agent}
+  question={{
+    sections: [
+      {
+        name: 'Basic Info',
+        fields: {
+          name: { type: 'text', label: 'Name', required: true },
+          files: { type: 'fileSelect', label: 'Select Files' },
+        },
+      },
+    ],
+  }}
+  onResponse={(responses) => console.log(responses)}
+/>
+```
+
 ## Package Structure
 
 ```
 pkg/cli/
 ├── commands/                      # Chat command implementations
 │   └── multi.ts                   # /multi command implementation
+├── commands.ts                    # Chat commands export
 ├── components/                    # UI components (framework-specific)
-│   └── inputs/                    # Input components (shared types)
-│       ├── FileSelect.tsx         # File selection component
-│       ├── FormInput.tsx          # Form input component
-│       ├── TextInput.tsx          # Text input component
-│       ├── TreeSelect.tsx         # Tree selection component
-│       └── types.ts               # Input component types
+│   ├── ink/                       # Ink-specific components
+│   │   └── components/
+│   │       └── inputs/            # Input components
+│   │           ├── FileSelect.tsx
+│   │           ├── FormInput.tsx
+│   │           ├── TextInput.tsx
+│   │           ├── TreeSelect.tsx
+│   │           └── types.ts
+│   │   └── hooks/
+│   │       └── useResponsiveLayout.ts
+│   │   └── screens/
+│   │       ├── AgentSelectionScreen.tsx
+│   │       ├── LoadingScreen.tsx
+│   │       └── QuestionInputScreen.tsx
+│   │   └── renderScreen.tsx
+│   └── opentui/                   # OpenTUI-specific components
+│       └── components/
+│           └── inputs/            # Input components
+│               ├── FileSelect.tsx
+│               ├── FormInput.tsx
+│               ├── TextInput.tsx
+│               ├── TreeSelect.tsx
+│               └── types.ts
+│       └── hooks/
+│           └── useResponsiveLayout.ts
+│       └── screens/
+│           ├── AgentSelectionScreen.tsx
+│           ├── LoadingScreen.tsx
+│           └── QuestionInputScreen.tsx
+│       └── renderScreen.tsx
 ├── hooks/                         # Shared React hooks
 │   ├── useAbortSignal.ts          # Shared abort signal hook
 │   └── useResponsiveLayout.ts     # Shared responsive layout hook
-├── ink/                           # Ink-specific implementations
-│   ├── components/                # Ink UI components
-│   │   └── inputs/                # Ink input components
-│   ├── hooks/                     # Ink React hooks
-│   │   └── useResponsiveLayout.ts # Ink responsive layout
-│   ├── screens/                   # Ink screen components
-│   │   ├── AgentSelectionScreen.tsx
-│   │   ├── LoadingScreen.tsx
-│   │   └── QuestionInputScreen.tsx
-│   └── renderScreen.tsx           # Ink screen rendering
-├── opentui/                       # OpenTUI-specific implementations
-│   ├── components/                # OpenTUI UI components
-│   │   └── inputs/                # OpenTUI input components
-│   ├── hooks/                     # OpenTUI React hooks
-│   │   └── useResponsiveLayout.ts # OpenTUI responsive layout
-│   ├── screens/                   # OpenTUI screen components
-│   │   ├── AgentSelectionScreen.tsx
-│   │   ├── LoadingScreen.tsx
-│   │   └── QuestionInputScreen.tsx
-│   └── renderScreen.tsx           # OpenTUI screen rendering
+├── raw/                           # Raw terminal UI components
+│   ├── CommandCompletions.ts      # Command completion logic
+│   ├── CommandCompletions.test.ts # Tests for command completions
+│   ├── InlineQuestions.ts         # Inline question handling
+│   ├── InputEditor.ts             # Multi-line text editor
+│   ├── InputEditor.test.ts        # Tests for input editor
+│   └── RawChatUI.ts               # Main chat UI implementation
 ├── utility/                       # Utility functions
 │   └── applyMarkdownStyles.ts     # Markdown styling utility
 ├── AgentCLI.ts                    # Main CLI service class
 ├── AgentLoop.ts                   # Agent interaction loop handler
+├── AgentSelection.ts              # Agent selection parsing utilities
 ├── commandPrompt.ts               # Command prompt with history support
+├── index.ts                       # Main entry point
+├── plugin.ts                      # Plugin definition
+├── schema.ts                      # Configuration schema definition
 ├── SimpleSpinner.ts               # Spinner component for loading states
 ├── theme.ts                       # Color theme definitions
-├── commands.ts                    # Chat commands export
-├── plugin.ts                      # Plugin definition
-├── index.ts                       # Main entry point
-├── schema.ts                      # Configuration schema definition
 ├── vitest.config.ts               # Vitest test configuration
 ├── package.json
 └── README.md
@@ -620,6 +846,7 @@ pkg/cli/
 |------|-------------|
 | `AgentCLI.ts` | Main service class that coordinates CLI operations |
 | `AgentLoop.ts` | Handles the interaction loop for individual agents |
+| `RawChatUI.ts` | Core chat UI implementation with terminal rendering |
 | `commandPrompt.ts` | Provides readline-based input with history and completion |
 | `SimpleSpinner.ts` | Custom spinner implementation that integrates with abort signals |
 | `renderScreen.tsx` | (Framework-specific) Renders interactive UI screens |
@@ -629,6 +856,8 @@ pkg/cli/
 | `index.ts` | Main entry point exporting `AgentCLI` and `CLIConfigSchema` |
 | `commands.ts` | Exports all chat commands |
 | `applyMarkdownStyles.ts` | Utility for applying markdown styling to terminal output |
+| `InputEditor.ts` | Multi-line text editor with cursor navigation |
+| `InlineQuestions.ts` | Inline question session handling for various question types |
 
 ## Integration
 
@@ -639,7 +868,7 @@ The CLI integrates with the agent system through:
 1. **Agent Selection**: Presents available agents from `AgentManager` service
 2. **Event Subscription**: Subscribes to `AgentEventState` for real-time updates
 3. **Input Handling**: Sends user input via `agent.handleInput()`
-4. **Question Responses**: Sends responses to agent questions via `agent.sendQuestionResponse()`
+4. **Question Responses**: Sends responses to agent questions via `agent.sendInteractionResponse()`
 5. **Command Registration**: Registers chat commands via `AgentCommandService`
 
 ### Plugin Registration
@@ -683,6 +912,60 @@ The plugin automatically registers commands with `AgentCommandService`:
 app.waitForService(AgentCommandService, agentCommandService =>
   agentCommandService.addAgentCommands(agentCommands)
 );
+```
+
+## Hooks
+
+### useAbortSignal Hook
+
+A React hook that manages abort signal listeners.
+
+**Usage:**
+```typescript
+import { useAbortSignal } from '@tokenring-ai/cli/hooks/useAbortSignal';
+
+function MyComponent({ signal }) {
+  useAbortSignal(signal, () => {
+    console.log('Aborted!');
+  });
+  
+  return <div>Component</div>;
+}
+```
+
+### useResponsiveLayout Hook
+
+A React hook that provides responsive layout information based on terminal dimensions.
+
+**Returns:**
+```typescript
+interface ResponsiveLayout {
+  maxVisibleItems: number;
+  showBreadcrumbs: boolean;
+  showHelp: boolean;
+  truncateAt: number;
+  isCompact: boolean;
+  isNarrow: boolean;
+  isShort: boolean;
+  minimalMode: boolean;
+  width: number;
+  height: number;
+}
+```
+
+**Usage:**
+```typescript
+import { useResponsiveLayout } from '@tokenring-ai/cli/opentui/hooks/useResponsiveLayout';
+
+function MyComponent() {
+  const { isNarrow, isCompact, maxVisibleItems, width, height } = useResponsiveLayout();
+  
+  return (
+    <box>
+      {isNarrow ? <CompactView /> : <FullView />}
+    </box>
+  );
+}
 ```
 
 ## Best Practices
