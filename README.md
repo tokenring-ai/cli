@@ -21,6 +21,7 @@ The `@tokenring-ai/cli` package provides a comprehensive command-line interface 
 - **Tree Selection**: Hierarchical tree-based selection for complex choices
 - **Multi-field Forms**: Support for multi-section forms with various field types
 - **Bracketed Paste**: Support for bracketed paste mode for efficient text input
+- **Workspace File Search**: File path completion using `@` syntax
 
 ## Installation
 
@@ -35,26 +36,26 @@ bun add @tokenring-ai/cli
 - `@tokenring-ai/app` (0.2.0)
 - `@tokenring-ai/ai-client` (0.2.0)
 - `@tokenring-ai/chat` (0.2.0)
-- `zod` (^4.3.6)
-- `@inquirer/prompts` (^8.3.0)
 - `@tokenring-ai/agent` (0.2.0)
 - `@tokenring-ai/utility` (0.2.0)
 - `@tokenring-ai/web-host` (0.2.0)
 - `@tokenring-ai/workflow` (0.2.0)
 - `@tokenring-ai/filesystem` (0.2.0)
+- `zod` (^4.3.6)
+- `@inquirer/prompts` (^8.3.0)
 - `@mishieck/ink-titled-box` (^0.4.2)
 - `execa` (^9.6.1)
 - `chalk` (^5.6.2)
 - `open` (^11.0.0)
-- `@opentui/core` (^0.1.86)
-- `@opentui/react` (^0.1.86)
+- `@opentui/core` (^0.1.87)
+- `@opentui/react` (^0.1.87)
 - `react` (^19.2.4)
 - `ink` (^6.8.0)
 - `fullscreen-ink` (^0.1.0)
 
 ### Development Dependencies
 
-- `vitest` (^4.0.18)
+- `vitest` (^4.1.0)
 - `typescript` (^5.9.3)
 - `@types/react` (^19.2.14)
 
@@ -199,7 +200,8 @@ interface RawChatUIOptions {
   config: z.output<typeof CLIConfigSchema>;
   commands: CommandDefinition[];
   onSubmit: (message: string) => void;
-  onExit: () => void;
+  onOpenAgentSelection: () => void;
+  onDeleteIdleAgent: () => void;
   onAbortCurrentActivity: () => boolean;
 }
 ```
@@ -225,9 +227,10 @@ interface RawChatUIOptions {
 **Keyboard Shortcuts:**
 - `Ctrl+C`: Exit the CLI
 - `Ctrl+L`: Clear and replay the screen
+- `Alt+A` / `F1`: Open agent selection
 - `Alt+M` / `F3`: Open model selector
-- `Alt+T` / `F4`: Open tools selector
-- `Alt+V` / `F5`: Toggle verbose mode
+- `Alt+T` / `F2`: Open tools selector
+- `Alt+V` / `F4`: Toggle verbose mode
 - `Alt+Q` / `F6`: Toggle optional questions
 - `Tab`: Command completion
 - `Escape`: Cancel current activity
@@ -783,43 +786,44 @@ pkg/cli/
 ├── commands/                      # Chat command implementations
 │   └── multi.ts                   # /multi command implementation
 ├── commands.ts                    # Chat commands export
-├── components/                    # UI components (framework-specific)
-│   ├── ink/                       # Ink-specific components
-│   │   └── components/
-│   │       └── inputs/            # Input components
-│   │           ├── FileSelect.tsx
-│   │           ├── FormInput.tsx
-│   │           ├── TextInput.tsx
-│   │           ├── TreeSelect.tsx
-│   │           └── types.ts
-│   │   └── hooks/
-│   │       └── useResponsiveLayout.ts
-│   │   └── screens/
-│   │       ├── AgentSelectionScreen.tsx
-│   │       ├── LoadingScreen.tsx
-│   │       └── QuestionInputScreen.tsx
-│   │   └── renderScreen.tsx
-│   └── opentui/                   # OpenTUI-specific components
-│       └── components/
-│           └── inputs/            # Input components
-│               ├── FileSelect.tsx
-│               ├── FormInput.tsx
-│               ├── TextInput.tsx
-│               ├── TreeSelect.tsx
-│               └── types.ts
-│       └── hooks/
-│           └── useResponsiveLayout.ts
-│       └── screens/
-│           ├── AgentSelectionScreen.tsx
-│           ├── LoadingScreen.tsx
-│           └── QuestionInputScreen.tsx
-│       └── renderScreen.tsx
 ├── hooks/                         # Shared React hooks
 │   ├── useAbortSignal.ts          # Shared abort signal hook
 │   └── useResponsiveLayout.ts     # Shared responsive layout hook
+├── ink/                           # Ink-specific components
+│   ├── components/
+│   │   └── inputs/                # Input components
+│   │       ├── FileSelect.tsx
+│   │       ├── FormInput.tsx
+│   │       ├── TextInput.tsx
+│   │       ├── TreeSelect.tsx
+│   │       └── types.ts
+│   ├── hooks/
+│   │   └── useResponsiveLayout.ts
+│   ├── screens/
+│   │   ├── AgentSelectionScreen.tsx
+│   │   ├── LoadingScreen.tsx
+│   │   └── QuestionInputScreen.tsx
+│   └── renderScreen.tsx
+├── opentui/                       # OpenTUI-specific components
+│   ├── components/
+│   │   └── inputs/                # Input components
+│   │       ├── FileSelect.tsx
+│   │       ├── FormInput.tsx
+│   │       ├── TextInput.tsx
+│   │       ├── TreeSelect.tsx
+│   │       └── types.ts
+│   ├── hooks/
+│   │   └── useResponsiveLayout.ts
+│   ├── screens/
+│   │   ├── AgentSelectionScreen.tsx
+│   │   ├── LoadingScreen.tsx
+│   │   └── QuestionInputScreen.tsx
+│   └── renderScreen.tsx
 ├── raw/                           # Raw terminal UI components
 │   ├── CommandCompletions.ts      # Command completion logic
 │   ├── CommandCompletions.test.ts # Tests for command completions
+│   ├── FileSearch.ts              # File search and completion logic
+│   ├── FileSearch.test.ts         # Tests for file search
 │   ├── InlineQuestions.ts         # Inline question handling
 │   ├── InputEditor.ts             # Multi-line text editor
 │   ├── InputEditor.test.ts        # Tests for input editor
@@ -858,6 +862,9 @@ pkg/cli/
 | `applyMarkdownStyles.ts` | Utility for applying markdown styling to terminal output |
 | `InputEditor.ts` | Multi-line text editor with cursor navigation |
 | `InlineQuestions.ts` | Inline question session handling for various question types |
+| `AgentSelection.ts` | Agent selection result parsing utilities |
+| `FileSearch.ts` | Workspace file search and @-syntax completion |
+| `CommandCompletions.ts` | Command completion context and utilities |
 
 ## Integration
 
@@ -1043,6 +1050,21 @@ import applyMarkdownStyles from '@tokenring-ai/cli/utility/applyMarkdownStyles';
 const styledText = applyMarkdownStyles('# Heading\n- Item 1\n- Item 2');
 console.log(styledText);
 ```
+
+### File Search Syntax
+
+Use the `@` syntax for file path completion in the chat input:
+
+```
+# Type @ followed by a search query to find files
+Write code for @utils/helper.ts
+```
+
+The file search will:
+- Index all files in the workspace
+- Show matches as you type
+- Allow navigation with arrow keys
+- Insert the selected path with Tab or Enter
 
 ## Testing and Development
 
