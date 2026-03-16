@@ -1,8 +1,5 @@
 import Agent from "@tokenring-ai/agent/Agent";
-import {
-  type AgentEventEnvelope,
-  type ParsedInteractionRequest,
-} from "@tokenring-ai/agent/AgentEvents";
+import {type AgentEventEnvelope, type ParsedInteractionRequest,} from "@tokenring-ai/agent/AgentEvents";
 import type {ParsedFileSelectQuestion} from "@tokenring-ai/agent/question";
 import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
@@ -10,6 +7,7 @@ import {ChatModelRegistry} from "@tokenring-ai/ai-client/ModelRegistry";
 import {parseModelAndSettings} from "@tokenring-ai/ai-client/util/modelSettings";
 import {ChatService} from "@tokenring-ai/chat";
 import {FileSystemService} from "@tokenring-ai/filesystem";
+import {FileSystemState} from "@tokenring-ai/filesystem/state/fileSystemState";
 import chalk from "chalk";
 import process from "node:process";
 import readline from "node:readline";
@@ -22,24 +20,9 @@ import OpenTUIQuestionInputScreen from "../opentui/screens/QuestionInputScreen.t
 import {CLIConfigSchema} from "../schema.ts";
 import {theme} from "../theme.ts";
 import applyMarkdownStyles from "../utility/applyMarkdownStyles.ts";
-import {
-  createInlineQuestionSession,
-  type InlineQuestionSession,
-  type Keypress as InlineKeypress,
-  type RenderBlock,
-} from "./InlineQuestions.ts";
-import {
-  compareFilePathsForBrowsing,
-  findActiveFileSearchToken,
-  getFileSearchMatches,
-  replaceFileSearchToken,
-  type FileSearchToken,
-} from "./FileSearch.ts";
-import {
-  type CommandDefinition,
-  getCommandCompletionContext,
-  getLongestCommonPrefix,
-} from "./CommandCompletions.ts";
+import {type CommandDefinition, getCommandCompletionContext,} from "./CommandCompletions.ts";
+import {compareFilePathsForBrowsing, type FileSearchToken, findActiveFileSearchToken, getFileSearchMatches, replaceFileSearchToken,} from "./FileSearch.ts";
+import {createInlineQuestionSession, type InlineQuestionSession, type Keypress as InlineKeypress, type RenderBlock,} from "./InlineQuestions.ts";
 import InputEditor from "./InputEditor.ts";
 
 type TranscriptTone =
@@ -73,6 +56,8 @@ type TranscriptEntryKind =
   | "response";
 
 type CompletionState = {
+  replacementStart: number;
+  replacementEnd: number;
   sourceQuery: string;
   matches: CommandDefinition[];
   selectedIndex: number;
@@ -366,6 +351,7 @@ export default class RawChatUI {
   private workspaceFiles: string[] | null = null;
   private workspaceFilesLoadError: string | null = null;
   private workspaceFilesPromise: Promise<void> | null = null;
+  private dismissedCompletionSignature: string | null = null;
   private dismissedFileSearchSignature: string | null = null;
 
   private readonly dataHandler = (data: Buffer | string) => {
@@ -670,12 +656,30 @@ export default class RawChatUI {
       }
     }
 
-    if (key.name === "escape") {
-      if (this.completionState) {
-        this.completionState = null;
+    if (this.completionState) {
+      if (key.name === "escape") {
+        this.dismissCommandCompletion();
         return true;
       }
 
+      if (key.name === "up" || (key.ctrl && key.name === "p")) {
+        return this.moveCommandCompletionSelection(-1);
+      }
+
+      if (key.name === "down" || (key.ctrl && key.name === "n")) {
+        return this.moveCommandCompletionSelection(1);
+      }
+
+      if (key.name === "pageup") {
+        return this.moveCommandCompletionSelection(-5);
+      }
+
+      if (key.name === "pagedown") {
+        return this.moveCommandCompletionSelection(5);
+      }
+    }
+
+    if (key.name === "escape") {
       if (this.options.onAbortCurrentActivity()) {
         this.flash("Cancelled the current activity.", "warning");
       } else {
@@ -685,14 +689,6 @@ export default class RawChatUI {
     }
 
     if (key.name === "tab") {
-      if (this.handleTabCompletion()) {
-        return true;
-      }
-
-      if (!this.isCommandInput()) {
-        this.chatEditor.insert("  ");
-        this.afterChatEdit();
-      }
       return true;
     }
 
@@ -743,6 +739,9 @@ export default class RawChatUI {
     if (key.name === "return") {
       if (this.fileSearchState) {
         return this.insertSelectedFileSearchMatch();
+      }
+      if (this.completionState) {
+        return this.insertSelectedCommandCompletion();
       }
       this.submitCurrentInput();
       return true;
@@ -926,57 +925,37 @@ export default class RawChatUI {
     this.render();
   }
 
-  private handleTabCompletion(): boolean {
-    const context = getCommandCompletionContext(
-      this.chatEditor.getText(),
-      this.chatEditor.getCursor(),
-      this.options.commands,
+  private insertSelectedCommandCompletion(): boolean {
+    if (!this.completionState) return false;
+
+    const selectedCommand = this.completionState.matches[this.completionState.selectedIndex];
+    if (!selectedCommand) {
+      this.flash("No matching command.", "warning");
+      return true;
+    }
+
+    this.applyCompletion(
+      this.completionState.replacementStart,
+      this.completionState.replacementEnd,
+      `${selectedCommand.name} `,
     );
-
-    if (!context) {
-      if (this.isCommandInput()) {
-        this.flash("No matching command.", "warning");
-        return true;
-      }
-      return false;
-    }
-
-    if (context.matches.length === 1) {
-      this.applyCompletion(context.replacementStart, context.replacementEnd, `${context.matches[0].name} `);
-      this.completionState = null;
-      return true;
-    }
-
-    if (
-      this.completionState
-      && context.query.startsWith(this.completionState.sourceQuery)
-      && this.sameCompletionMatches(this.completionState.matches, context.matches)
-    ) {
-      const nextIndex = (this.completionState.selectedIndex + 1) % context.matches.length;
-      this.completionState = {
-        ...this.completionState,
-        selectedIndex: nextIndex,
-      };
-      this.applyCompletion(context.replacementStart, context.replacementEnd, context.matches[nextIndex].name);
-      return true;
-    }
-
-    const commonPrefix = getLongestCommonPrefix(context.matches.map((command) => command.name));
-    if (commonPrefix.length > context.query.length) {
-      this.applyCompletion(context.replacementStart, context.replacementEnd, commonPrefix);
-    }
-
-    this.completionState = {
-      sourceQuery: context.query,
-      matches: context.matches,
-      selectedIndex: 0,
-    };
     return true;
   }
 
-  private sameCompletionMatches(a: CommandDefinition[], b: CommandDefinition[]): boolean {
-    if (a.length !== b.length) return false;
-    return a.every((command, index) => command.name === b[index]?.name);
+  private moveCommandCompletionSelection(offset: number): boolean {
+    if (!this.completionState || this.completionState.matches.length === 0) {
+      return true;
+    }
+
+    this.completionState = {
+      ...this.completionState,
+      selectedIndex: clamp(
+        this.completionState.selectedIndex + offset,
+        0,
+        this.completionState.matches.length - 1,
+      ),
+    };
+    return true;
   }
 
   private applyCompletion(start: number, end: number, replacement: string): void {
@@ -987,7 +966,8 @@ export default class RawChatUI {
     this.chatEditor.setText(`${prefix}/${replacement}${suffix}`, prefix.length + replacement.length + 1);
     this.historyIndex = null;
     this.historyDraft = "";
-    this.syncChatFileSearchState();
+    this.dismissedCompletionSignature = null;
+    this.afterChatEdit();
   }
 
   private browseHistory(direction: -1 | 1): void {
@@ -1009,16 +989,14 @@ export default class RawChatUI {
     } else if (this.historyIndex >= history.length - 1) {
       this.historyIndex = null;
       this.chatEditor.setText(this.historyDraft);
-      this.completionState = null;
-      this.syncChatFileSearchState();
+      this.afterChatEdit();
       return;
     } else {
       this.historyIndex += 1;
     }
 
     this.chatEditor.setText(history[this.historyIndex]);
-    this.completionState = null;
-    this.syncChatFileSearchState();
+    this.afterChatEdit();
   }
 
   private submitCurrentInput(): void {
@@ -1032,8 +1010,7 @@ export default class RawChatUI {
     this.chatEditor.clear();
     this.historyIndex = null;
     this.historyDraft = "";
-    this.completionState = null;
-    this.syncChatFileSearchState();
+    this.afterChatEdit();
   }
 
   private triggerShortcutCommand(commandName: string, flashMessage: string): void {
@@ -1042,6 +1019,7 @@ export default class RawChatUI {
       return;
     }
 
+    this.dismissedCompletionSignature = null;
     this.completionState = null;
     this.options.onSubmit(`/${commandName}`);
     this.flash(flashMessage, "info");
@@ -1054,8 +1032,76 @@ export default class RawChatUI {
   private afterChatEdit(): void {
     this.historyIndex = null;
     this.historyDraft = "";
-    this.completionState = null;
+    this.syncChatCommandCompletionState();
     this.syncChatFileSearchState();
+  }
+
+  private syncChatCommandCompletionState(): void {
+    const context = getCommandCompletionContext(
+      this.chatEditor.getText(),
+      this.chatEditor.getCursor(),
+      this.options.commands,
+    );
+
+    if (!context) {
+      this.completionState = null;
+      this.dismissedCompletionSignature = null;
+      return;
+    }
+
+    const signature = this.getCommandCompletionSignature(context);
+    if (this.dismissedCompletionSignature && this.dismissedCompletionSignature !== signature) {
+      this.dismissedCompletionSignature = null;
+    }
+
+    if (this.dismissedCompletionSignature === signature) {
+      this.completionState = null;
+      return;
+    }
+
+    const previousSelection = this.completionState?.matches[this.completionState.selectedIndex]?.name ?? null;
+    let selectedIndex = 0;
+
+    if (context.matches.length > 0) {
+      if (previousSelection) {
+        const nextIndex = context.matches.findIndex((command) => command.name === previousSelection);
+        if (nextIndex !== -1) {
+          selectedIndex = nextIndex;
+        } else if (this.completionState?.sourceQuery === context.query) {
+          selectedIndex = clamp(this.completionState.selectedIndex, 0, context.matches.length - 1);
+        }
+      } else if (this.completionState?.sourceQuery === context.query) {
+        selectedIndex = clamp(this.completionState.selectedIndex, 0, context.matches.length - 1);
+      }
+    }
+
+    this.completionState = {
+      replacementStart: context.replacementStart,
+      replacementEnd: context.replacementEnd,
+      sourceQuery: context.query,
+      matches: context.matches,
+      selectedIndex,
+    };
+  }
+
+  private getCommandCompletionSignature(
+    context: {
+      replacementStart: number;
+      replacementEnd: number;
+      sourceQuery?: string;
+      query?: string;
+      matches: CommandDefinition[];
+    },
+  ): string {
+    const sourceQuery = context.sourceQuery ?? context.query ?? "";
+    return `${context.replacementStart}:${context.replacementEnd}:${sourceQuery}:${context.matches.map((command) => command.name).join(",")}`;
+  }
+
+  private dismissCommandCompletion(): void {
+    if (!this.completionState) return;
+
+    this.dismissedCompletionSignature = this.getCommandCompletionSignature(this.completionState);
+    this.completionState = null;
   }
 
   private syncChatFileSearchState(): void {
@@ -1198,10 +1244,6 @@ export default class RawChatUI {
     })();
 
     return this.workspaceFilesPromise;
-  }
-
-  private isCommandInput(): boolean {
-    return this.chatEditor.getText().startsWith("/");
   }
 
   private applyTranscriptEvent(event: AgentEventEnvelope): void {
@@ -1615,6 +1657,8 @@ export default class RawChatUI {
   }
 
   private renderFooter(columns: number, rows: number): RenderBlock {
+    const {workingDirectory} = this.options.agent.getState(FileSystemState);
+
     if (columns < 40 || rows < 10) {
       return {
         lines: [TONE_COLORS.warning("Terminal too small. Resize to at least 40x10.")],
@@ -1639,8 +1683,11 @@ export default class RawChatUI {
         lines: [this.getHintLine(columns)],
         showCursor: false,
       });
+      if (!followup && this.completionState) {
+        sections.push(this.renderCommandCompletionPicker(columns, rows));
+      }
       if (!followup && this.fileSearchState) {
-        sections.push(this.renderFileSearchPicker(columns, rows));
+        sections.push(this.renderFileSearchPicker(columns, rows, workingDirectory));
       }
       sections.push(followup
         ? this.renderFollowupComposer(followup, columns, rows)
@@ -1648,7 +1695,7 @@ export default class RawChatUI {
     }
 
     sections.push({
-      lines: [this.getStatusLine(columns)],
+      lines: [this.getStatusLine(columns, workingDirectory)],
       showCursor: false,
     });
 
@@ -1727,7 +1774,49 @@ export default class RawChatUI {
     };
   }
 
-  private renderFileSearchPicker(columns: number, rows: number): RenderBlock {
+  private renderCommandCompletionPicker(columns: number, rows: number): RenderBlock {
+    const state = this.completionState;
+    if (!state) {
+      return {lines: [], showCursor: false};
+    }
+
+    const lines = [
+      TITLE_COLOR(`${HEADER_PREFIX}Commands`),
+    ];
+
+    if (state.matches.length === 0) {
+      lines.push(TONE_COLORS.muted(`${TEXT_INDENT}No matches for /${state.sourceQuery}`));
+      return {lines, showCursor: false};
+    }
+
+    lines.push(TONE_COLORS.muted(`${TEXT_INDENT}${state.matches.length} matches`));
+
+    const maxVisibleItems = clamp(rows - 16, 3, 6);
+    const windowStart = clamp(
+      state.selectedIndex - maxVisibleItems + 1,
+      0,
+      Math.max(0, state.matches.length - maxVisibleItems),
+    );
+    const visibleMatches = state.matches.slice(windowStart, windowStart + maxVisibleItems);
+
+    visibleMatches.forEach((match, index) => {
+      const actualIndex = windowStart + index;
+      const prefix = actualIndex === state.selectedIndex ? "›" : " ";
+      const label = truncateVisible(`/${match.name}  ${match.description}`, Math.max(10, columns - 4));
+      lines.push(
+        actualIndex === state.selectedIndex
+          ? FILE_SEARCH_SELECTED(`${prefix} ${label}`)
+          : FILE_SEARCH_IDLE(`${prefix} ${label}`),
+      );
+    });
+
+    return {
+      lines,
+      showCursor: false,
+    };
+  }
+
+  private renderFileSearchPicker(columns: number, rows: number, workingDirectory: string): RenderBlock {
     const state = this.fileSearchState;
     if (!state) {
       return {lines: [], showCursor: false};
@@ -1736,7 +1825,7 @@ export default class RawChatUI {
     const indexedCount = this.workspaceFiles?.length ?? 0;
     const lines = [
       TITLE_COLOR(`${HEADER_PREFIX}Workspace Files`),
-      TONE_COLORS.muted(`${TEXT_INDENT}${shortenPath(this.options.agent.app.config.app.workingDirectory)}`),
+      TONE_COLORS.muted(`${TEXT_INDENT}${shortenPath(workingDirectory)}`),
     ];
 
     if (state.loading) {
@@ -1901,16 +1990,12 @@ export default class RawChatUI {
         text = `@ file search  ·  ${this.fileSearchState.error}  Esc close`;
         tone = "warning";
       } else {
-        text = `@ file search  ·  Up/Down move  Tab or Enter insert  Esc close`;
+        text = `@ file search  ·  Up/Down move  Enter insert  Esc close`;
         tone = "info";
       }
     } else if (this.completionState && this.completionState.matches.length > 0) {
       const selected = this.completionState.matches[this.completionState.selectedIndex];
-      const suggestions = this.completionState.matches
-        .slice(0, 4)
-        .map((command, index) => (index === this.completionState?.selectedIndex ? `[/${command.name}]` : `/${command.name}`))
-        .join("  ");
-      text = `${suggestions}  ·  ${selected.description}`;
+      text = `/ commands  ·  Up/Down move  Enter insert  Esc close  ·  ${selected.description}`;
       tone = "info";
     } else if (activeQuestion) {
       text = `Waiting for input${optionalHint}`;
@@ -1927,7 +2012,7 @@ export default class RawChatUI {
       tone = "muted";
     } else {
       const activity = this.getActivityLabel();
-      text = `${activity}  ·  Alt+M model  Alt+T tools  Alt+V ${this.verbose ? "verbose on" : "verbose off"}  ·  Tab complete  Enter send${optionalHint}`;
+      text = `${activity}  ·  Alt+M model  Alt+T tools  Alt+V ${this.verbose ? "verbose on" : "verbose off"}  ·  Enter send${optionalHint}`;
       tone = "muted";
     }
 
@@ -1948,7 +2033,7 @@ export default class RawChatUI {
     return state.currentlyExecutingInputItem !== null;
   }
 
-  private getStatusLine(columns: number): string {
+  private getStatusLine(columns: number, workingDirectory: string): string {
     const activeQuestion = this.getFocusedQuestion();
     if (activeQuestion) {
       const cancelHint = activeQuestion.question.type === "treeSelect"
@@ -1963,7 +2048,7 @@ export default class RawChatUI {
       `${formatCompactNumber(this.getActiveToolCount())} tools`,
       `${formatCompactNumber(this.getTokenUsage(), " tk")}`,
       formatCurrency(this.getChatCost()),
-      shortenPath(this.options.agent.app.config.app.workingDirectory),
+      shortenPath(workingDirectory),
     ];
 
     return STATUS_BAR(truncateVisible(segments.join(" · "), columns));
@@ -1986,6 +2071,10 @@ export default class RawChatUI {
 
     if (this.fileSearchState) {
       return `file-search:${this.fileSearchState.token.start}:${this.fileSearchState.token.end}:${this.fileSearchState.token.query}:${this.fileSearchState.selectedIndex}:${this.fileSearchState.loading}:${this.fileSearchState.error ?? ""}:${this.fileSearchState.matches.length}:${this.fileSearchState.matches.slice(0, 8).join(",")}`;
+    }
+
+    if (this.completionState) {
+      return `command-completion:${this.completionState.replacementStart}:${this.completionState.replacementEnd}:${this.completionState.sourceQuery}:${this.completionState.selectedIndex}:${this.completionState.matches.length}:${this.completionState.matches.slice(0, 8).map((command) => command.name).join(",")}`;
     }
 
     return "chat";

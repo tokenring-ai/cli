@@ -3,8 +3,7 @@ import {Agent} from "@tokenring-ai/agent";
 import {TokenRingAgentCommand} from "@tokenring-ai/agent/types";
 
 // Command description for help display
-const description: string =
-  "/multi - Opens an editor for multiline input. The entered text will be processed as the next input";
+const description = "Opens an editor for multiline input. The entered text will be processed as the next input";
 
 /**
  * Executes the multi command to open an editor for multiline input
