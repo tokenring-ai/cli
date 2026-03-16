@@ -1,5 +1,6 @@
 /** @jsxImportSource @opentui/react */
 import {useTerminalDimensions} from "@opentui/react";
+import {brailleSpinner} from "@tokenring-ai/utility/string/brailleSpinner";
 import getRandomItem from "@tokenring-ai/utility/string/getRandomItem";
 import ridiculousMessages from "@tokenring-ai/utility/string/ridiculousMessages";
 import React, {useEffect, useReducer} from 'react';
@@ -15,13 +16,11 @@ interface LoadingScreenProps {
 
 export default function LoadingScreen({
   config,
-  onResponse,
 }: LoadingScreenProps) {
   const { width } = useTerminalDimensions();
   const [progress, bumpProgress] = useReducer((prev) => prev + 1, 0);
 
-  const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-  const currentSpinner = spinnerFrames[progress % spinnerFrames.length];
+  const currentSpinner = brailleSpinner[progress % brailleSpinner.length];
 
 
   useEffect(() => {

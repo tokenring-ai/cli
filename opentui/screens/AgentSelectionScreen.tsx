@@ -37,7 +37,6 @@ export default function AgentSelectionScreen({
     const [, action, remainder] = value.match(/^(.*?):(.*)$/) ?? [];
 
     if (action === 'spawn') {
-      const configs = agentManager.getAgentConfigEntries();
       const config = agentManager.getAgentConfig(remainder);
       const enabledTools = ((config as any).chat as z.input<typeof ChatAgentConfigSchema>).enabledTools ?? [];
       if (config) {

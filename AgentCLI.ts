@@ -11,12 +11,9 @@ import type {ComponentType} from "react";
 import {z} from "zod";
 import {type AgentSelectionResult} from "./AgentSelection.ts";
 import AgentLoop from "./AgentLoop";
-import {renderScreen as renderScreenInk} from "./ink/renderScreen.tsx";
-import InkAgentSelectionScreen from "./ink/screens/AgentSelectionScreen.tsx";
-import InkLoadingScreen from "./ink/screens/LoadingScreen.tsx";
-import {renderScreen as renderScreenOpenTUI} from "./opentui/renderScreen.tsx";
-import OpenTUIAgentSelectionScreen from "./opentui/screens/AgentSelectionScreen.tsx";
-import OpenTUILoadingScreen from "./opentui/screens/LoadingScreen.tsx";
+import {renderScreen} from "./opentui/renderScreen.tsx";
+import AgentSelectionScreen from "./opentui/screens/AgentSelectionScreen.tsx";
+import LoadingScreen from "./opentui/screens/LoadingScreen.tsx";
 import type {CommandDefinition} from "./raw/CommandCompletions.ts";
 import {CLIConfigSchema} from "./schema.ts";
 
@@ -37,9 +34,6 @@ export default class AgentCLI implements TokenRingService {
    */
   constructor(readonly app: TokenRingApp, readonly config: z.infer<typeof CLIConfigSchema>) {
     if (! this.config.startAgent) {
-      const renderScreen = this.config.uiFramework === 'ink' ? renderScreenInk : renderScreenOpenTUI;
-      const LoadingScreen = this.config.uiFramework === 'ink' ? InkLoadingScreen : OpenTUILoadingScreen;
-
       app.runBackgroundTask(this, async appAbortSignal => {
         this.loadingScreenTask = (async () => {
           const abortHandler = () => this.loadingScreenAbortController.abort();
@@ -67,9 +61,6 @@ export default class AgentCLI implements TokenRingService {
   async run(signal: AbortSignal): Promise<void> {
     this.loadingScreenAbortController.abort();
     await this.loadingScreenTask?.catch(() => {});
-
-    const renderScreen = this.config.uiFramework === 'ink' ? renderScreenInk : renderScreenOpenTUI;
-    const AgentSelectionScreen = this.config.uiFramework === 'ink' ? InkAgentSelectionScreen : OpenTUIAgentSelectionScreen;
 
     let initialAgent: Agent | undefined;
     if (this.config.startAgent) {

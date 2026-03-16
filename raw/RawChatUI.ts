@@ -1,6 +1,5 @@
 import Agent from "@tokenring-ai/agent/Agent";
 import {type AgentEventEnvelope, type ParsedInteractionRequest,} from "@tokenring-ai/agent/AgentEvents";
-import type {ParsedFileSelectQuestion} from "@tokenring-ai/agent/question";
 import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
 import {ChatModelRegistry} from "@tokenring-ai/ai-client/ModelRegistry";
@@ -8,15 +7,15 @@ import {parseModelAndSettings} from "@tokenring-ai/ai-client/util/modelSettings"
 import {ChatService} from "@tokenring-ai/chat";
 import {FileSystemService} from "@tokenring-ai/filesystem";
 import {FileSystemState} from "@tokenring-ai/filesystem/state/fileSystemState";
+import {clamp} from "@tokenring-ai/utility/number/clamp";
+import {brailleSpinner} from "@tokenring-ai/utility/string/brailleSpinner";
+import {truncateVisible} from "@tokenring-ai/utility/string/truncateVisible";
+import {visibleLength} from "@tokenring-ai/utility/string/visibleLength";
+import {wrapPlainText} from "@tokenring-ai/utility/string/wrapPlainText";
 import chalk from "chalk";
 import process from "node:process";
 import readline from "node:readline";
-import {setTimeout as sleep} from "node:timers/promises";
 import type {z} from "zod";
-import {renderScreen as renderScreenInk} from "../ink/renderScreen.tsx";
-import InkQuestionInputScreen from "../ink/screens/QuestionInputScreen.tsx";
-import {renderScreen as renderScreenOpenTUI} from "../opentui/renderScreen.tsx";
-import OpenTUIQuestionInputScreen from "../opentui/screens/QuestionInputScreen.tsx";
 import {CLIConfigSchema} from "../schema.ts";
 import {theme} from "../theme.ts";
 import applyMarkdownStyles from "../utility/applyMarkdownStyles.ts";
@@ -129,53 +128,9 @@ const TEXT_INDENT = "   ";
 const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 function trimBoundaryNewlines(text: string): string {
   return text.replace(/^\n+|\n+$/g, "");
-}
-
-function visibleLength(text: string): number {
-  return Array.from(text).length;
-}
-
-function truncateVisible(text: string, width: number): string {
-  if (width <= 0) return "";
-  const chars = Array.from(text);
-  if (chars.length <= width) return text;
-  if (width <= 1) return chars.slice(0, width).join("");
-  return `${chars.slice(0, width - 1).join("")}…`;
-}
-
-function wrapPlainText(text: string, width: number): string[] {
-  if (width <= 0) return [""];
-
-  const normalizedLines = text.replace(/\t/g, "  ").split("\n");
-  const wrapped: string[] = [];
-
-  for (const line of normalizedLines) {
-    if (line.length === 0) {
-      wrapped.push("");
-      continue;
-    }
-
-    let current = "";
-    for (const char of Array.from(line)) {
-      current += char;
-      if (visibleLength(current) >= width) {
-        wrapped.push(current);
-        current = "";
-      }
-    }
-
-    if (current.length > 0) {
-      wrapped.push(current);
-    }
-  }
-
-  return wrapped.length > 0 ? wrapped : [""];
 }
 
 function shortenPath(path: string): string {
@@ -343,7 +298,6 @@ export default class RawChatUI {
   private optionalPickerOpen = false;
   private optionalQuestionIndex = 0;
   private activeOptionalQuestionId: string | null = null;
-  private inlineScreenAbort: AbortController | null = null;
   private bracketedPasteBuffer = "";
   private inBracketedPaste = false;
   private pasteSuppressionExpiresAt = 0;
@@ -377,7 +331,7 @@ export default class RawChatUI {
     this.started = true;
     this.attachTerminal();
     this.spinnerTimer = setInterval(() => {
-      this.spinnerIndex = (this.spinnerIndex + 1) % 4;
+      this.spinnerIndex = (this.spinnerIndex + 1) % brailleSpinner.length;
       this.render();
     }, 120);
     this.spinnerTimer.unref();
@@ -391,11 +345,6 @@ export default class RawChatUI {
     if (this.spinnerTimer) {
       clearInterval(this.spinnerTimer);
       this.spinnerTimer = null;
-    }
-
-    if (this.inlineScreenAbort) {
-      this.inlineScreenAbort.abort();
-      this.inlineScreenAbort = null;
     }
 
     this.clearFooter();
@@ -450,7 +399,7 @@ export default class RawChatUI {
   private attachTerminal(): void {
     if (!process.stdin.isTTY || !process.stdout.isTTY) return;
 
-    this.rawModeBeforeStart = !!process.stdin.isRaw;
+    this.rawModeBeforeStart = process.stdin.isRaw;
     readline.emitKeypressEvents(process.stdin);
     process.stdin.resume();
     process.stdin.setRawMode(true);
@@ -1515,7 +1464,7 @@ export default class RawChatUI {
     }
 
     const {columns, rows} = this.getTerminalSize();
-    const footerSignature = this.getFooterSignature();
+    //const footerSignature = this.getFooterSignature();
     const footer = this.renderFooter(columns, rows);
 
     if (columns < 40 || rows < 10) {
@@ -1569,6 +1518,13 @@ export default class RawChatUI {
 
     if (columns < 40 || rows < 10) {
       this.requestFullReplay();
+      return;
+    }
+
+    // Footer-only redraws cannot move the footer origin when its height changes.
+    // In that case we need a full replay so the transcript and footer are reflowed together.
+    if (delta.kind === "none" && footer.lines.length !== this.footerSnapshot.lineCount) {
+      this.renderFullReplay();
       return;
     }
 
@@ -1901,7 +1857,7 @@ export default class RawChatUI {
   ): RenderBlock {
     const session = this.getQuestionSession(question);
     const child = session.render({columns, rows});
-    const childIndent = question.question.type === "treeSelect" ? "" : TEXT_INDENT;
+    const childIndent = question.question.type === "treeSelect" || question.question.type === "fileSelect" ? "" : TEXT_INDENT;
     const indentedChildLines = child.lines.map((line) => `${childIndent}${line}`);
     const title = this.getQuestionTitle(question);
     const lines = [
@@ -1964,7 +1920,7 @@ export default class RawChatUI {
     }
 
     let text: string;
-    let tone: TranscriptTone = "muted";
+    let tone: TranscriptTone;
 
     const optionalCount = this.getOptionalQuestions().length;
     const optionalHint = optionalCount > 0 ? `  Alt+Q optional ${optionalCount}` : "";
@@ -2014,8 +1970,7 @@ export default class RawChatUI {
   private getActivityLabel(): string {
     const state = this.latestState ?? this.options.agent.getState(AgentEventState);
     if (state.currentlyExecutingInputItem?.executionState.currentActivity) {
-      const frames = ["-", "\\", "|", "/"];
-      return `${frames[this.spinnerIndex]} ${state.currentlyExecutingInputItem.executionState.currentActivity}`;
+      return `${brailleSpinner[this.spinnerIndex]} ${state.currentlyExecutingInputItem.executionState.currentActivity}`;
     }
     return "Ready";
   }
@@ -2028,7 +1983,7 @@ export default class RawChatUI {
   private getStatusLine(columns: number, workingDirectory: string): string {
     const activeQuestion = this.getFocusedQuestion();
     if (activeQuestion) {
-      const cancelHint = activeQuestion.question.type === "treeSelect"
+      const cancelHint = activeQuestion.question.type === "treeSelect" || activeQuestion.question.type === "fileSelect"
         ? "Waiting for input  ·  Esc or q to cancel"
         : "Waiting for input  ·  Esc to cancel";
       return STATUS_BAR(truncateVisible(cancelHint, columns));
@@ -2046,35 +2001,9 @@ export default class RawChatUI {
     return STATUS_BAR(truncateVisible(segments.join(" · "), columns));
   }
 
-  private getFooterSignature(): string {
-    const activeQuestion = this.getFocusedQuestion();
-    if (activeQuestion) {
-      return `question:${activeQuestion.interactionId}:${activeQuestion.question.type}`;
-    }
-
-    if (this.optionalPickerOpen) {
-      return `optional-picker:${this.getOptionalQuestions().map((question) => question.interactionId).join(",")}`;
-    }
-
-    const followup = this.getPrimaryFollowup();
-    if (followup) {
-      return `followup:${followup.interactionId}`;
-    }
-
-    if (this.fileSearchState) {
-      return `file-search:${this.fileSearchState.token.start}:${this.fileSearchState.token.end}:${this.fileSearchState.token.query}:${this.fileSearchState.selectedIndex}:${this.fileSearchState.loading}:${this.fileSearchState.error ?? ""}:${this.fileSearchState.matches.length}:${this.fileSearchState.matches.slice(0, 8).join(",")}`;
-    }
-
-    if (this.completionState) {
-      return `command-completion:${this.completionState.replacementStart}:${this.completionState.replacementEnd}:${this.completionState.sourceQuery}:${this.completionState.selectedIndex}:${this.completionState.matches.length}:${this.completionState.matches.slice(0, 8).map((command) => command.name).join(",")}`;
-    }
-
-    return "chat";
-  }
-
   private getQuestionTitle(question: QuestionInteraction): string {
     const inner = question.question;
-    if ("label" in inner && typeof inner.label === "string" && inner.label.trim().length > 0) {
+    if ("label" in inner && inner.label.trim().length > 0) {
       return inner.label.trim();
     }
     return question.optional ? "Optional Question" : "Question";
@@ -2354,7 +2283,7 @@ export default class RawChatUI {
       onSubmit: (result) => this.sendInteractionResponse(question.interactionId, result),
       onCancel: () => this.sendInteractionResponse(question.interactionId, null),
       onRender: () => this.render(),
-      openFileSelect: (fileQuestion, message) => this.openInlineFileSelector(fileQuestion, question, message),
+      listFileSelectEntries: (path) => this.listQuestionDirectoryEntries(path),
     }, question.message);
 
     this.questionSessions.set(question.interactionId, session);
@@ -2380,48 +2309,12 @@ export default class RawChatUI {
     });
   }
 
-  private async openInlineFileSelector(
-    question: ParsedFileSelectQuestion,
-    parentQuestion: QuestionInteraction,
-    message: string,
-  ): Promise<string[] | null> {
-    const renderScreen =
-      this.options.config.uiFramework === "ink" ? renderScreenInk : renderScreenOpenTUI;
-    const Screen =
-      this.options.config.uiFramework === "ink"
-        ? InkQuestionInputScreen
-        : OpenTUIQuestionInputScreen;
-
-    const abort = new AbortController();
-    this.inlineScreenAbort = abort;
-    this.suspend();
-
-    try {
-      await sleep(60);
-      return await renderScreen(
-        Screen as any,
-        {
-          request: {
-            type: "question",
-            interactionId: parentQuestion.interactionId,
-            timestamp: Date.now(),
-            message,
-            optional: parentQuestion.optional,
-            autoSubmitAt: parentQuestion.autoSubmitAt,
-            question,
-          },
-          agent: this.options.agent,
-          config: this.options.config,
-        } as any,
-        abort.signal,
-      );
-    } catch {
-      return null;
-    } finally {
-      if (this.inlineScreenAbort === abort) {
-        this.inlineScreenAbort = null;
-      }
-      this.resume();
-    }
+  private async listQuestionDirectoryEntries(path: string): Promise<string[]> {
+    const fileSystem = this.options.agent.requireServiceByType(FileSystemService);
+    return Array.fromAsync(fileSystem.getDirectoryTree(
+      path,
+      {recursive: false, ignoreFilter: () => false},
+      this.options.agent,
+    ));
   }
 }

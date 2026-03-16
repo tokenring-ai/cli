@@ -24,10 +24,6 @@ export default class InputEditor {
     return this.cursor;
   }
 
-  isBlank(): boolean {
-    return this.buffer.trim().length === 0;
-  }
-
   setText(value: string, cursor = value.length): void {
     this.buffer = value;
     this.cursor = clamp(cursor, 0, value.length);

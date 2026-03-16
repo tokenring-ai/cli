@@ -1,13 +1,11 @@
-import type {
-  ParsedFileSelectQuestion,
-  ParsedFormQuestion,
-  ParsedTextQuestion,
-  ParsedTreeSelectQuestion,
-  TreeLeaf,
-} from "@tokenring-ai/agent/question";
+import type {ParsedFileSelectQuestion, ParsedFormQuestion, ParsedTextQuestion, ParsedTreeSelectQuestion, TreeLeaf,} from "@tokenring-ai/agent/question";
+import {clamp} from "@tokenring-ai/utility/number/clamp";
+import {flattenWrappedLines} from "@tokenring-ai/utility/string/flattenWrappedLines";
+import {truncateVisible} from "@tokenring-ai/utility/string/truncateVisible";
+import {visibleLength} from "@tokenring-ai/utility/string/visibleLength";
 import chalk from "chalk";
-import InputEditor from "./InputEditor.ts";
 import {theme} from "../theme.ts";
+import InputEditor from "./InputEditor.ts";
 
 export type Keypress = {
   name?: string;
@@ -33,10 +31,7 @@ export type InlineQuestionCallbacks = {
   onSubmit: (result: unknown) => void;
   onCancel: () => void;
   onRender: () => void;
-  openFileSelect: (
-    question: ParsedFileSelectQuestion,
-    message: string,
-  ) => Promise<string[] | null>;
+  listFileSelectEntries: (path: string) => Promise<string[]>;
 };
 
 export interface InlineQuestionSession {
@@ -55,6 +50,20 @@ type ParsedQuestion =
   | ParsedFileSelectQuestion
   | ParsedFormQuestion;
 
+interface AsyncFileNode {
+  name: string;
+  value: string;
+  isDirectory: boolean;
+  children?: AsyncFileNode[];
+}
+
+interface FlatFileItem {
+  node: AsyncFileNode;
+  depth: number;
+  isExpanded: boolean;
+  isLoading: boolean;
+}
+
 const QUESTION_COLOR = chalk.hex(theme.chatQuestionRequest);
 const MUTED_COLOR = chalk.hex(theme.chatDivider);
 const ERROR_COLOR = chalk.hex(theme.chatSystemErrorMessage);
@@ -63,6 +72,10 @@ const TREE_HIGHLIGHT = chalk.hex(theme.treeHighlightedItem);
 const TREE_SELECTED = chalk.hex(theme.treeFullySelectedItem);
 const TREE_PARTIAL = chalk.hex(theme.treePartiallySelectedItem);
 const TREE_IDLE = chalk.hex(theme.treeNotSelectedItem);
+const FILE_BROWSER_COLLATOR = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
 const PROMPT_COLOR = chalk.hex(theme.askMessage).bold;
 const TEXT_INDENT = "  ";
 const RAW_PROMPT_PREFIX = " → ";
@@ -70,60 +83,17 @@ const RAW_CONTINUATION_PREFIX = "   ";
 const PROMPT_PREFIX = ` ${PROMPT_COLOR("→")} `;
 const CONTINUATION_PREFIX = RAW_CONTINUATION_PREFIX;
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function visibleLength(text: string): number {
-  return Array.from(text).length;
-}
-
-function truncateVisible(text: string, width: number): string {
-  if (width <= 0) return "";
-  const chars = Array.from(text);
-  if (chars.length <= width) return text;
-  if (width <= 1) return chars.slice(0, width).join("");
-  return `${chars.slice(0, width - 1).join("")}…`;
-}
-
-function wrapPlainText(text: string, width: number): string[] {
-  if (width <= 0) return [""];
-
-  const lines = text.replace(/\t/g, "  ").split("\n");
-  const wrapped: string[] = [];
-
-  for (const line of lines) {
-    if (line.length === 0) {
-      wrapped.push("");
-      continue;
-    }
-
-    let current = "";
-    for (const char of Array.from(line)) {
-      current += char;
-      if (visibleLength(current) >= width) {
-        wrapped.push(current);
-        current = "";
-      }
-    }
-
-    if (current.length > 0) {
-      wrapped.push(current);
-    }
+function compareFileNodesForBrowsing(left: AsyncFileNode, right: AsyncFileNode): number {
+  if (left.isDirectory !== right.isDirectory) {
+    return left.isDirectory ? -1 : 1;
   }
 
-  return wrapped.length > 0 ? wrapped : [""];
-}
-
-function flattenWrappedLines(lines: string[], width: number, prefix = ""): string[] {
-  const result: string[] = [];
-  const innerWidth = Math.max(1, width - visibleLength(prefix));
-  for (const line of lines) {
-    for (const wrapped of wrapPlainText(line, innerWidth)) {
-      result.push(`${prefix}${wrapped}`);
-    }
+  const nameDifference = FILE_BROWSER_COLLATOR.compare(left.name, right.name);
+  if (nameDifference !== 0) {
+    return nameDifference;
   }
-  return result.length > 0 ? result : [prefix];
+
+  return FILE_BROWSER_COLLATOR.compare(left.value, right.value);
 }
 
 function renderEditor(
@@ -658,38 +628,103 @@ class TreeQuestionSession implements InlineQuestionSession {
 }
 
 class FileQuestionSession implements InlineQuestionSession {
-  private selected: string[];
-  private opening = false;
+  private nodes: AsyncFileNode[] = [];
+  private selectedIndex = 0;
+  private scrollOffset = 0;
+  private readonly expanded = new Set<string>();
+  private readonly loadingPaths = new Set<string>();
+  private readonly checked: Set<string>;
+  private flashMessage: string | null = null;
+  private initialLoading = true;
 
   constructor(
     private readonly question: ParsedFileSelectQuestion,
     private readonly callbacks: InlineQuestionCallbacks,
-    private readonly message: string,
   ) {
-    this.selected = question.defaultValue.slice();
+    this.checked = new Set(question.defaultValue);
+    queueMicrotask(() => {
+      void this.initialize();
+    });
   }
 
   render(layout: RenderLayout): RenderBlock {
     const lines: string[] = [];
+    const multiple = this.question.maximumSelections !== 1;
 
     lines.push(QUESTION_COLOR(this.question.label));
     if (this.question.description) {
       lines.push(...flattenWrappedLines([this.question.description], layout.columns, TEXT_INDENT).map((line) => MUTED_COLOR(line)));
     }
 
-    if (this.selected.length > 0) {
-      lines.push(TREE_COLOR(`Selected ${this.selected.length} path${this.selected.length === 1 ? "" : "s"}`));
-      for (const path of this.selected.slice(0, 4)) {
-        lines.push(`${TEXT_INDENT}${truncateVisible(path, Math.max(10, layout.columns - visibleLength(TEXT_INDENT)))}`);
+    if (this.initialLoading) {
+      lines.push(TREE_COLOR("Loading directory..."));
+      if (this.flashMessage) {
+        lines.push(ERROR_COLOR(this.flashMessage));
       }
-      if (this.selected.length > 4) {
-        lines.push(MUTED_COLOR(`${TEXT_INDENT}+${this.selected.length - 4} more`));
-      }
-    } else {
-      lines.push(MUTED_COLOR("No files selected yet."));
+      return {
+        lines,
+        showCursor: false,
+      };
     }
 
-    lines.push(this.opening ? TREE_COLOR("Opening the file selector…") : MUTED_COLOR("Enter or Ctrl+O opens the fullscreen file selector. Esc cancels."));
+    const flatTree = this.getFlatTree();
+    const maxVisibleItems = Math.max(4, Math.min(Math.max(1, flatTree.length), layout.rows - 12));
+
+    if (this.selectedIndex < this.scrollOffset) {
+      this.scrollOffset = this.selectedIndex;
+    } else if (this.selectedIndex >= this.scrollOffset + maxVisibleItems) {
+      this.scrollOffset = this.selectedIndex - maxVisibleItems + 1;
+    }
+
+    if (multiple) {
+      const min = this.question.minimumSelections ? `  min ${this.question.minimumSelections}` : "";
+      const max = this.question.maximumSelections ? `  max ${this.question.maximumSelections}` : "";
+      lines.push(TREE_COLOR(`Selected ${this.checked.size}${min}${max}`));
+    }
+
+    if (flatTree.length === 0) {
+      lines.push(MUTED_COLOR("Current directory is empty."));
+    } else {
+      const visibleTree = flatTree.slice(this.scrollOffset, this.scrollOffset + maxVisibleItems);
+
+      for (let index = 0; index < visibleTree.length; index += 1) {
+        const item = visibleTree[index];
+        const actualIndex = this.scrollOffset + index;
+        const isSelected = actualIndex === this.selectedIndex;
+        const isChecked = this.checked.has(item.node.value);
+        const isSelectable = this.isSelectable(item.node);
+        const isPartial = item.node.isDirectory && this.hasCheckedDescendant(item.node.value);
+        const pointer = isSelected ? "›" : " ";
+        const indent = "  ".repeat(item.depth);
+        const branchGlyph = item.isLoading ? "…" : item.node.isDirectory ? (item.isExpanded ? "▾" : "▸") : " ";
+        const toggleGlyph = multiple ? `${isSelectable ? (isChecked ? "◉" : "◯") : " "} ` : "";
+        const label = truncateVisible(
+          item.node.name,
+          Math.max(10, layout.columns - visibleLength(indent) - visibleLength(toggleGlyph) - 8),
+        );
+
+        let color = TREE_IDLE;
+        if (isSelected) {
+          color = TREE_HIGHLIGHT;
+        } else if (isChecked) {
+          color = TREE_SELECTED;
+        } else if (isPartial) {
+          color = TREE_PARTIAL;
+        }
+
+        lines.push(color(` ${pointer} ${indent}${branchGlyph} ${toggleGlyph}${label}`));
+      }
+    }
+
+    if (this.flashMessage) {
+      lines.push(ERROR_COLOR(this.flashMessage));
+    }
+
+    lines.push(MUTED_COLOR(
+      multiple
+        ? "Arrows move  Right/Left expand  Space select or open dirs  Enter submit  Esc or q cancel"
+        : "Arrows move  Right/Left or Space expand  Enter submit  Esc or q cancel",
+    ));
 
     return {
       lines,
@@ -698,33 +733,241 @@ class FileQuestionSession implements InlineQuestionSession {
   }
 
   async handleKeypress(_input: string, key: Keypress): Promise<boolean> {
-    if (key.name === "escape") {
+    if (key.name === "escape" || key.name === "q") {
       this.callbacks.onCancel();
       return true;
     }
 
-    if (this.opening) {
+    if (this.initialLoading) {
       return true;
     }
 
-    if (key.name === "return" || (key.ctrl && key.name === "o")) {
-      this.opening = true;
-      this.callbacks.onRender();
+    const flatTree = this.getFlatTree();
+    const current = flatTree[this.selectedIndex];
+    const multiple = this.question.maximumSelections !== 1;
 
-      try {
-        const result = await this.callbacks.openFileSelect({...this.question, defaultValue: this.selected}, this.message);
-        if (result) {
-          this.selected = result;
-          this.callbacks.onSubmit(result);
-        }
-      } finally {
-        this.opening = false;
-        this.callbacks.onRender();
-      }
+    if (key.name === "up") {
+      this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+      this.flashMessage = null;
       return true;
+    }
+
+    if (key.name === "down") {
+      this.selectedIndex = Math.min(Math.max(0, flatTree.length - 1), this.selectedIndex + 1);
+      this.flashMessage = null;
+      return true;
+    }
+
+    if (key.name === "pageup") {
+      this.selectedIndex = Math.max(0, this.selectedIndex - 8);
+      this.flashMessage = null;
+      return true;
+    }
+
+    if (key.name === "pagedown") {
+      this.selectedIndex = Math.min(Math.max(0, flatTree.length - 1), this.selectedIndex + 8);
+      this.flashMessage = null;
+      return true;
+    }
+
+    if (key.name === "right") {
+      if (current?.node.isDirectory && !current.isExpanded) {
+        await this.toggleExpand(current.node);
+        this.flashMessage = null;
+        return true;
+      }
+      return false;
+    }
+
+    if (key.name === "left") {
+      if (current?.isExpanded) {
+        await this.toggleExpand(current.node);
+        this.flashMessage = null;
+        return true;
+      }
+      return false;
+    }
+
+    if (key.name === "space") {
+      if (!current) {
+        return false;
+      }
+
+      if (multiple && this.isSelectable(current.node)) {
+        this.toggleSelection(current.node.value);
+        return true;
+      }
+
+      if (current.node.isDirectory) {
+        await this.toggleExpand(current.node);
+        return true;
+      }
+
+      return false;
+    }
+
+    if (key.name === "return") {
+      if (multiple) {
+        if (this.question.minimumSelections && this.checked.size < this.question.minimumSelections) {
+          this.flashMessage = `Select at least ${this.question.minimumSelections} item${this.question.minimumSelections === 1 ? "" : "s"}.`;
+          return true;
+        }
+
+        this.callbacks.onSubmit(Array.from(this.checked));
+        return true;
+      }
+
+      if (!current) {
+        return false;
+      }
+
+      if (this.isSelectable(current.node)) {
+        this.callbacks.onSubmit([current.node.value]);
+        return true;
+      }
     }
 
     return false;
+  }
+
+  private async initialize(): Promise<void> {
+    this.initialLoading = true;
+    this.callbacks.onRender();
+
+    try {
+      this.nodes = await this.loadPath(".");
+      this.selectedIndex = 0;
+      this.scrollOffset = 0;
+      this.flashMessage = null;
+    } catch {
+      this.flashMessage = "Failed to load root directory.";
+    } finally {
+      this.initialLoading = false;
+      this.callbacks.onRender();
+    }
+  }
+
+  private async loadPath(path: string): Promise<AsyncFileNode[]> {
+    const entries = await this.callbacks.listFileSelectEntries(path);
+    return entries.map((entry) => {
+      const isDirectory = entry.endsWith("/");
+      const value = isDirectory ? entry.slice(0, -1) : entry;
+      const name = value.slice(value.lastIndexOf("/") + 1);
+
+      return {
+        name,
+        value,
+        isDirectory,
+      };
+    }).sort(compareFileNodesForBrowsing);
+  }
+
+  private getFlatTree(): FlatFileItem[] {
+    const result: FlatFileItem[] = [];
+
+    const traverse = (nodeList: AsyncFileNode[], depth: number) => {
+      for (const node of nodeList) {
+        const isVisible = this.isSelectable(node);
+        const showNode = isVisible || node.isDirectory;
+
+        if (!showNode) {
+          continue;
+        }
+
+        const isExpanded = this.expanded.has(node.value);
+        const isLoading = this.loadingPaths.has(node.value);
+        result.push({node, depth, isExpanded, isLoading});
+
+        if (isExpanded && node.children) {
+          traverse(node.children, depth + 1);
+        }
+      }
+    };
+
+    traverse(this.nodes, 0);
+    return result;
+  }
+
+  private isSelectable(node: AsyncFileNode): boolean {
+    return (node.isDirectory && this.question.allowDirectories) || (!node.isDirectory && this.question.allowFiles);
+  }
+
+  private hasCheckedDescendant(path: string): boolean {
+    const prefix = `${path}/`;
+    for (const checkedPath of this.checked) {
+      if (checkedPath === path || checkedPath.startsWith(prefix)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async toggleExpand(node: AsyncFileNode): Promise<void> {
+    if (!node.isDirectory) {
+      return;
+    }
+
+    const isOpening = !this.expanded.has(node.value);
+    if (!isOpening) {
+      this.expanded.delete(node.value);
+      this.callbacks.onRender();
+      return;
+    }
+
+    this.expanded.add(node.value);
+    this.callbacks.onRender();
+
+    if (node.children !== undefined) {
+      return;
+    }
+
+    this.loadingPaths.add(node.value);
+    this.callbacks.onRender();
+
+    try {
+      const children = await this.loadPath(node.value);
+      this.nodes = this.updateTreeNodes(this.nodes, node.value, children);
+      this.flashMessage = null;
+    } catch {
+      this.flashMessage = "Failed to load directory.";
+      this.expanded.delete(node.value);
+    } finally {
+      this.loadingPaths.delete(node.value);
+      this.callbacks.onRender();
+    }
+  }
+
+  private updateTreeNodes(tree: AsyncFileNode[], path: string, children: AsyncFileNode[]): AsyncFileNode[] {
+    return tree.map((node) => {
+      if (node.value === path) {
+        return {...node, children};
+      }
+      if (node.children) {
+        return {...node, children: this.updateTreeNodes(node.children, path, children)};
+      }
+      return node;
+    });
+  }
+
+  private toggleSelection(path: string): void {
+    if (this.checked.has(path)) {
+      if (this.question.minimumSelections && this.checked.size <= this.question.minimumSelections) {
+        this.flashMessage = `Select at least ${this.question.minimumSelections} item${this.question.minimumSelections === 1 ? "" : "s"}.`;
+        return;
+      }
+
+      this.checked.delete(path);
+      this.flashMessage = null;
+      return;
+    }
+
+    if (this.question.maximumSelections && this.checked.size >= this.question.maximumSelections) {
+      this.flashMessage = `Select at most ${this.question.maximumSelections} item${this.question.maximumSelections === 1 ? "" : "s"}.`;
+      return;
+    }
+
+    this.checked.add(path);
+    this.flashMessage = null;
   }
 }
 
@@ -785,7 +1028,7 @@ class FormQuestionSession implements InlineQuestionSession {
     return createPrimitiveSession(field, {
       onCancel: () => this.callbacks.onCancel(),
       onRender: this.callbacks.onRender,
-      openFileSelect: this.callbacks.openFileSelect,
+      listFileSelectEntries: this.callbacks.listFileSelectEntries,
       onSubmit: (result) => {
         const sectionName = currentSection.name;
         this.responses[sectionName] ??= {};
@@ -829,7 +1072,7 @@ function createPrimitiveSession(
     case "treeSelect":
       return new TreeQuestionSession(question, callbacks);
     case "fileSelect":
-      return new FileQuestionSession(question, callbacks, message);
+      return new FileQuestionSession(question, callbacks);
   }
 }
 

@@ -1,9 +1,7 @@
-import {AgentCommandService} from "@tokenring-ai/agent";
 import {TokenRingPlugin} from "@tokenring-ai/app";
 import {z} from "zod";
 import AgentCLI from "./AgentCLI.ts";
 
-import agentCommands from "./commands.ts";
 import packageJSON from './package.json' with {type: 'json'};
 import {CLIConfigSchema} from "./schema.ts";
 
@@ -17,9 +15,6 @@ export default {
   description: packageJSON.description,
   install(app, config) {
     if (config.cli) {
-      app.waitForService(AgentCommandService, agentCommandService =>
-        agentCommandService.addAgentCommands(agentCommands)
-      );
       app.addServices(new AgentCLI(app, config.cli));
     }
   },
