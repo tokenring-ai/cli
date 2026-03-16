@@ -1,14 +1,18 @@
 import {editor} from "@inquirer/prompts";
-import {Agent} from "@tokenring-ai/agent";
-import {TokenRingAgentCommand} from "@tokenring-ai/agent/types";
+import {AgentCommandInputSchema, AgentCommandInputType, TokenRingAgentCommand} from "@tokenring-ai/agent/types";
 
 // Command description for help display
 const description = "Opens an editor for multiline input. The entered text will be processed as the next input";
 
+const inputSchema = {
+  args: {},
+  allowAttachments: false,
+} as const satisfies AgentCommandInputSchema;
+
 /**
  * Executes the multi command to open an editor for multiline input
  */
-async function execute(_args: string, agent: Agent): Promise<string> {
+async function execute({agent}: AgentCommandInputType<typeof inputSchema>): Promise<string> {
   const message = await editor({
     message: "Enter your multiline text (save and close editor to submit):",
     waitForUserInput: false,
@@ -60,6 +64,7 @@ Opens your default text editor where you can write and edit multi-line text. Thi
 export default {
   name: "multi",
   description,
+  inputSchema,
   execute,
   help,
-} satisfies TokenRingAgentCommand;
+} satisfies TokenRingAgentCommand<typeof inputSchema>;
