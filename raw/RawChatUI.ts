@@ -338,7 +338,6 @@ export default class RawChatUI {
     cursorColumn: 0,
     showCursor: true,
   };
-  private renderedFooterSignature = "";
   private fullReplayRequested = true;
   private latestState: AgentEventState | null = null;
   private optionalPickerOpen = false;
@@ -1501,10 +1500,6 @@ export default class RawChatUI {
 
   private render(): void {
     if (!this.started || this.suspended || !process.stdout.isTTY) return;
-    const footerSignature = this.getFooterSignature();
-    if (!this.fullReplayRequested && this.renderedFooterSignature !== footerSignature) {
-      this.fullReplayRequested = true;
-    }
     if (this.fullReplayRequested) {
       this.renderFullReplay();
       return;
@@ -1557,7 +1552,6 @@ export default class RawChatUI {
       cursorColumn: footer.cursorColumn ?? 0,
       showCursor: footer.showCursor !== false,
     };
-    this.renderedFooterSignature = footerSignature;
     this.activeVisibleStream = activeStream;
     this.pendingSeparatorBeforeNextVisibleEntry = false;
     this.fullReplayRequested = false;
@@ -1609,7 +1603,6 @@ export default class RawChatUI {
       cursorColumn: footer.cursorColumn ?? 0,
       showCursor: footer.showCursor !== false,
     };
-    this.renderedFooterSignature = this.getFooterSignature();
   }
 
   private clearFooter(): void {
@@ -1622,7 +1615,6 @@ export default class RawChatUI {
       cursorColumn: 0,
       showCursor: true,
     };
-    this.renderedFooterSignature = "";
   }
 
   private moveToFooterTop(): string {
