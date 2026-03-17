@@ -298,7 +298,15 @@ function buildSelectionEntries(app: TokenRingApp): SelectionEntry[] {
     }
   }
 
+  const pinnedOrder = ["Web Application", "Running Agents"];
   const entries: SelectionEntry[] = [];
+  for (const category of pinnedOrder) {
+    const categoryEntries = categories.get(category);
+    if (!categoryEntries || categoryEntries.length === 0) continue;
+    entries.push({type: "heading", label: category});
+    entries.push(...categoryEntries.sort((left, right) => left.label.localeCompare(right.label)));
+    categories.delete(category);
+  }
   for (const [category, categoryEntries] of [...categories.entries()].sort(([left], [right]) => left.localeCompare(right))) {
     if (categoryEntries.length === 0) continue;
     entries.push({type: "heading", label: category});

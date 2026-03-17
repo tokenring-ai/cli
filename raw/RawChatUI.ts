@@ -2071,35 +2071,35 @@ export default class RawChatUI {
       tone = this.flashMessage.tone;
     } else if (this.fileSearchState) {
       if (this.fileSearchState.loading) {
-        text = `@ file search  ·  Indexing workspace files...  Esc close`;
+        text = `@ file search · Indexing workspace files...  Esc close`;
         tone = "info";
       } else if (this.fileSearchState.error) {
-        text = `@ file search  ·  ${this.fileSearchState.error}  Esc close`;
+        text = `@ file search · ${this.fileSearchState.error}  Esc close`;
         tone = "warning";
       } else {
-        text = `@ file search  ·  Up/Down move  Enter insert  Esc close`;
+        text = `@ file search · Up/Down move  Enter insert  Esc close`;
         tone = "info";
       }
     } else if (this.completionState && this.completionState.matches.length > 0) {
       const selected = this.completionState.matches[this.completionState.selectedIndex];
-      text = `/ commands  ·  Up/Down move  Enter insert  Esc close  ·  ${selected.description}`;
+      text = `/ commands · Up/Down move  Enter insert  Esc close · ${selected.description}`;
       tone = "info";
     } else if (activeQuestion) {
       text = `Waiting for input${optionalHint}`;
       tone = "muted";
     } else if (this.optionalPickerOpen) {
-      text = `Optional question picker  ·  Enter open  Esc close`;
+      text = `Optional question picker · Enter open  Esc close`;
       tone = "info";
     } else if (followup) {
-      text = `Follow-up ready  ·  Enter send  Alt+Enter newline${optionalHint}`;
+      text = `Follow-up ready · Enter send  Alt+Enter newline${optionalHint}`;
       tone = "info";
     } else if (this.isAgentExecuting()) {
       const activity = this.getActivityLabel();
-      text = `${activity}  ·  Alt+A Agent Selection  Ctrl+C Cancel${optionalHint}`;
+      text = `${activity} · Alt+A Agent Selection  Ctrl+C Cancel${optionalHint}`;
       tone = "muted";
     } else {
       const activity = this.getActivityLabel();
-      text = `${activity}  ·  Alt+M model  Alt+T tools  Alt+V ${this.verbose ? "verbose on" : "verbose off"}  ·  Enter send${optionalHint}`;
+      text = `${activity} · Alt+M model  Alt+T tools  Alt+V ${this.verbose ? "verbose" : "quiet"}  Alt+A Agent Selection · Enter send${optionalHint}`;
       tone = "muted";
     }
 
@@ -2123,8 +2123,8 @@ export default class RawChatUI {
     const activeQuestion = this.getFocusedQuestion();
     if (activeQuestion) {
       const cancelHint = activeQuestion.question.type === "treeSelect" || activeQuestion.question.type === "fileSelect"
-        ? "Waiting for input  ·  Esc or q to cancel"
-        : "Waiting for input  ·  Esc to cancel";
+        ? "Waiting for input · Esc or q to cancel"
+        : "Waiting for input · Esc to cancel";
       return STATUS_BAR(truncateVisible(cancelHint, columns));
     }
 
