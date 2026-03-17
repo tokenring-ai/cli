@@ -1,6 +1,18 @@
 import chalk from "chalk";
 import process from "node:process";
 
+function applyInlineStyles(text: string): string {
+  let result = text;
+  result = result.replace(/\*\*(.*?)\*\*/g, (_, content) => chalk.bold(content));
+  result = result.replace(/(?<![\w])__(.*?)__(?![\w])/g, (_, content) => chalk.bold(content));
+  result = result.replace(/\*(.*?)\*/g, (_, content) => chalk.italic(content));
+  result = result.replace(/(?<![\w])_(.*?)_(?![\w])/g, (_, content) => chalk.italic(content));
+  result = result.replace(/~~(.*?)~~/g, (_, content) => chalk.strikethrough(content));
+  result = result.replace(/`(.*?)`/g, (_, content) => chalk.bgWhite.black(` ${content} `));
+  result = result.replace(/\[(.*?)\]\((.*?)\)/g, (_, text, url) => `${chalk.cyan.underline(text)} ${chalk.gray(`(${url})`)}`);
+  return result;
+}
+
 export default function applyMarkdownStyles(text: string): string {
   let result = text;
 
@@ -23,42 +35,32 @@ export default function applyMarkdownStyles(text: string): string {
   const unorderedListMatch = result.match(/^(\s*)([*+-])\s+(.*)$/);
   if (unorderedListMatch) {
     const [_, indent, bullet, content] = unorderedListMatch;
-    return `${indent}${chalk.yellow(bullet)} ${content}`;
+    return `${indent}${chalk.yellow(bullet)} ${applyInlineStyles(content)}`;
   }
 
   // Ordered Lists (1., 2., etc)
   const orderedListMatch = result.match(/^(\s*)(\d+\.)\s+(.*)$/);
   if (orderedListMatch) {
     const [_, indent, number, content] = orderedListMatch;
-    return `${indent}${chalk.yellow(number)} ${content}`;
+    return `${indent}${chalk.yellow(number)} ${applyInlineStyles(content)}`;
   }
 
   // Headings (e.g., # Heading) - Bold + Underline
   if (result.trimStart().startsWith('#')) {
     result = result.replace(/^(\s*)(#+)\s+(.*)$/, (_, indent, __, content) => {
-      return `${indent}${chalk.bold.underline(content)}`;
+      return `${indent}${chalk.bold.underline(applyInlineStyles(content))}`;
     });
   }
   // Blockquotes (>)
   if (result.trim().startsWith('>')) {
     result = result.replace(/^(\s*)>\s?(.*)$/, (_, indent, content) => {
-      return `${indent}${chalk.gray('┃')} ${chalk.italic.gray(content)}`;
+      return `${indent}${chalk.gray('┃')} ${chalk.italic.gray(applyInlineStyles(content))}`;
     });
   }
   // Bold (**text** or __text__) - for __, require word boundaries
-  result = result.replace(/\*\*(.*?)\*\*/g, (_, content) => chalk.bold(content));
-  result = result.replace(/(?<![\w])__(.*?)__(?![\w])/g, (_, content) => chalk.bold(content));
   // Italic (*text* or _text_) - for _, require word boundaries to avoid mid-word matches
-  result = result.replace(/\*(.*?)\*/g, (_, content) => chalk.italic(content));
-  result = result.replace(/(?<![\w])_(.*?)_(?![\w])/g, (_, content) => chalk.italic(content));
-  // Strikethrough (~~text~~)
-  result = result.replace(/~~(.*?)~~/g, (_, content) => chalk.strikethrough(content));
-  // Inline code (`text`)
-  result = result.replace(/`(.*?)`/g, (_, content) => chalk.bgWhite.black(` ${content} `));
-  // Links ([text](url))
-  result = result.replace(/\[(.*?)\]\((.*?)\)/g, (_, text, url) => {
-    return `${chalk.cyan.underline(text)} ${chalk.gray(`(${url})`)}`;
-  });
+  // Strikethrough, inline code, links
+  result = applyInlineStyles(result);
 
   return result;
 }

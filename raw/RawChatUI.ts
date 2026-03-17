@@ -78,6 +78,7 @@ type FlashMessage = {
 
 type FooterSnapshot = {
   lineCount: number;
+  lines: string[];
   cursorRow: number;
   cursorColumn: number;
   showCursor: boolean;
@@ -93,11 +94,19 @@ type TranscriptDelta =
     footerNeedsLeadingNewline: boolean;
   }
   | {
-    kind: "continueStream";
-    text: string;
+    kind: "rewriteStreamTail";
     footerNeedsLeadingNewline: boolean;
-    fromColumn: number;
+    blockTopOffsetFromFooterTop: number;
+    previousLines: string[];
   };
+
+type ActiveVisibleStream = {
+  type: "output.chat" | "output.reasoning";
+  tone: TranscriptTone;
+  rawBuffer: string;
+  displayedBuffer: string;
+  screenLineCount: number;
+};
 
 type FollowupInteraction = Extract<ParsedInteractionRequest, {type: "followup"}>;
 type QuestionInteraction = Extract<ParsedInteractionRequest, {type: "question"}>;
@@ -254,6 +263,30 @@ function advanceColumn(currentColumn: number, text: string, columns: number): nu
   return column;
 }
 
+function splitLines(text: string): string[] {
+  return text.length === 0 ? [] : text.split("\n");
+}
+
+function countWrappedRows(line: string, columns: number): number {
+  const width = Math.max(1, columns);
+  return Math.max(1, Math.ceil(visibleLength(line) / width));
+}
+
+function countScreenRows(lines: string[] | undefined, columns: number): number {
+  if (!lines || lines.length === 0) return 0;
+  return lines.reduce((total, line) => total + countWrappedRows(line, columns), 0);
+}
+
+function findFirstDifferentLineIndex(previousLines: string[], nextLines: string[]): number {
+  const sharedLength = Math.min(previousLines.length, nextLines.length);
+  for (let index = 0; index < sharedLength; index += 1) {
+    if (previousLines[index] !== nextLines[index]) {
+      return index;
+    }
+  }
+  return sharedLength;
+}
+
 export interface RawChatUIOptions {
   agent: Agent;
   config: z.output<typeof CLIConfigSchema>;
@@ -273,7 +306,7 @@ export default class RawChatUI {
 
   private entryId = 0;
   private activeTranscriptStream: {type: "output.chat" | "output.reasoning"; entry: TranscriptEntry} | null = null;
-  private activeVisibleStream: {type: "output.chat" | "output.reasoning"; column: number} | null = null;
+  private activeVisibleStream: ActiveVisibleStream | null = null;
   private pendingSeparatorBeforeNextVisibleEntry = false;
   private completionState: CompletionState | null = null;
   private fileSearchState: FileSearchState | null = null;
@@ -289,11 +322,14 @@ export default class RawChatUI {
   private rawModeBeforeStart = false;
   private footerSnapshot: FooterSnapshot = {
     lineCount: 0,
+    lines: [],
     cursorRow: 0,
     cursorColumn: 0,
     showCursor: true,
   };
   private fullReplayRequested = true;
+  private lastFullReplayAt = 0;
+  private fullReplayThrottleTimer: NodeJS.Timeout | null = null;
   private latestState: AgentEventState | null = null;
   private optionalPickerOpen = false;
   private optionalQuestionIndex = 0;
@@ -345,6 +381,10 @@ export default class RawChatUI {
     if (this.spinnerTimer) {
       clearInterval(this.spinnerTimer);
       this.spinnerTimer = null;
+    }
+    if (this.fullReplayThrottleTimer) {
+      clearTimeout(this.fullReplayThrottleTimer);
+      this.fullReplayThrottleTimer = null;
     }
 
     this.clearFooter();
@@ -1295,19 +1335,19 @@ export default class RawChatUI {
   }
 
   private buildTranscriptDelta(event: AgentEventEnvelope): TranscriptDelta {
-    const columns = this.getTerminalSize().columns;
+    const {columns, rows} = this.getTerminalSize();
 
     switch (event.type) {
       case "agent.created":
         return this.buildCompleteEntryDelta("System", event.message, "info", false);
       case "output.chat":
-        return this.buildStreamDelta("output.chat", "Assistant", event.message, "chat", columns);
+        return this.buildStreamDelta("output.chat", "Assistant", event.message, "chat", columns, rows);
       case "output.reasoning":
         if (!this.verbose) {
           this.closeVisibleStream();
           return {kind: "none"};
         }
-        return this.buildStreamDelta("output.reasoning", "Reasoning", event.message, "reasoning", columns);
+        return this.buildStreamDelta("output.reasoning", "Reasoning", event.message, "reasoning", columns, rows);
       case "output.info":
         return this.buildCompleteEntryDelta("Info", event.message, "info", false);
       case "output.warning":
@@ -1373,31 +1413,59 @@ export default class RawChatUI {
     message: string,
     tone: TranscriptTone,
     columns: number,
+    rows: number,
   ): TranscriptDelta {
-    const {styled, raw} = this.renderStreamChunk(message, tone);
+    const rawChunk = this.getRawStreamText(message);
 
     if (!this.activeVisibleStream || this.activeVisibleStream.type !== type) {
       const prefix = this.pendingSeparatorBeforeNextVisibleEntry ? "\n" : "";
       this.pendingSeparatorBeforeNextVisibleEntry = false;
-      const rawBody = `${TEXT_INDENT}${raw}`;
+      const rawBuffer = `${TEXT_INDENT}${rawChunk}`;
+      const displayedBuffer = this.renderBufferedStream(rawBuffer, tone);
+      const screenLineCount = countScreenRows(splitLines(displayedBuffer), columns);
+
+      if (screenLineCount > rows) {
+        this.scheduleFullReplay();
+        return {kind: "none"};
+      }
+
       this.activeVisibleStream = {
         type,
-        column: advanceColumn(0, rawBody, columns),
+        tone,
+        rawBuffer,
+        displayedBuffer,
+        screenLineCount,
       };
       return {
         kind: "append",
-        text: `${prefix}${TITLE_COLOR(`${HEADER_PREFIX}${title}`)}\n${TONE_COLORS[tone](rawBody)}`,
+        text: `${prefix}${TITLE_COLOR(`${HEADER_PREFIX}${title}`)}\n${displayedBuffer}`,
         footerNeedsLeadingNewline: true,
       };
     }
 
-    const fromColumn = this.activeVisibleStream.column;
-    this.activeVisibleStream.column = advanceColumn(fromColumn, raw, columns);
+    const previousDisplayedBuffer = this.activeVisibleStream.displayedBuffer;
+    const previousLines = splitLines(previousDisplayedBuffer);
+    const previousScreenLineCount = this.activeVisibleStream.screenLineCount;
+    this.activeVisibleStream.rawBuffer += rawChunk;
+    const displayedBuffer = this.renderBufferedStream(this.activeVisibleStream.rawBuffer, tone);
+    const nextLines = splitLines(displayedBuffer);
+    const screenLineCount = countScreenRows(nextLines, columns);
+
+    if (screenLineCount > rows) {
+      this.scheduleFullReplay();
+      return {kind: "none"};
+    }
+
+    const firstDifferentLine = findFirstDifferentLineIndex(previousLines, nextLines);
+    this.activeVisibleStream.tone = tone;
+    this.activeVisibleStream.displayedBuffer = displayedBuffer;
+    this.activeVisibleStream.screenLineCount = screenLineCount;
+
     return {
-      kind: "continueStream",
-      text: styled,
+      kind: "rewriteStreamTail",
       footerNeedsLeadingNewline: true,
-      fromColumn,
+      blockTopOffsetFromFooterTop: previousScreenLineCount,
+      previousLines,
     };
   }
 
@@ -1447,6 +1515,25 @@ export default class RawChatUI {
     this.render();
   }
 
+  private scheduleFullReplay(): void {
+    const now = Date.now();
+    const remainingMs = Math.max(0, 1000 - (now - this.lastFullReplayAt));
+    if (remainingMs === 0) {
+      this.requestFullReplay();
+      return;
+    }
+
+    if (this.fullReplayThrottleTimer) {
+      return;
+    }
+
+    this.fullReplayThrottleTimer = globalThis.setTimeout(() => {
+      this.fullReplayThrottleTimer = null;
+      this.requestFullReplay();
+    }, remainingMs);
+    this.fullReplayThrottleTimer.unref();
+  }
+
   private render(): void {
     if (!this.started || this.suspended || !process.stdout.isTTY) return;
     if (this.fullReplayRequested) {
@@ -1472,6 +1559,7 @@ export default class RawChatUI {
       process.stdout.write(output);
       this.footerSnapshot = {
         lineCount: 1,
+        lines: [TONE_COLORS.warning("Terminal too small. Resize to at least 40x10.")],
         cursorRow: 0,
         cursorColumn: 0,
         showCursor: false,
@@ -1497,6 +1585,7 @@ export default class RawChatUI {
     process.stdout.write(output);
     this.footerSnapshot = {
       lineCount: footer.lines.length,
+      lines: [...footer.lines],
       cursorRow: footer.cursorRow ?? Math.max(0, footer.lines.length - 1),
       cursorColumn: footer.cursorColumn ?? 0,
       showCursor: footer.showCursor !== false,
@@ -1504,6 +1593,7 @@ export default class RawChatUI {
     this.activeVisibleStream = activeStream;
     this.pendingSeparatorBeforeNextVisibleEntry = false;
     this.fullReplayRequested = false;
+    this.lastFullReplayAt = Date.now();
   }
 
   private renderFooterOnly(): void {
@@ -1521,40 +1611,47 @@ export default class RawChatUI {
       return;
     }
 
-    // Footer-only redraws cannot move the footer origin when its height changes.
-    // In that case we need a full replay so the transcript and footer are reflowed together.
     if (delta.kind === "none" && footer.lines.length !== this.footerSnapshot.lineCount) {
       this.renderFullReplay();
       return;
     }
 
-    let output = "\x1b[?25l";
-    output += this.moveToFooterTop();
-    output += "\x1b[J";
-
-    if (delta.kind === "continueStream") {
-      output += `\x1b[1F\x1b[${delta.fromColumn + 1}G`;
+    if (delta.kind === "append") {
+      let output = "\x1b[?25l";
+      output += this.moveToFooterTop();
+      output += "\x1b[J";
       output += delta.text;
       if (footer.lines.length > 0 && delta.footerNeedsLeadingNewline) {
         output += "\n";
       }
-    } else if (delta.kind === "append") {
-      output += delta.text;
-      if (footer.lines.length > 0 && delta.footerNeedsLeadingNewline) {
-        output += "\n";
+      if (footer.lines.length > 0) {
+        output += footer.lines.join("\n");
+        output += this.getFooterCursorSequence(footer);
+      } else {
+        output += "\x1b[?25h";
       }
-    }
-
-    if (footer.lines.length > 0) {
-      output += footer.lines.join("\n");
-      output += this.getFooterCursorSequence(footer);
+      process.stdout.write(output);
+    } else if (delta.kind === "rewriteStreamTail" && this.activeVisibleStream) {
+      const nextTail = [
+        ...splitLines(this.activeVisibleStream.displayedBuffer),
+        ...footer.lines,
+      ];
+      const previousDisplay = [
+        ...delta.previousLines,
+        ...this.footerSnapshot.lines,
+      ];
+      if (!this.rewriteTailBlock(previousDisplay, nextTail, footer, delta.blockTopOffsetFromFooterTop, columns, rows)) {
+        return;
+      }
     } else {
-      output += "\x1b[?25h";
+      if (!this.rewriteTailBlock(this.footerSnapshot.lines, footer.lines, footer, 0, columns, rows)) {
+        return;
+      }
     }
 
-    process.stdout.write(output);
     this.footerSnapshot = {
       lineCount: footer.lines.length,
+      lines: [...footer.lines],
       cursorRow: footer.cursorRow ?? Math.max(0, footer.lines.length - 1),
       cursorColumn: footer.cursorColumn ?? 0,
       showCursor: footer.showCursor !== false,
@@ -1567,10 +1664,52 @@ export default class RawChatUI {
     process.stdout.write(output);
     this.footerSnapshot = {
       lineCount: 0,
+      lines: [],
       cursorRow: 0,
       cursorColumn: 0,
       showCursor: true,
     };
+  }
+
+  private rewriteTailBlock(
+    previousLines: string[],
+    nextLines: string[],
+    footer: RenderBlock,
+    blockTopOffsetFromFooterTop: number,
+    columns: number,
+    rows: number,
+  ): boolean {
+    const previousRowCount = countScreenRows(previousLines, columns);
+    const nextRowCount = countScreenRows(nextLines, columns);
+    if (Math.max(previousRowCount, nextRowCount) > rows) {
+      this.scheduleFullReplay();
+      return false;
+    }
+
+    let firstDifferentLine = findFirstDifferentLineIndex(previousLines, nextLines);
+    if (firstDifferentLine === previousLines.length && firstDifferentLine === nextLines.length) {
+      firstDifferentLine = 0;
+    }
+
+    const prefixRowCount = countScreenRows(previousLines.slice(0, firstDifferentLine), columns);
+    let output = "\x1b[?25l";
+    output += this.moveToFooterTop();
+    if (blockTopOffsetFromFooterTop > 0) {
+      output += `\x1b[${blockTopOffsetFromFooterTop}F`;
+    }
+    if (prefixRowCount > 0) {
+      output += `\x1b[${prefixRowCount}E`;
+    }
+    output += "\x1b[J";
+
+    const tailText = nextLines.slice(firstDifferentLine).join("\n");
+    if (tailText.length > 0) {
+      output += tailText;
+    }
+    output += footer.lines.length > 0 ? this.getFooterCursorSequence(footer) : "\x1b[?25h";
+
+    process.stdout.write(output);
+    return true;
   }
 
   private moveToFooterTop(): string {
@@ -2087,7 +2226,7 @@ export default class RawChatUI {
 
   private renderTranscriptReplay(columns: number): {
     text: string;
-    activeStream: {type: "output.chat" | "output.reasoning"; column: number} | null;
+    activeStream: ActiveVisibleStream | null;
   } {
     const visibleEntries = this.getVisibleTranscript();
     const activeEntry = this.activeTranscriptStream && this.isEntryVisible(this.activeTranscriptStream.entry)
@@ -2100,10 +2239,12 @@ export default class RawChatUI {
     }
 
     const activeStream = activeEntry && this.activeTranscriptStream
-      ? {
-        type: this.activeTranscriptStream.type,
-        column: advanceColumn(0, `${TEXT_INDENT}${this.getRawStreamText(activeEntry.body)}`, columns),
-      }
+      ? this.createActiveVisibleStream(
+        this.activeTranscriptStream.type,
+        `${TEXT_INDENT}${this.getRawStreamText(activeEntry.body)}`,
+        activeEntry.tone,
+        columns,
+      )
       : null;
 
     return {text, activeStream};
@@ -2177,12 +2318,26 @@ export default class RawChatUI {
     return `${lines.join("\n")}\n\n`;
   }
 
-  private renderStreamChunk(message: string, tone: TranscriptTone): {styled: string; raw: string} {
-    const raw = this.getRawStreamText(message);
+  private createActiveVisibleStream(
+    type: "output.chat" | "output.reasoning",
+    rawBuffer: string,
+    tone: TranscriptTone,
+    columns: number,
+  ): ActiveVisibleStream {
+    const displayedBuffer = this.renderBufferedStream(rawBuffer, tone);
     return {
-      styled: TONE_COLORS[tone](raw),
-      raw,
+      type,
+      tone,
+      rawBuffer,
+      displayedBuffer,
+      screenLineCount: countScreenRows(splitLines(displayedBuffer), columns),
     };
+  }
+
+  private renderBufferedStream(rawBuffer: string, tone: TranscriptTone): string {
+    return splitLines(rawBuffer)
+      .map((line) => TONE_COLORS[tone](applyMarkdownStyles(line)))
+      .join("\n");
   }
 
   private getRawStreamText(message: string): string {
