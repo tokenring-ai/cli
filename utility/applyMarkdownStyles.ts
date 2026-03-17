@@ -45,10 +45,12 @@ export default function applyMarkdownStyles(text: string): string {
       return `${indent}${chalk.gray('┃')} ${chalk.italic.gray(content)}`;
     });
   }
-  // Bold (**text** or __text__)
-  result = result.replace(/(\*\*|__)(.*?)\1/g, (_, __, content) => chalk.bold(content));
-  // Italic (*text* or _text_)
-  result = result.replace(/(\*|_)(.*?)\1/g, (_, __, content) => chalk.italic(content));
+  // Bold (**text** or __text__) - for __, require word boundaries
+  result = result.replace(/\*\*(.*?)\*\*/g, (_, content) => chalk.bold(content));
+  result = result.replace(/(?<![\w])__(.*?)__(?![\w])/g, (_, content) => chalk.bold(content));
+  // Italic (*text* or _text_) - for _, require word boundaries to avoid mid-word matches
+  result = result.replace(/\*(.*?)\*/g, (_, content) => chalk.italic(content));
+  result = result.replace(/(?<![\w])_(.*?)_(?![\w])/g, (_, content) => chalk.italic(content));
   // Strikethrough (~~text~~)
   result = result.replace(/~~(.*?)~~/g, (_, content) => chalk.strikethrough(content));
   // Inline code (`text`)
