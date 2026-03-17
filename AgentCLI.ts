@@ -7,13 +7,10 @@ import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
 import open from "open";
 import process from "node:process";
 import {setTimeout} from "node:timers/promises";
-import type {ComponentType} from "react";
 import {z} from "zod";
 import {type AgentSelectionResult} from "./AgentSelection.ts";
 import AgentLoop from "./AgentLoop";
-import {renderScreen} from "./opentui/renderScreen.tsx";
-import AgentSelectionScreen from "./opentui/screens/AgentSelectionScreen.tsx";
-import LoadingScreen from "./opentui/screens/LoadingScreen.tsx";
+import {retryAgentSelection, runLoadingScreen} from "./NativeScreens.ts";
 import type {CommandDefinition} from "./raw/CommandCompletions.ts";
 import {CLIConfigSchema} from "./schema.ts";
 
@@ -36,13 +33,14 @@ export default class AgentCLI implements TokenRingService {
     if (! this.config.startAgent) {
       app.runBackgroundTask(this, async appAbortSignal => {
         this.loadingScreenTask = (async () => {
-          const abortHandler = () => this.loadingScreenAbortController.abort();
+          const abortHandler = () => {
+            this.loadingScreenAbortController.abort();
+            app.serviceError(this, "Loading screen aborted");
+          };
           appAbortSignal.addEventListener("abort", abortHandler);
 
           try {
-            await renderScreen(LoadingScreen, {
-              config: this.config
-            }, this.loadingScreenAbortController.signal);
+            await runLoadingScreen(app, this.config, this.loadingScreenAbortController.signal);
           } catch (err) {
           } finally {
             appAbortSignal.removeEventListener("abort", abortHandler);
@@ -86,9 +84,9 @@ export default class AgentCLI implements TokenRingService {
     }
 
     for (
-      let agent = initialAgent ?? await this.promptForAgent(renderScreen, AgentSelectionScreen, signal);
+      let agent = initialAgent ?? await this.promptForAgent(signal);
       agent;
-      agent = await this.promptForAgent(renderScreen, AgentSelectionScreen, signal)
+      agent = await this.promptForAgent(signal)
     ) {
       initialAgent = undefined;
       try {
@@ -128,25 +126,9 @@ export default class AgentCLI implements TokenRingService {
   }
 
   private async promptForAgent(
-    renderScreen: ScreenRenderer,
-    AgentSelectionScreen: ComponentType<{
-      app: TokenRingApp;
-      config: z.infer<typeof CLIConfigSchema>;
-      onResponse: (selection: AgentSelectionResult | null) => void;
-      signal?: AbortSignal;
-    }>,
     signal: AbortSignal,
   ): Promise<Agent | null> {
-    while (!signal.aborted) {
-      const selection = await renderScreen(AgentSelectionScreen, {app: this.app, config: this.config}, signal);
-      const agent = await this.resolveAgentSelection(selection);
-      if (agent === "retry") {
-        continue;
-      }
-      return agent;
-    }
-
-    return null;
+    return retryAgentSelection(this.app, this.config, signal, selection => this.resolveAgentSelection(selection));
   }
 
   private async resolveAgentSelection(selection: AgentSelectionResult | null): Promise<Agent | "retry" | null> {
@@ -177,9 +159,3 @@ export default class AgentCLI implements TokenRingService {
     }
   }
 }
-
-type ScreenRenderer = <P, R>(
-  Component: ComponentType<P & {onResponse: (response: R) => void; signal?: AbortSignal}>,
-  props: P,
-  signal: AbortSignal,
-) => Promise<R>;
