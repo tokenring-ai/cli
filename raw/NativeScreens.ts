@@ -2,7 +2,6 @@ import type Agent from "@tokenring-ai/agent/Agent";
 import AgentManager from "@tokenring-ai/agent/services/AgentManager";
 import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import TokenRingApp from "@tokenring-ai/app";
-import {ChatAgentConfigSchema} from "@tokenring-ai/chat";
 import type {ChatAgentConfig} from "@tokenring-ai/chat/schema";
 import {visibleLength} from "@tokenring-ai/utility/string/visibleLength";
 import {wrapPlainText} from "@tokenring-ai/utility/string/wrapPlainText";
@@ -17,9 +16,9 @@ import process from "node:process";
 import readline from "node:readline";
 import {setInterval as setIntervalPromise} from "node:timers/promises";
 import type {z} from "zod";
-import {type AgentSelectionResult, parseAgentSelectionValue} from "./AgentSelection.ts";
-import {CLIConfigSchema} from "./schema.ts";
-import {theme} from "./theme.ts";
+import {type AgentSelectionResult, parseAgentSelectionValue} from "../AgentSelection.ts";
+import {CLIConfigSchema} from "../schema.ts";
+import {theme} from "../theme.ts";
 
 type CLIConfig = z.infer<typeof CLIConfigSchema>;
 

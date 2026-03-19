@@ -10,7 +10,7 @@ import {setTimeout} from "node:timers/promises";
 import {z} from "zod";
 import {type AgentSelectionResult} from "./AgentSelection.ts";
 import AgentLoop from "./AgentLoop";
-import {retryAgentSelection, runLoadingScreen} from "./NativeScreens.ts";
+import {retryAgentSelection, runLoadingScreen} from "./raw/NativeScreens.ts";
 import type {CommandDefinition} from "./raw/CommandCompletions.ts";
 import {CLIConfigSchema} from "./schema.ts";
 
