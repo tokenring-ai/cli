@@ -22,7 +22,7 @@ export default function applyMarkdownStyles(text: string): string {
     const line = lang
       ? "─── " + lang + " " + "─".repeat(35 - lang.length)
       : "─".repeat(40);
-    return lang ? chalk.gray(line) : chalk.gray(line);
+    return chalk.gray(line);
   }
 
   // Horizontal Rules (---, ***, ___)

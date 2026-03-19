@@ -1,4 +1,6 @@
-type FileSearchToken = {
+import {clamp} from "@tokenring-ai/utility/number/clamp";
+
+export type FileSearchToken = {
   start: number;
   end: number;
   query: string;
@@ -9,10 +11,6 @@ const COLLATOR = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: "base",
 });
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 function isWhitespace(char: string | undefined): boolean {
   return typeof char === "string" && /\s/.test(char);
@@ -169,5 +167,3 @@ export function replaceFileSearchToken(
     cursor: prefix.length + insertion.length,
   };
 }
-
-export type {FileSearchToken};

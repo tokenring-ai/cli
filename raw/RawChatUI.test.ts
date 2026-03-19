@@ -156,7 +156,47 @@ describe("RawChatUI footer redraws", () => {
       onAbortCurrentActivity: vi.fn(() => false),
     });
 
-    const delta = (ui as any).buildStreamDelta("output.chat", "Assistant", "x".repeat(77), "chat", 80, 1);
+    const delta = (ui as any).buildStreamDelta("output.chat", "Assistant", "x".repeat(74), "chat", 80, 1);
     expect(delta.kind).toBe("append");
+  });
+
+  it("wraps output three columns narrower than the display", () => {
+    const ui = new RawChatUI({
+      agent: {
+        getState: vi.fn(),
+      } as any,
+      config: {
+        verbose: false,
+      } as any,
+      commands: [],
+      onSubmit: vi.fn(),
+      onOpenAgentSelection: vi.fn(),
+      onDeleteIdleAgent: vi.fn(),
+      onAbortCurrentActivity: vi.fn(() => false),
+    });
+
+    (ui as any).buildStreamDelta("output.chat", "Assistant", "x".repeat(75), "chat", 80, 24);
+    const lines = (ui as any).activeVisibleStream.displayedBuffer.split("\n");
+    expect(lines).toHaveLength(2);
+  });
+
+  it("caps wrapped output width at 150 columns on wide displays", () => {
+    const ui = new RawChatUI({
+      agent: {
+        getState: vi.fn(),
+      } as any,
+      config: {
+        verbose: false,
+      } as any,
+      commands: [],
+      onSubmit: vi.fn(),
+      onOpenAgentSelection: vi.fn(),
+      onDeleteIdleAgent: vi.fn(),
+      onAbortCurrentActivity: vi.fn(() => false),
+    });
+
+    (ui as any).buildStreamDelta("output.chat", "Assistant", "x".repeat(148), "chat", 200, 24);
+    const lines = (ui as any).activeVisibleStream.displayedBuffer.split("\n");
+    expect(lines).toHaveLength(2);
   });
 });

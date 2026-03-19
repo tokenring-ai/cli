@@ -3,6 +3,7 @@ import AgentManager from "@tokenring-ai/agent/services/AgentManager";
 import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import TokenRingApp from "@tokenring-ai/app";
 import {ChatAgentConfigSchema} from "@tokenring-ai/chat";
+import type {ChatAgentConfig} from "@tokenring-ai/chat/schema";
 import {visibleLength} from "@tokenring-ai/utility/string/visibleLength";
 import {wrapPlainText} from "@tokenring-ai/utility/string/wrapPlainText";
 import {brailleSpinner} from "@tokenring-ai/utility/string/brailleSpinner";
@@ -268,7 +269,9 @@ function buildSelectionEntries(app: TokenRingApp): SelectionEntry[] {
 
   for (const [type, config] of agentManager.getAgentConfigEntries()) {
     const category = config.category || "Other";
-    const enabledTools = ((config as any).chat as z.input<typeof ChatAgentConfigSchema> | undefined)?.enabledTools ?? [];
+    const enabledTools = "chat" in config
+      ? ((config as unknown as ChatAgentConfig).chat.enabledTools ?? [])
+      : [];
     const entries = categories.get(category) ?? [];
     entries.push({
       type: "option",

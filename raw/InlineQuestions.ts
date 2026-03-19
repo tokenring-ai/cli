@@ -274,7 +274,7 @@ class TextQuestionSession implements InlineQuestionSession {
     editorView.lines.forEach((line, index) => {
       const prefix = index === 0 ? PROMPT_PREFIX : CONTINUATION_PREFIX;
       const body = editorView.isEmpty && index === 0
-        ? MUTED_COLOR(editorView.lines[index].length === 0 ? editorView.lines[index] : editorView.lines[index])
+        ? MUTED_COLOR(editorView.lines[index])
         : line;
       lines.push(`${prefix}${body || (editorView.isEmpty && index === 0 ? MUTED_COLOR(editorView.isEmpty ? this.question.required ? "Required response" : "Optional response" : "") : "")}`);
     });
@@ -409,8 +409,6 @@ class TreeQuestionSession implements InlineQuestionSession {
       const actualIndex = this.scrollOffset + index;
       const isSelected = actualIndex === this.selectedIndex;
       const isChecked = "value" in item.node && this.checked.has(item.node.value);
-      //const childCount = item.isParent ? item.descendantLeafCount : 0;
-      //const childSelected = item.isParent ? item.selectedLeafCount - (item.isParent ? 0 : isChecked ? 1 : 0);
 
       const treeGlyph = item.isParent
         ? multiple

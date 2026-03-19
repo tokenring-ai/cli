@@ -1,6 +1,4 @@
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
+import {clamp} from "@tokenring-ai/utility/number/clamp";
 
 type LineRange = {
   start: number;

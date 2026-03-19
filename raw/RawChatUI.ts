@@ -136,6 +136,7 @@ const HEADER_PREFIX = " · ";
 const TEXT_INDENT = "   ";
 const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";
+const ANSI_SGR_PATTERN = /\x1b\[([0-9;]*)m/g;
 
 
 function trimBoundaryNewlines(text: string): string {
@@ -244,25 +245,6 @@ function renderEditor(
   };
 }
 
-function advanceColumn(currentColumn: number, text: string, columns: number): number {
-  const width = Math.max(1, columns);
-  let column = currentColumn;
-
-  for (const char of Array.from(text)) {
-    if (char === "\n") {
-      column = 0;
-      continue;
-    }
-
-    column += 1;
-    if (column >= width) {
-      column = 0;
-    }
-  }
-
-  return column;
-}
-
 function splitLines(text: string): string[] {
   return text.length === 0 ? [] : text.split("\n");
 }
@@ -275,6 +257,200 @@ function countWrappedRows(line: string, columns: number): number {
 function countScreenRows(lines: string[] | undefined, columns: number): number {
   if (!lines || lines.length === 0) return 0;
   return lines.reduce((total, line) => total + countWrappedRows(line, columns), 0);
+}
+
+type AnsiWrapState = {
+  bold: boolean;
+  dim: boolean;
+  italic: boolean;
+  underline: boolean;
+  inverse: boolean;
+  hidden: boolean;
+  strikethrough: boolean;
+  foreground: string | null;
+  background: string | null;
+};
+
+function createAnsiWrapState(): AnsiWrapState {
+  return {
+    bold: false,
+    dim: false,
+    italic: false,
+    underline: false,
+    inverse: false,
+    hidden: false,
+    strikethrough: false,
+    foreground: null,
+    background: null,
+  };
+}
+
+function cloneAnsiWrapState(state: AnsiWrapState): AnsiWrapState {
+  return {...state};
+}
+
+function hasAnsiWrapState(state: AnsiWrapState): boolean {
+  return state.bold
+    || state.dim
+    || state.italic
+    || state.underline
+    || state.inverse
+    || state.hidden
+    || state.strikethrough
+    || state.foreground !== null
+    || state.background !== null;
+}
+
+function serializeAnsiWrapState(state: AnsiWrapState): string {
+  const sequences: string[] = [];
+  if (state.bold) sequences.push("\x1b[1m");
+  if (state.dim) sequences.push("\x1b[2m");
+  if (state.italic) sequences.push("\x1b[3m");
+  if (state.underline) sequences.push("\x1b[4m");
+  if (state.inverse) sequences.push("\x1b[7m");
+  if (state.hidden) sequences.push("\x1b[8m");
+  if (state.strikethrough) sequences.push("\x1b[9m");
+  if (state.foreground) sequences.push(`\x1b[${state.foreground}m`);
+  if (state.background) sequences.push(`\x1b[${state.background}m`);
+  return sequences.join("");
+}
+
+function applyAnsiSgrSequence(state: AnsiWrapState, paramsText: string): void {
+  const params = paramsText.length === 0 ? [0] : paramsText.split(";").map((part) => Number.parseInt(part, 10) || 0);
+
+  for (let index = 0; index < params.length; index += 1) {
+    const code = params[index];
+
+    switch (code) {
+      case 0:
+        Object.assign(state, createAnsiWrapState());
+        break;
+      case 1:
+        state.bold = true;
+        break;
+      case 2:
+        state.dim = true;
+        break;
+      case 3:
+        state.italic = true;
+        break;
+      case 4:
+        state.underline = true;
+        break;
+      case 7:
+        state.inverse = true;
+        break;
+      case 8:
+        state.hidden = true;
+        break;
+      case 9:
+        state.strikethrough = true;
+        break;
+      case 22:
+        state.bold = false;
+        state.dim = false;
+        break;
+      case 23:
+        state.italic = false;
+        break;
+      case 24:
+        state.underline = false;
+        break;
+      case 27:
+        state.inverse = false;
+        break;
+      case 28:
+        state.hidden = false;
+        break;
+      case 29:
+        state.strikethrough = false;
+        break;
+      case 39:
+        state.foreground = null;
+        break;
+      case 49:
+        state.background = null;
+        break;
+      default:
+        if ((code >= 30 && code <= 37) || (code >= 90 && code <= 97)) {
+          state.foreground = `${code}`;
+          break;
+        }
+        if ((code >= 40 && code <= 47) || (code >= 100 && code <= 107)) {
+          state.background = `${code}`;
+          break;
+        }
+        if (code === 38 || code === 48) {
+          const mode = params[index + 1];
+          if (mode === 5 && index + 2 < params.length) {
+            const sequence = `${code};${mode};${params[index + 2]}`;
+            if (code === 38) {
+              state.foreground = sequence;
+            } else {
+              state.background = sequence;
+            }
+            index += 2;
+          } else if (mode === 2 && index + 4 < params.length) {
+            const sequence = `${code};${mode};${params[index + 2]};${params[index + 3]};${params[index + 4]}`;
+            if (code === 38) {
+              state.foreground = sequence;
+            } else {
+              state.background = sequence;
+            }
+            index += 4;
+          }
+        }
+        break;
+    }
+  }
+}
+
+function wrapAnsiStyledLine(text: string, width: number): string[] {
+  if (width <= 0) return [""];
+  if (text.length === 0) return [""];
+
+  const segments = Array.from(text.matchAll(ANSI_SGR_PATTERN));
+  const wrapped: string[] = [];
+  const state = createAnsiWrapState();
+  let segmentIndex = 0;
+  let current = "";
+  let visibleCount = 0;
+  let textIndex = 0;
+
+  while (textIndex < text.length) {
+    const nextSegment = segments[segmentIndex];
+    if (nextSegment && nextSegment.index === textIndex) {
+      current += nextSegment[0];
+      applyAnsiSgrSequence(state, nextSegment[1] ?? "");
+      textIndex += nextSegment[0].length;
+      segmentIndex += 1;
+      continue;
+    }
+
+    const codePoint = text.codePointAt(textIndex);
+    if (codePoint === undefined) {
+      break;
+    }
+
+    const character = String.fromCodePoint(codePoint);
+    current += character;
+    visibleCount += 1;
+    textIndex += character.length;
+
+    if (visibleCount >= width && textIndex < text.length) {
+      const nextPrefix = "   " + serializeAnsiWrapState(cloneAnsiWrapState(state));
+      wrapped.push(`${current}${hasAnsiWrapState(state) ? "\x1b[0m" : ""}`);
+      current = nextPrefix;
+      visibleCount = 0;
+    }
+  }
+
+  wrapped.push(current.length > 0 ? current : "");
+  return wrapped;
+}
+
+function getOutputWrapWidth(columns: number): number {
+  return Math.max(1, Math.min(150, columns - 3));
 }
 
 function findFirstDifferentLineIndex(previousLines: string[], nextLines: string[]): number {
@@ -389,19 +565,6 @@ export default class RawChatUI {
 
     this.clearFooter();
     this.detachTerminal();
-  }
-
-  suspend(): void {
-    if (!this.started || this.suspended) return;
-    this.suspended = true;
-    this.detachTerminal();
-  }
-
-  resume(): void {
-    if (!this.started || !this.suspended) return;
-    this.suspended = false;
-    this.attachTerminal();
-    this.requestFullReplay();
   }
 
   renderEvent(event: AgentEventEnvelope): void {
@@ -1339,7 +1502,7 @@ export default class RawChatUI {
 
     switch (event.type) {
       case "agent.created":
-        return this.buildCompleteEntryDelta("System", event.message, "info", false);
+        return this.buildCompleteEntryDelta("System", event.message, "info", false, columns);
       case "output.chat":
         return this.buildStreamDelta("output.chat", "Assistant", event.message, "chat", columns, rows);
       case "output.reasoning":
@@ -1349,11 +1512,11 @@ export default class RawChatUI {
         }
         return this.buildStreamDelta("output.reasoning", "Reasoning", event.message, "reasoning", columns, rows);
       case "output.info":
-        return this.buildCompleteEntryDelta("Info", event.message, "info", false);
+        return this.buildCompleteEntryDelta("Info", event.message, "info", false, columns);
       case "output.warning":
-        return this.buildCompleteEntryDelta("Warning", event.message, "warning", false);
+        return this.buildCompleteEntryDelta("Warning", event.message, "warning", false, columns);
       case "output.error":
-        return this.buildCompleteEntryDelta("Error", event.message, "error", false);
+        return this.buildCompleteEntryDelta("Error", event.message, "error", false, columns);
       case "output.artifact":
         if (!this.verbose) {
           this.closeVisibleStream();
@@ -1364,6 +1527,7 @@ export default class RawChatUI {
           event.encoding === "text" ? event.body : `Generated ${event.mimeType} artifact`,
           "info",
           event.encoding === "text",
+          columns,
         );
       case "agent.response":
         return this.buildCompleteEntryDelta(
@@ -1371,9 +1535,10 @@ export default class RawChatUI {
           event.message,
           event.status === "success" ? "success" : "error",
           event.status === "success",
+          columns,
         );
       case "input.received":
-        return this.buildCompleteEntryDelta("You", event.input.message, "input", false);
+        return this.buildCompleteEntryDelta("You", event.input.message, "input", false, columns);
       case "agent.stopped":
       case "agent.status":
       case "input.execution":
@@ -1389,6 +1554,7 @@ export default class RawChatUI {
     body: string,
     tone: TranscriptTone,
     markdown: boolean,
+    columns: number,
   ): TranscriptDelta {
     this.closeVisibleStream();
     const prefix = this.pendingSeparatorBeforeNextVisibleEntry ? "\n" : "";
@@ -1402,7 +1568,7 @@ export default class RawChatUI {
         body,
         tone,
         markdown,
-      })}`,
+      }, columns)}`,
       footerNeedsLeadingNewline: false,
     };
   }
@@ -1421,7 +1587,7 @@ export default class RawChatUI {
       const prefix = this.pendingSeparatorBeforeNextVisibleEntry ? "\n" : "";
       this.pendingSeparatorBeforeNextVisibleEntry = false;
       const rawBuffer = `${TEXT_INDENT}${rawChunk}`;
-      const displayedBuffer = this.renderBufferedStream(rawBuffer, tone);
+      const displayedBuffer = this.renderBufferedStream(rawBuffer, tone, columns);
       const screenLineCount = countScreenRows(splitLines(displayedBuffer), columns);
 
       if (screenLineCount > rows) {
@@ -1447,7 +1613,7 @@ export default class RawChatUI {
     const previousLines = splitLines(previousDisplayedBuffer);
     const previousScreenLineCount = this.activeVisibleStream.screenLineCount;
     this.activeVisibleStream.rawBuffer += rawChunk;
-    const displayedBuffer = this.renderBufferedStream(this.activeVisibleStream.rawBuffer, tone);
+    const displayedBuffer = this.renderBufferedStream(this.activeVisibleStream.rawBuffer, tone, columns);
     const nextLines = splitLines(displayedBuffer);
     const screenLineCount = countScreenRows(nextLines, columns);
 
@@ -1456,7 +1622,6 @@ export default class RawChatUI {
       return {kind: "none"};
     }
 
-    const firstDifferentLine = findFirstDifferentLineIndex(previousLines, nextLines);
     this.activeVisibleStream.tone = tone;
     this.activeVisibleStream.displayedBuffer = displayedBuffer;
     this.activeVisibleStream.screenLineCount = screenLineCount;
@@ -1551,7 +1716,6 @@ export default class RawChatUI {
     }
 
     const {columns, rows} = this.getTerminalSize();
-    //const footerSignature = this.getFooterSignature();
     const footer = this.renderFooter(columns, rows);
 
     if (columns < 40 || rows < 10) {
@@ -1789,6 +1953,7 @@ export default class RawChatUI {
     const footerContent = this.combineBlocks(sections);
     const transcriptVisibleRows = this.getVisibleTranscriptViewportLineCount(
       Math.max(0, rows - footerContent.lines.length),
+      columns,
     );
     const spacerCount = Math.max(0, rows - footerContent.lines.length - transcriptVisibleRows);
 
@@ -2235,7 +2400,7 @@ export default class RawChatUI {
 
     let text = "";
     for (const entry of visibleEntries) {
-      text += this.renderEntryText(entry, activeEntry?.id === entry.id);
+      text += this.renderEntryText(entry, columns, activeEntry?.id === entry.id);
     }
 
     const activeStream = activeEntry && this.activeTranscriptStream
@@ -2255,7 +2420,7 @@ export default class RawChatUI {
     return this.transcript.filter((entry) => entry.kind !== "reasoning" && entry.kind !== "artifact");
   }
 
-  private getVisibleTranscriptViewportLineCount(maxRows: number): number {
+  private getVisibleTranscriptViewportLineCount(maxRows: number, columns: number): number {
     if (maxRows <= 0) return 0;
 
     const visibleEntries = this.getVisibleTranscript();
@@ -2265,7 +2430,7 @@ export default class RawChatUI {
 
     let totalLines = 0;
     for (const entry of visibleEntries) {
-      totalLines += this.getRenderedEntryLineCount(entry, activeEntryId === entry.id);
+      totalLines += this.getRenderedEntryLineCount(entry, columns, activeEntryId === entry.id);
     }
 
     return Math.min(maxRows, totalLines);
@@ -2275,16 +2440,18 @@ export default class RawChatUI {
     return this.verbose || (entry.kind !== "reasoning" && entry.kind !== "artifact");
   }
 
-  private getRenderedEntryLineCount(entry: TranscriptEntry, keepOpen = false): number {
-    let count = 0;
+  private getRenderedEntryLineCount(entry: TranscriptEntry, columns: number, keepOpen = false): number {
+    let count = entry.title ? 1 : 0;
 
-    if (entry.title) {
-      count += 1;
-    }
-
+    const outputWidth = getOutputWrapWidth(columns);
     const body = trimBoundaryNewlines(entry.body);
     if (body.length > 0) {
-      count += body.split("\n").length;
+      for (const sourceLine of body.split("\n")) {
+        const styled = entry.markdown
+          ? TONE_COLORS[entry.tone](applyMarkdownStyles(sourceLine))
+          : TONE_COLORS[entry.tone](sourceLine);
+        count += wrapAnsiStyledLine(`${TEXT_INDENT}${styled}`, outputWidth).length;
+      }
     }
 
     if (!keepOpen) {
@@ -2294,20 +2461,21 @@ export default class RawChatUI {
     return count;
   }
 
-  private renderEntryText(entry: TranscriptEntry, keepOpen = false): string {
+  private renderEntryText(entry: TranscriptEntry, columns: number, keepOpen = false): string {
     const lines: string[] = [];
 
     if (entry.title) {
       lines.push(TITLE_COLOR(`${HEADER_PREFIX}${entry.title}`));
     }
 
+    const outputWidth = getOutputWrapWidth(columns);
     const body = trimBoundaryNewlines(entry.body);
     if (body.length > 0) {
       for (const sourceLine of body.split("\n")) {
         const styled = entry.markdown
           ? TONE_COLORS[entry.tone](applyMarkdownStyles(sourceLine))
           : TONE_COLORS[entry.tone](sourceLine);
-        lines.push(`${TEXT_INDENT}${styled}`);
+        lines.push(...wrapAnsiStyledLine(`${TEXT_INDENT}${styled}`, outputWidth));
       }
     }
 
@@ -2324,7 +2492,7 @@ export default class RawChatUI {
     tone: TranscriptTone,
     columns: number,
   ): ActiveVisibleStream {
-    const displayedBuffer = this.renderBufferedStream(rawBuffer, tone);
+    const displayedBuffer = this.renderBufferedStream(rawBuffer, tone, columns);
     return {
       type,
       tone,
@@ -2334,9 +2502,10 @@ export default class RawChatUI {
     };
   }
 
-  private renderBufferedStream(rawBuffer: string, tone: TranscriptTone): string {
+  private renderBufferedStream(rawBuffer: string, tone: TranscriptTone, columns: number): string {
+    const outputWidth = getOutputWrapWidth(columns);
     return splitLines(rawBuffer)
-      .map((line) => TONE_COLORS[tone](applyMarkdownStyles(line)))
+      .flatMap((line) => wrapAnsiStyledLine(TONE_COLORS[tone](applyMarkdownStyles(line)), outputWidth))
       .join("\n");
   }
 
