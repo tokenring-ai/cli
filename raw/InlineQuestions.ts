@@ -274,15 +274,10 @@ class TextQuestionSession implements InlineQuestionSession {
     editorView.lines.forEach((line, index) => {
       const prefix = index === 0 ? PROMPT_PREFIX : CONTINUATION_PREFIX;
       const body = editorView.isEmpty && index === 0
-        ? MUTED_COLOR(editorView.lines[index])
+        ? MUTED_COLOR(this.question.required ? "Required response" : "Optional response")
         : line;
-      lines.push(`${prefix}${body || (editorView.isEmpty && index === 0 ? MUTED_COLOR(editorView.isEmpty ? this.question.required ? "Required response" : "Optional response" : "") : "")}`);
+      lines.push(`${prefix}${body}`);
     });
-
-    if (editorView.isEmpty) {
-      const placeholder = this.question.required ? "Required response" : "Optional response";
-      lines[lines.length - editorView.lines.length] = `${PROMPT_PREFIX}${MUTED_COLOR(placeholder)}`;
-    }
 
     if (this.flashMessage) {
       lines.push(ERROR_COLOR(this.flashMessage));
@@ -823,6 +818,10 @@ class FileQuestionSession implements InlineQuestionSession {
         this.callbacks.onSubmit([current.node.value]);
         return true;
       }
+
+      // If current item is not selectable (e.g., a directory that doesn't allow directories),
+      // don't submit - just return false to indicate the key wasn't handled
+      return false;
     }
 
     return false;

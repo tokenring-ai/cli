@@ -12,6 +12,19 @@ const COLLATOR = new Intl.Collator(undefined, {
   sensitivity: "base",
 });
 
+// File search scoring constants - higher scores indicate better matches
+// These values are tuned to prioritize exact name matches and shallow paths
+const SCORE_EXACT_BASE_NAME_MATCH = 120_000; // Exact base name match (e.g., "file.ts" matches "file.ts")
+const SCORE_STARTS_WITH_BASE_NAME = 60_000; // Base name starts with query (penalized by length)
+const SCORE_BASE_NAME_CONTAINS = 40_000; // Base name contains query (penalized by position)
+const SCORE_PATH_CONTAINS = 20_000; // Full path contains query (penalized by position)
+const SCORE_CHAR_MATCH = 1_000; // Each character match in the query
+const SCORE_CONSECUTIVE_MATCH_BONUS = 350; // Bonus for consecutive character matches
+const SCORE_PATH_SEPARATOR_BONUS = 650; // Bonus for matching after path separator
+const SCORE_BASE_NAME_END_BONUS = 500; // Bonus for matching near end of base name
+const SCORE_PATH_LENGTH_PENALTY = 8; // Penalty per character in path (favors shorter paths)
+const SCORE_DEPTH_PENALTY = 120; // Penalty per directory level (favors shallower files)
+
 function isWhitespace(char: string | undefined): boolean {
   return typeof char === "string" && /\s/.test(char);
 }
@@ -75,21 +88,21 @@ export function scoreFileSearchMatch(filePath: string, query: string): number {
   let score = 0;
 
   if (baseName === normalizedQuery) {
-    score += 120_000;
+    score += SCORE_EXACT_BASE_NAME_MATCH;
   }
 
   if (baseName.startsWith(normalizedQuery)) {
-    score += 60_000 - baseName.length;
+    score += SCORE_STARTS_WITH_BASE_NAME - baseName.length;
   }
 
   const baseNameIndex = baseName.indexOf(normalizedQuery);
   if (baseNameIndex !== -1) {
-    score += 40_000 - (baseNameIndex * 200);
+    score += SCORE_BASE_NAME_CONTAINS - (baseNameIndex * 200);
   }
 
   const pathIndex = normalizedPath.indexOf(normalizedQuery);
   if (pathIndex !== -1) {
-    score += 20_000 - (pathIndex * 50);
+    score += SCORE_PATH_CONTAINS - (pathIndex * 50);
   }
 
   let lastMatchIndex = -1;
@@ -101,29 +114,29 @@ export function scoreFileSearchMatch(filePath: string, query: string): number {
       return Number.NEGATIVE_INFINITY;
     }
 
-    score += 1000;
+    score += SCORE_CHAR_MATCH;
 
     if (nextMatchIndex === lastMatchIndex + 1) {
       consecutiveMatches += 1;
-      score += consecutiveMatches * 350;
+      score += consecutiveMatches * SCORE_CONSECUTIVE_MATCH_BONUS;
     } else {
       consecutiveMatches = 0;
     }
 
     const previousChar = nextMatchIndex === 0 ? "/" : normalizedPath[nextMatchIndex - 1];
     if (PATH_SEPARATORS.has(previousChar)) {
-      score += 650;
+      score += SCORE_PATH_SEPARATOR_BONUS;
     }
 
     if (nextMatchIndex >= normalizedPath.length - baseName.length) {
-      score += 500;
+      score += SCORE_BASE_NAME_END_BONUS;
     }
 
     lastMatchIndex = nextMatchIndex;
   }
 
-  score -= normalizedPath.length * 8;
-  score -= getPathDepth(filePath) * 120;
+  score -= normalizedPath.length * SCORE_PATH_LENGTH_PENALTY;
+  score -= getPathDepth(filePath) * SCORE_DEPTH_PENALTY;
 
   return score;
 }
