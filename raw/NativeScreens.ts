@@ -35,6 +35,10 @@ type SelectionEntry =
 type KeyHandler = (input: string, key: readline.Key) => void;
 type ScreenTone = "heading" | "selected" | "normal";
 type ScreenLine = {text: string; tone?: ScreenTone};
+type TerminalState = {
+  rawModeBeforeStart: boolean;
+  stdinWasPaused: boolean;
+};
 
 const MIN_WIDTH = 40;
 const MIN_HEIGHT = 10;
@@ -178,20 +182,29 @@ class ScreenPainter {
   }
 }
 
-function cleanupTerminal(rawModeBeforeStart: boolean, keyHandler: KeyHandler, resizeHandler: () => void): void {
+function cleanupTerminal(terminalState: TerminalState, keyHandler: KeyHandler, resizeHandler: () => void): void {
   process.stdin.off("keypress", keyHandler);
   process.stdout.off("resize", resizeHandler);
-  if (process.stdin.isTTY && !rawModeBeforeStart) {
-    process.stdin.setRawMode(false);
+  if (process.stdin.isTTY) {
+    if (!terminalState.rawModeBeforeStart) {
+      process.stdin.setRawMode(false);
+    }
+    if (terminalState.stdinWasPaused) {
+      process.stdin.pause();
+    }
   }
   showCursor();
 }
 
-function setupTerminal(keyHandler: KeyHandler, resizeHandler: () => void): boolean {
+function setupTerminal(keyHandler: KeyHandler, resizeHandler: () => void): TerminalState {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    return false;
+    return {
+      rawModeBeforeStart: false,
+      stdinWasPaused: true,
+    };
   }
 
+  const stdinWasPaused = process.stdin.isPaused();
   readline.emitKeypressEvents(process.stdin);
   process.stdin.resume();
   const rawModeBeforeStart = process.stdin.isRaw;
@@ -199,7 +212,10 @@ function setupTerminal(keyHandler: KeyHandler, resizeHandler: () => void): boole
   process.stdin.on("keypress", keyHandler);
   process.stdout.on("resize", resizeHandler);
   hideCursor();
-  return rawModeBeforeStart;
+  return {
+    rawModeBeforeStart,
+    stdinWasPaused,
+  };
 }
 
 function applyTone(line: ScreenLine): string {
@@ -409,7 +425,7 @@ export async function runLoadingScreen(app: TokenRingApp, config: CLIConfig, sig
     }
   };
   const resizeHandler = () => render();
-  const rawModeBeforeStart = setupTerminal(keyHandler, resizeHandler);
+  const terminalState = setupTerminal(keyHandler, resizeHandler);
 
   try {
     render();
@@ -423,7 +439,7 @@ export async function runLoadingScreen(app: TokenRingApp, config: CLIConfig, sig
     }
   } finally {
     painter.clear();
-    cleanupTerminal(rawModeBeforeStart, keyHandler, resizeHandler);
+    cleanupTerminal(terminalState, keyHandler, resizeHandler);
   }
 }
 
@@ -455,7 +471,7 @@ export async function promptForAgentSelection(
       finished = true;
       signal.removeEventListener("abort", abortHandler);
       painter.clear();
-      cleanupTerminal(rawModeBeforeStart, keyHandler, resizeHandler);
+      cleanupTerminal(terminalState, keyHandler, resizeHandler);
       resolve(result);
     };
 
@@ -491,14 +507,14 @@ export async function promptForAgentSelection(
     };
 
     const resizeHandler = () => render();
-    const rawModeBeforeStart = setupTerminal(keyHandler, resizeHandler);
+    const terminalState = setupTerminal(keyHandler, resizeHandler);
 
     signal.addEventListener("abort", abortHandler, {once: true});
     try {
       render();
     } catch (error) {
       signal.removeEventListener("abort", abortHandler);
-      cleanupTerminal(rawModeBeforeStart, keyHandler, resizeHandler);
+      cleanupTerminal(terminalState, keyHandler, resizeHandler);
       reject(error);
     }
   });

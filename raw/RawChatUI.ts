@@ -496,6 +496,7 @@ export default class RawChatUI {
   private started = false;
   private suspended = false;
   private rawModeBeforeStart = false;
+  private stdinWasPaused = true;
   private footerSnapshot: FooterSnapshot = {
     lineCount: 0,
     lines: [],
@@ -603,6 +604,7 @@ export default class RawChatUI {
     if (!process.stdin.isTTY || !process.stdout.isTTY) return;
 
     this.rawModeBeforeStart = process.stdin.isRaw;
+    this.stdinWasPaused = process.stdin.isPaused();
     readline.emitKeypressEvents(process.stdin);
     process.stdin.resume();
     process.stdin.setRawMode(true);
@@ -623,6 +625,9 @@ export default class RawChatUI {
       process.stdin.off("keypress", this.keypressHandler);
       if (!this.rawModeBeforeStart) {
         process.stdin.setRawMode(false);
+      }
+      if (this.stdinWasPaused) {
+        process.stdin.pause();
       }
     }
     if (process.stdout.isTTY) {

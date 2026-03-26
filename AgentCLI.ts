@@ -6,7 +6,7 @@ import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
 import open from "open";
 import process from "node:process";
-import {setTimeout} from "node:timers/promises";
+import {setTimeout as delay} from "node:timers/promises";
 import {z} from "zod";
 import {type AgentSelectionResult} from "./AgentSelection.ts";
 import AgentLoop from "./AgentLoop";
@@ -35,7 +35,7 @@ export default class AgentCLI implements TokenRingService {
         this.loadingScreenTask = (async () => {
           const abortHandler = () => {
             this.loadingScreenAbortController.abort();
-            app.serviceError(this, "Loading screen aborted");
+            this.teardown()
           };
           appAbortSignal.addEventListener("abort", abortHandler);
 
@@ -78,8 +78,7 @@ export default class AgentCLI implements TokenRingService {
           }
         }
       } catch (error) {
-        process.stderr.write(formatLogMessages(["Error while spawning agent", error as Error]));
-        process.exit(1);
+        throw new Error(formatLogMessages(["Error while spawning agent", error as Error]));
       }
     }
 
@@ -98,7 +97,7 @@ export default class AgentCLI implements TokenRingService {
         await agentLoop.run(signal);
       } catch (error) {
         process.stderr.write(formatLogMessages(["Error while running agent loop", error as Error]));
-        await setTimeout(1000);
+        await delay(1000);
       }
       if (signal.aborted) break;
 
@@ -107,6 +106,18 @@ export default class AgentCLI implements TokenRingService {
 
     if (! signal.aborted) {
       this.app.shutdown("User initiated shutdown from CLI");
+    }
+
+    this.teardown();
+  }
+
+  private teardown() {
+    if (process.stdin.isTTY && process.stdin.isRaw) {
+      process.stdin.setRawMode(false);
+    }
+
+    if (!process.stdin.isPaused()) {
+      process.stdin.pause();
     }
   }
 
@@ -154,7 +165,7 @@ export default class AgentCLI implements TokenRingService {
       }
     } catch (error) {
       process.stderr.write(formatLogMessages(["Error selecting agent", error as Error]));
-      await setTimeout(1000);
+      await delay(1000);
       return "retry";
     }
   }
