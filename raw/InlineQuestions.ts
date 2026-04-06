@@ -399,6 +399,11 @@ class TreeQuestionSession implements InlineQuestionSession {
     const multiple = this.question.maximumSelections !== 1;
     const lines: string[] = [];
 
+    lines.push(QUESTION_COLOR(this.question.label));
+    if (this.question.description) {
+      lines.push(...flattenWrappedLines([this.question.description], layout.columns, TEXT_INDENT).map((line) => MUTED_COLOR(line)));
+    }
+
     for (let index = 0; index < visibleTree.length; index += 1) {
       const item = visibleTree[index];
       const actualIndex = this.scrollOffset + index;
@@ -988,8 +993,8 @@ class FormQuestionSession implements InlineQuestionSession {
     const child = this.currentSession.render(layout);
 
     const lines = [
-      QUESTION_COLOR(`${currentSection.name}  ${this.currentSectionIndex + 1}/${this.question.sections.length}`),
-      MUTED_COLOR(`Field ${this.currentFieldIndex + 1}/${fieldKeys.length}  ${currentFieldKey}`),
+      MUTED_COLOR(`Section ${this.currentSectionIndex + 1}/${this.question.sections.length}  ·  Field ${this.currentFieldIndex + 1}/${fieldKeys.length}  ${currentFieldKey}`),
+      QUESTION_COLOR(currentSection.name),
     ];
 
     if (currentSection.description) {

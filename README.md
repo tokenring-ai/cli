@@ -30,26 +30,27 @@ bun add @tokenring-ai/cli
 
 ### Runtime Dependencies
 
-- `@tokenring-ai/app` (0.2.0)
-- `@tokenring-ai/ai-client` (0.2.0)
-- `@tokenring-ai/chat` (0.2.0)
-- `@tokenring-ai/agent` (0.2.0)
-- `@tokenring-ai/utility` (0.2.0)
-- `@tokenring-ai/web-host` (0.2.0)
-- `@tokenring-ai/workflow` (0.2.0)
-- `@tokenring-ai/filesystem` (0.2.0)
-- `zod` (^4.3.6)
-- `chalk` (^5.6.2)
-- `open` (^11.0.0)
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `@tokenring-ai/app` | 0.2.0 | Base application framework |
+| `@tokenring-ai/ai-client` | 0.2.0 | AI model client integration |
+| `@tokenring-ai/chat` | 0.2.0 | Chat service integration |
+| `@tokenring-ai/agent` | 0.2.0 | Agent orchestration |
+| `@tokenring-ai/utility` | 0.2.0 | Shared utilities |
+| `@tokenring-ai/web-host` | 0.2.0 | Web hosting service |
+| `@tokenring-ai/workflow` | 0.2.0 | Workflow management |
+| `@tokenring-ai/filesystem` | 0.2.0 | File system operations |
+| `zod` | ^4.3.6 | Schema validation |
+| `chalk` | ^5.6.2 | Terminal styling |
+| `open` | ^11.0.0 | Open URLs in browser |
 
 ### Development Dependencies
 
-- `vitest` (^4.1.1)
-- `typescript` (^6.0.2)
-
-## Chat Commands
-
-Available commands in the agent CLI interface are dynamically loaded from the `AgentCommandService`. The CLI provides auto-completion for all registered commands when typing `/` in the chat input.
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `vitest` | ^4.1.1 | Testing framework |
+| `typescript` | ^6.0.2 | TypeScript compiler |
+```
 
 ## Core Components/API
 
@@ -376,26 +377,20 @@ app.addServices(new AgentCLI(app, {
 await app.start();
 ```
 
-## State Management
+## RPC Endpoints
 
-The CLI package manages the following state components through the agent system:
+The CLI package does not define RPC endpoints directly. It relies on the `@tokenring-ai/web-host` package for any web-based RPC communication.
 
-- **AgentEventCursor**: Tracks current position in the event stream
-- **AgentEventState**: Manages agent event history and rendering state
-- **AgentExecutionState**: Tracks agent execution status and active operations
-- **CommandHistoryState**: Manages input history for command completion
+## Chat Commands
 
-**State Integration:**
-```typescript
-// Access event state
-const eventState = agent.getState(AgentEventState);
+Available commands are dynamically loaded from the `AgentCommandService` registered in the application. The CLI provides auto-completion for all registered commands when typing `/` in the chat input.
 
-// Get events since last cursor position
-const events = eventState.yieldEventsByCursor(cursor);
+**Command Auto-completion:**
 
-// Update cursor after processing
-cursor = eventState.getEventCursorFromCurrentPosition();
-```
+- Type `/` to trigger command completion
+- Use Up/Down arrow keys or Ctrl+P/N to navigate suggestions
+- Press Tab or Enter to insert the selected command
+- Press Escape to dismiss the completion list
 
 ## Plugin Configuration
 
@@ -427,6 +422,50 @@ const config = {
 
 app.install(cliPlugin, config);
 await app.start();
+```
+
+## Integration
+
+### Integration with Agent System
+
+The CLI integrates with the agent system through:
+
+1. **Agent Selection**: Presents available agents from `AgentManager` service, including running agents, agent types, workflows, and web applications
+2. **Event Subscription**: Subscribes to `AgentEventState` for real-time event streaming and incremental rendering
+3. **Input Handling**: Sends user input via `agent.handleInput({ from: "CLI user", message })`
+4. **Question Responses**: Sends responses to agent questions via `agent.sendInteractionResponse({ requestId, interactionId, result })`
+5. **Command Integration**: Uses commands registered with `AgentCommandService` for auto-completion
+
+### Plugin Registration
+
+```typescript
+import cliPlugin from '@tokenring-ai/cli';
+
+app.install(cliPlugin, {
+  cli: {
+    chatBanner: 'TokenRing CLI',
+    loadingBannerNarrow: 'Loading...',
+    loadingBannerWide: 'Loading TokenRing CLI...',
+    loadingBannerCompact: 'Loading',
+    screenBanner: 'TokenRing CLI',
+    verbose: false,
+  },
+});
+```
+
+### Service Registration
+
+```typescript
+import AgentCLI from '@tokenring-ai/cli';
+
+app.addServices(new AgentCLI(app, {
+  chatBanner: 'TokenRing CLI',
+  loadingBannerNarrow: 'Loading...',
+  loadingBannerWide: 'Loading TokenRing CLI...',
+  loadingBannerCompact: 'Loading',
+  screenBanner: 'TokenRing CLI',
+  verbose: false,
+}));
 ```
 
 ## Usage Examples
@@ -523,19 +562,53 @@ console.log(chalk.hex(errorColor)('Error!'));
 
 ## Input Handling
 
-The CLI package handles interactive input through the `RawChatUI` class, which supports various agent interaction types:
+The CLI package handles interactive input through the `RawChatUI` class, which supports various agent interaction types.
 
 ### Question Types
 
 The CLI supports the following question types from agents:
 
-- **Text Input**: Multi-line text input with cursor navigation
-- **Tree Select**: Hierarchical tree selection for structured choices
-- **File Select**: File system browser for file/directory selection
-- **Form**: Multi-section forms combining multiple field types
-- **Followup**: Simple follow-up prompts for additional input
+| Type | Description | Interaction |
+|------|-------------|-------------|
+| **Text Input** | Multi-line text input with cursor navigation | Enter to submit, Esc to cancel |
+| **Tree Select** | Hierarchical tree selection for structured choices | Arrows to navigate, Space to toggle, Enter to submit |
+| **File Select** | File system browser for file/directory selection | Arrows to navigate, Space to expand/select, Enter to submit |
+| **Form** | Multi-section forms combining multiple field types | Navigate through fields, Enter to advance |
+| **Followup** | Simple follow-up prompts for additional input | Enter to submit, Alt+Enter for newline |
 
 All question handling is done inline in the terminal with responsive layout adaptation.
+
+### File Search
+
+The CLI provides workspace file search using the `@` syntax:
+
+```
+# Type @ followed by a search query to find files
+Write code for @utils/helper.ts
+```
+
+**File Search Features:**
+- Real-time indexing of workspace files
+- Scoring-based match ranking (exact matches, path depth, character sequences)
+- Navigation with Up/Down arrow keys or Ctrl+P/N
+- Insert selected path with Tab or Enter
+- Dismiss with Escape
+
+**File Search API:**
+
+```typescript
+import { getFileSearchMatches, scoreFileSearchMatch } from '@tokenring-ai/cli/raw/FileSearch';
+
+// Score a file path against a query
+const score = scoreFileSearchMatch('src/utils/helper.ts', 'helper');
+
+// Get top matches
+const matches = getFileSearchMatches(
+  ['src/utils/helper.ts', 'src/main.ts'],
+  'helper',
+  5  // limit
+);
+```
 
 ## Package Structure
 
@@ -586,51 +659,6 @@ pkg/cli/
 | `FileSearch.ts` | Workspace file search and @-syntax completion logic |
 | `CommandCompletions.ts` | Command completion context and utilities for slash commands |
 
-## Integration
-
-### Integration with Agent System
-
-The CLI integrates with the agent system through:
-
-1. **Agent Selection**: Presents available agents from `AgentManager` service, including running agents, agent types, workflows, and web applications
-2. **Event Subscription**: Subscribes to `AgentEventState` for real-time event streaming and incremental rendering
-3. **Input Handling**: Sends user input via `agent.handleInput({ from: "CLI user", message })`
-4. **Question Responses**: Sends responses to agent questions via `agent.sendInteractionResponse({ requestId, interactionId, result })`
-5. **Command Integration**: Uses commands registered with `AgentCommandService` for auto-completion
-
-### Plugin Registration
-
-```typescript
-import cliPlugin from '@tokenring-ai/cli';
-
-app.install(cliPlugin, {
-  cli: {
-    chatBanner: 'TokenRing CLI',
-    loadingBannerNarrow: 'Loading...',
-    loadingBannerWide: 'Loading TokenRing CLI...',
-    loadingBannerCompact: 'Loading',
-    screenBanner: 'TokenRing CLI',
-    verbose: false,
-  },
-});
-```
-
-### Service Registration
-
-```typescript
-import AgentCLI from '@tokenring-ai/cli';
-
-app.addServices(new AgentCLI(app, {
-  chatBanner: 'TokenRing CLI',
-  loadingBannerNarrow: 'Loading...',
-  loadingBannerWide: 'Loading TokenRing CLI...',
-  loadingBannerCompact: 'Loading',
-  screenBanner: 'TokenRing CLI',
-  verbose: false,
-}));
-```
-
-
 ## Best Practices
 
 ### Signal Handling
@@ -640,7 +668,6 @@ Always pass abort signals to long-running operations:
 ```typescript
 async function handleUserInput(signal: AbortSignal) {
   try {
-    // Perform operation with signal
     await someOperation({ signal });
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
@@ -686,30 +713,30 @@ const styledText = applyMarkdownStyles('# Heading\n- Item 1\n- Item 2');
 console.log(styledText);
 ```
 
-### File Search Syntax
-
-Use the `@` syntax for file path completion in the chat input:
-
-```
-# Type @ followed by a search query to find files
-Write code for @utils/helper.ts
-```
-
-The file search will:
-- Index all files in the workspace
-- Show matches as you type
-- Allow navigation with arrow keys
-- Insert the selected path with Tab or Enter
-
 ### Keyboard Shortcuts
 
 Familiarize yourself with the keyboard shortcuts for efficient interaction:
 
-- Use `Ctrl+C` to cancel current activity
-- Use `Alt+A` to switch agents
-- Use `Alt+V` to toggle verbose mode
-- Use `Tab` for command and file completion
-- Use `Ctrl+P/N` or arrow keys for history navigation
+**General:**
+- `Ctrl+C`: Cancel current activity or shut down idle agent
+- `Ctrl+L`: Clear and replay the screen
+- `Alt+A` / `F1`: Open agent selection screen
+
+**Model and Tools:**
+- `Alt+M` / `F3`: Open model selector
+- `Alt+T` / `F2`: Open tools selector
+- `Alt+V` / `F4`: Toggle verbose mode
+
+**Questions and Interactions:**
+- `Alt+Q` / `F6`: Toggle optional questions picker
+
+**Input Editing:**
+- `Tab`: Command completion or insert selected file search match
+- `Escape`: Cancel current activity or dismiss completion/search
+- `Ctrl+O` / `Meta+Enter` / `Shift+Enter`: Insert newline
+- `Ctrl+P` / `Up`: Browse command history (previous)
+- `Ctrl+N` / `Down`: Browse command history (next)
+- `PageUp` / `PageDown`: Page through completions
 
 ## Testing and Development
 
@@ -748,6 +775,17 @@ The package uses TypeScript with ES modules:
 }
 ```
 
+### Test Files
+
+The package includes comprehensive tests for core components:
+
+- `InputEditor.test.ts`: Tests for text editing operations
+- `FileSearch.test.ts`: Tests for file search scoring and matching
+- `CommandCompletions.test.ts`: Tests for command completion logic
+- `InlineQuestions.test.ts`: Tests for question handling
+- `RawChatUI.test.ts`: Tests for UI rendering
+
 ## License
 
 MIT License - see LICENSE file for details.
+```

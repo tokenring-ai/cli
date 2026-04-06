@@ -1,6 +1,6 @@
 {
   "name": "@tokenring-ai/cli",
-  "description": "TokenRing CLI",
+  "description": "Interactive CLI for TokenRing apps",
   "version": "0.2.0",
   "dependencies": {
     "@tokenring-ai/app": "0.2.0",
