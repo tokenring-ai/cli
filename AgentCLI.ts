@@ -2,16 +2,16 @@ import {AgentCommandService, AgentManager} from "@tokenring-ai/agent";
 import Agent from "@tokenring-ai/agent/Agent";
 import TokenRingApp from "@tokenring-ai/app";
 import {TokenRingService} from "@tokenring-ai/app/types";
-import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
-import open from "open";
+import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
 import process from "node:process";
 import {setTimeout as delay} from "node:timers/promises";
+import open from "open";
 import {z} from "zod";
-import {type AgentSelectionResult} from "./AgentSelection.ts";
 import AgentLoop from "./AgentLoop";
-import {retryAgentSelection, runLoadingScreen} from "./raw/NativeScreens.ts";
+import {type AgentSelectionResult} from "./AgentSelection.ts";
 import type {CommandDefinition} from "./raw/CommandCompletions.ts";
+import {retryAgentSelection, runLoadingScreen} from "./raw/NativeScreens.ts";
 import {CLIConfigSchema} from "./schema.ts";
 
 /**

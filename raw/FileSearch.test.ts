@@ -1,9 +1,4 @@
-import {
-  compareFilePathsForBrowsing,
-  findActiveFileSearchToken,
-  getFileSearchMatches,
-  replaceFileSearchToken,
-} from "./FileSearch.ts";
+import {compareFilePathsForBrowsing, findActiveFileSearchToken, getFileSearchMatches, replaceFileSearchToken,} from "./FileSearch.ts";
 
 describe("FileSearch", () => {
   it("finds the active @ token at the cursor", () => {

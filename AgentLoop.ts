@@ -1,14 +1,12 @@
 import Agent from "@tokenring-ai/agent/Agent";
-import {
-  AgentEventEnvelope,
-} from "@tokenring-ai/agent/AgentEvents";
+import {AgentEventEnvelope,} from "@tokenring-ai/agent/AgentEvents";
 import AgentManager from "@tokenring-ai/agent/services/AgentManager";
 import {AgentEventCursor, AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
 import process from "node:process";
 import type {z} from "zod";
-import RawChatUI from "./raw/RawChatUI.ts";
 import type {CommandDefinition} from "./raw/CommandCompletions.ts";
+import RawChatUI from "./raw/RawChatUI.ts";
 import type {CLIConfigSchema} from "./schema.ts";
 
 function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
