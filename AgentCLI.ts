@@ -1,18 +1,18 @@
 import {AgentCommandService, AgentManager} from "@tokenring-ai/agent";
-import Agent from "@tokenring-ai/agent/Agent";
-import TokenRingApp from "@tokenring-ai/app";
-import {TokenRingService} from "@tokenring-ai/app/types";
+import type Agent from "@tokenring-ai/agent/Agent";
+import type TokenRingApp from "@tokenring-ai/app";
+import type {TokenRingService} from "@tokenring-ai/app/types";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
 import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
 import process from "node:process";
 import {setTimeout as delay} from "node:timers/promises";
 import open from "open";
-import {z} from "zod";
+import type {z} from "zod";
 import AgentLoop from "./AgentLoop";
-import {type AgentSelectionResult} from "./AgentSelection.ts";
+import type {AgentSelectionResult} from "./AgentSelection.ts";
 import type {CommandDefinition} from "./raw/CommandCompletions.ts";
 import {retryAgentSelection, runLoadingScreen} from "./raw/NativeScreens.ts";
-import {CLIConfigSchema} from "./schema.ts";
+import type {CLIConfigSchema} from "./schema.ts";
 
 /**
  * AgentCLI is a command-line interface for interacting with an TokenRingApp.
@@ -29,19 +29,26 @@ export default class AgentCLI implements TokenRingService {
    * @param app The TokenRingApp instance to manage agents.
    * @param config The configuration for the CLI.
    */
-  constructor(readonly app: TokenRingApp, readonly config: z.infer<typeof CLIConfigSchema>) {
-    if (! this.config.startAgent) {
-      app.runBackgroundTask(this, async appAbortSignal => {
+  constructor(
+    readonly app: TokenRingApp,
+    readonly config: z.infer<typeof CLIConfigSchema>,
+  ) {
+    if (!this.config.startAgent) {
+      app.runBackgroundTask(this, async (appAbortSignal) => {
         this.loadingScreenTask = (async () => {
           const abortHandler = () => {
             this.loadingScreenAbortController.abort();
-            this.teardown()
+            this.teardown();
           };
           appAbortSignal.addEventListener("abort", abortHandler);
 
           try {
-            await runLoadingScreen(app, this.config, this.loadingScreenAbortController.signal);
-          } catch (err) {
+            await runLoadingScreen(
+              app,
+              this.config,
+              this.loadingScreenAbortController.signal,
+            );
+          } catch {
           } finally {
             appAbortSignal.removeEventListener("abort", abortHandler);
           }
@@ -58,32 +65,38 @@ export default class AgentCLI implements TokenRingService {
 
   async run(signal: AbortSignal): Promise<void> {
     this.loadingScreenAbortController.abort();
-    await this.loadingScreenTask?.catch(() => {});
+    await this.loadingScreenTask?.catch(() => {
+    });
 
     let initialAgent: Agent | undefined;
     if (this.config.startAgent) {
       try {
         const agentManager = this.app.requireService(AgentManager);
-        initialAgent = await agentManager.spawnAgent({agentType: this.config.startAgent.type, headless: true});
+        initialAgent = await agentManager.spawnAgent({
+          agentType: this.config.startAgent.type,
+          headless: true,
+        });
         if (this.config.startAgent.prompt) {
           initialAgent.handleInput({
             from: "CLI startup prompt",
-            message: this.config.startAgent.prompt
+            message: this.config.startAgent.prompt,
           });
           if (this.config.startAgent?.shutdownWhenDone) {
             initialAgent.handleInput({
               from: "CLI startup prompt",
-              message: "/agent shutdown"
+              message: "/agent shutdown",
             });
           }
         }
       } catch (error) {
-        throw new Error(formatLogMessages(["Error while spawning agent", error as Error]));
+        throw new Error(
+          formatLogMessages(["Error while spawning agent", error as Error]),
+        );
       }
     }
 
     for (
-      let agent = initialAgent ?? await this.promptForAgent(signal);
+      let agent = initialAgent ?? (await this.promptForAgent(signal));
       agent;
       agent = await this.promptForAgent(signal)
     ) {
@@ -91,12 +104,14 @@ export default class AgentCLI implements TokenRingService {
       try {
         const agentLoop = new AgentLoop(agent, {
           availableCommands: this.getAvailableCommands(),
-          config: this.config
+          config: this.config,
         });
 
         await agentLoop.run(signal);
       } catch (error) {
-        process.stderr.write(formatLogMessages(["Error while running agent loop", error as Error]));
+        process.stderr.write(
+          formatLogMessages(["Error while running agent loop", error as Error]),
+        );
         await delay(1000);
       }
       if (signal.aborted) break;
@@ -104,7 +119,7 @@ export default class AgentCLI implements TokenRingService {
       if (this.config.startAgent?.shutdownWhenDone) break;
     }
 
-    if (! signal.aborted) {
+    if (!signal.aborted) {
       this.app.shutdown("User initiated shutdown from CLI");
     }
 
@@ -133,16 +148,20 @@ export default class AgentCLI implements TokenRingService {
       });
     }
 
-    return Array.from(uniqueCommands.values()).sort((left, right) => left.name.localeCompare(right.name));
+    return Array.from(uniqueCommands.values()).sort((left, right) =>
+      left.name.localeCompare(right.name),
+    );
   }
 
-  private async promptForAgent(
-    signal: AbortSignal,
-  ): Promise<Agent | null> {
-    return retryAgentSelection(this.app, this.config, signal, selection => this.resolveAgentSelection(selection));
+  private promptForAgent(signal: AbortSignal): Promise<Agent | null> {
+    return retryAgentSelection(this.app, this.config, signal, (selection) =>
+      this.resolveAgentSelection(selection),
+    );
   }
 
-  private async resolveAgentSelection(selection: AgentSelectionResult | null): Promise<Agent | "retry" | null> {
+  private async resolveAgentSelection(
+    selection: AgentSelectionResult | null,
+  ): Promise<Agent | "retry" | null> {
     if (!selection) {
       return null;
     }
@@ -152,7 +171,10 @@ export default class AgentCLI implements TokenRingService {
 
       switch (selection.type) {
         case "spawn":
-          return await agentManager.spawnAgent({agentType: selection.agentType, headless: false});
+          return await agentManager.spawnAgent({
+            agentType: selection.agentType,
+            headless: false,
+          });
         case "connect":
           return agentManager.getAgent(selection.agentId);
         case "open":
@@ -160,11 +182,15 @@ export default class AgentCLI implements TokenRingService {
           return "retry";
         case "workflow": {
           const workflowService = this.app.requireService(WorkflowService);
-          return await workflowService.spawnWorkflow(selection.workflowKey, {headless: false});
+          return await workflowService.spawnWorkflow(selection.workflowKey, {
+            headless: false,
+          });
         }
       }
     } catch (error) {
-      process.stderr.write(formatLogMessages(["Error selecting agent", error as Error]));
+      process.stderr.write(
+        formatLogMessages(["Error selecting agent", error as Error]),
+      );
       await delay(1000);
       return "retry";
     }

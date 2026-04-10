@@ -35,7 +35,8 @@ export default class InputEditor {
   insert(text: string): void {
     if (text.length === 0) return;
 
-    this.buffer = this.buffer.slice(0, this.cursor) + text + this.buffer.slice(this.cursor);
+    this.buffer =
+      this.buffer.slice(0, this.cursor) + text + this.buffer.slice(this.cursor);
     this.cursor += text.length;
     this.preferredColumn = null;
   }
@@ -47,7 +48,8 @@ export default class InputEditor {
   backspace(): void {
     if (this.cursor === 0) return;
 
-    this.buffer = this.buffer.slice(0, this.cursor - 1) + this.buffer.slice(this.cursor);
+    this.buffer =
+      this.buffer.slice(0, this.cursor - 1) + this.buffer.slice(this.cursor);
     this.cursor -= 1;
     this.preferredColumn = null;
   }
@@ -55,7 +57,8 @@ export default class InputEditor {
   deleteForward(): void {
     if (this.cursor >= this.buffer.length) return;
 
-    this.buffer = this.buffer.slice(0, this.cursor) + this.buffer.slice(this.cursor + 1);
+    this.buffer =
+      this.buffer.slice(0, this.cursor) + this.buffer.slice(this.cursor + 1);
     this.preferredColumn = null;
   }
 
@@ -79,7 +82,8 @@ export default class InputEditor {
     const {lineStart} = this.getCursorLocation();
     if (lineStart === this.cursor) return;
 
-    this.buffer = this.buffer.slice(0, lineStart) + this.buffer.slice(this.cursor);
+    this.buffer =
+      this.buffer.slice(0, lineStart) + this.buffer.slice(this.cursor);
     this.cursor = lineStart;
     this.preferredColumn = null;
   }
@@ -88,7 +92,8 @@ export default class InputEditor {
     const {lineEnd} = this.getCursorLocation();
     if (lineEnd === this.cursor) return;
 
-    this.buffer = this.buffer.slice(0, this.cursor) + this.buffer.slice(lineEnd);
+    this.buffer =
+      this.buffer.slice(0, this.cursor) + this.buffer.slice(lineEnd);
     this.preferredColumn = null;
   }
 
@@ -125,10 +130,16 @@ export default class InputEditor {
     if (this.cursor >= this.buffer.length) return;
 
     let nextCursor = this.cursor;
-    while (nextCursor < this.buffer.length && /\s/.test(this.buffer[nextCursor] ?? "")) {
+    while (
+      nextCursor < this.buffer.length &&
+      /\s/.test(this.buffer[nextCursor] ?? "")
+      ) {
       nextCursor += 1;
     }
-    while (nextCursor < this.buffer.length && !/\s/.test(this.buffer[nextCursor] ?? "")) {
+    while (
+      nextCursor < this.buffer.length &&
+      !/\s/.test(this.buffer[nextCursor] ?? "")
+      ) {
       nextCursor += 1;
     }
 
@@ -155,7 +166,11 @@ export default class InputEditor {
 
     const preferredColumn = this.preferredColumn ?? column;
     const targetLine = lines[lineIndex - 1];
-    this.cursor = clamp(targetLine.start + preferredColumn, targetLine.start, targetLine.end);
+    this.cursor = clamp(
+      targetLine.start + preferredColumn,
+      targetLine.start,
+      targetLine.end,
+    );
     this.preferredColumn = preferredColumn;
   }
 
@@ -166,7 +181,11 @@ export default class InputEditor {
 
     const preferredColumn = this.preferredColumn ?? column;
     const targetLine = lines[lineIndex + 1];
-    this.cursor = clamp(targetLine.start + preferredColumn, targetLine.start, targetLine.end);
+    this.cursor = clamp(
+      targetLine.start + preferredColumn,
+      targetLine.start,
+      targetLine.end,
+    );
     this.preferredColumn = preferredColumn;
   }
 

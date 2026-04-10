@@ -1,12 +1,12 @@
-import {TokenRingPlugin} from "@tokenring-ai/app";
+import type {TokenRingPlugin} from "@tokenring-ai/app";
 import {z} from "zod";
 import AgentCLI from "./AgentCLI.ts";
 
-import packageJSON from './package.json' with {type: 'json'};
+import packageJSON from "./package.json" with {type: "json"};
 import {CLIConfigSchema} from "./schema.ts";
 
 const packageConfigSchema = z.object({
-  cli: CLIConfigSchema.optional()
+  cli: CLIConfigSchema.optional(),
 });
 
 export default {
@@ -19,5 +19,5 @@ export default {
       app.addServices(new AgentCLI(app, config.cli));
     }
   },
-  config: packageConfigSchema
+  config: packageConfigSchema,
 } satisfies TokenRingPlugin<typeof packageConfigSchema>;

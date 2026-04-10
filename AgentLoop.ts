@@ -1,7 +1,7 @@
-import Agent from "@tokenring-ai/agent/Agent";
-import {AgentEventEnvelope,} from "@tokenring-ai/agent/AgentEvents";
+import type Agent from "@tokenring-ai/agent/Agent";
+import type {AgentEventEnvelope} from "@tokenring-ai/agent/AgentEvents";
 import AgentManager from "@tokenring-ai/agent/services/AgentManager";
-import {AgentEventCursor, AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
+import {type AgentEventCursor, AgentEventState,} from "@tokenring-ai/agent/state/agentEventState";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
 import process from "node:process";
 import type {z} from "zod";
@@ -43,7 +43,8 @@ export default class AgentLoop {
   constructor(
     readonly agent: Agent,
     readonly options: AgentLoopOptions,
-  ) {}
+  ) {
+  }
 
   async run(externalSignal: AbortSignal): Promise<void> {
     this.abort = new AbortController();
@@ -74,7 +75,8 @@ export default class AgentLoop {
         this.exitAction = "delete-agent";
         this.shutdown();
       },
-      onAbortCurrentActivity: () => this.agent.abortCurrentOperation("Cancelled from CLI"),
+      onAbortCurrentActivity: () =>
+        this.agent.abortCurrentOperation("Cancelled from CLI"),
     });
 
     for (const event of initialState.events) {
@@ -91,7 +93,9 @@ export default class AgentLoop {
       if (error instanceof DOMException && error.name === "AbortError") {
       } else if (error instanceof Error && error.name === "AbortError") {
       } else {
-        process.stderr.write(formatLogMessages(["Error while running agent loop", error as Error]));
+        process.stderr.write(
+          formatLogMessages(["Error while running agent loop", error as Error]),
+        );
       }
     } finally {
       this.ui?.stop();
@@ -114,9 +118,17 @@ export default class AgentLoop {
   private async deleteCurrentAgent(): Promise<void> {
     try {
       const agentManager = this.agent.app.requireService(AgentManager);
-      await agentManager.deleteAgent(this.agent.id, "Agent was shut down from the CLI");
+      await agentManager.deleteAgent(
+        this.agent.id,
+        "Agent was shut down from the CLI",
+      );
     } catch (error) {
-      process.stderr.write(formatLogMessages(["Error while deleting agent from CLI", error as Error]));
+      process.stderr.write(
+        formatLogMessages([
+          "Error while deleting agent from CLI",
+          error as Error,
+        ]),
+      );
     }
   }
 

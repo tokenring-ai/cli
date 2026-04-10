@@ -1,5 +1,5 @@
-import Agent from "@tokenring-ai/agent/Agent";
-import {type AgentEventEnvelope, type ParsedInteractionRequest,} from "@tokenring-ai/agent/AgentEvents";
+import type Agent from "@tokenring-ai/agent/Agent";
+import type {AgentEventEnvelope, ParsedInteractionRequest,} from "@tokenring-ai/agent/AgentEvents";
 import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
 import {ChatModelRegistry} from "@tokenring-ai/ai-client/ModelRegistry";
@@ -12,11 +12,12 @@ import {brailleSpinner} from "@tokenring-ai/utility/string/brailleSpinner";
 import {truncateVisible} from "@tokenring-ai/utility/string/truncateVisible";
 import {visibleLength} from "@tokenring-ai/utility/string/visibleLength";
 import {wrapPlainText} from "@tokenring-ai/utility/string/wrapPlainText";
+import type {MaybePromise} from "bun";
 import chalk from "chalk";
 import process from "node:process";
 import readline from "node:readline";
 import type {z} from "zod";
-import {CLIConfigSchema} from "../schema.ts";
+import type {CLIConfigSchema} from "../schema.ts";
 import {theme} from "../theme.ts";
 import applyMarkdownStyles from "../utility/applyMarkdownStyles.ts";
 import {type CommandDefinition, getCommandCompletionContext,} from "./CommandCompletions.ts";
@@ -72,7 +73,9 @@ type FileSearchState = {
 
 type FlashMessage = {
   text: string;
-  tone: Exclude<TranscriptTone, "chat" | "reasoning" | "input" | "muted"> | "muted";
+  tone:
+    | Exclude<TranscriptTone, "chat" | "reasoning" | "input" | "muted">
+    | "muted";
   expiresAt: number;
 };
 
@@ -86,19 +89,19 @@ type FooterSnapshot = {
 
 type TranscriptDelta =
   | {
-    kind: "none";
-  }
+  kind: "none";
+}
   | {
-    kind: "append";
-    text: string;
-    footerNeedsLeadingNewline: boolean;
-  }
+  kind: "append";
+  text: string;
+  footerNeedsLeadingNewline: boolean;
+}
   | {
-    kind: "rewriteStreamTail";
-    footerNeedsLeadingNewline: boolean;
-    blockTopOffsetFromFooterTop: number;
-    previousLines: string[];
-  };
+  kind: "rewriteStreamTail";
+  footerNeedsLeadingNewline: boolean;
+  blockTopOffsetFromFooterTop: number;
+  previousLines: string[];
+};
 
 type ActiveVisibleStream = {
   type: "output.chat" | "output.reasoning";
@@ -108,8 +111,14 @@ type ActiveVisibleStream = {
   screenLineCount: number;
 };
 
-type FollowupInteraction = Extract<ParsedInteractionRequest, {type: "followup"}>;
-type QuestionInteraction = Extract<ParsedInteractionRequest, {type: "question"}>;
+type FollowupInteraction = Extract<
+  ParsedInteractionRequest,
+  { type: "followup" }
+>;
+type QuestionInteraction = Extract<
+  ParsedInteractionRequest,
+  { type: "question" }
+>;
 
 const TONE_COLORS: Record<TranscriptTone, (text: string) => string> = {
   chat: chalk.hex(theme.chatOutputText),
@@ -138,7 +147,6 @@ const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";
 const ANSI_SGR_PATTERN = /\x1b\[([0-9;]*)m/g;
 
-
 function trimBoundaryNewlines(text: string): string {
   return text.replace(/^\n+|\n+$/g, "");
 }
@@ -159,7 +167,8 @@ function formatPercentLeft(value: number | null): string {
 function formatCompactNumber(value: number | null, suffix = ""): string {
   if (value === null) return `--${suffix}`;
   if (value < 1000) return `${value}${suffix}`;
-  if (value < 1_000_000) return `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1).replace(/\.0$/, "")}k${suffix}`;
+  if (value < 1_000_000)
+    return `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1).replace(/\.0$/, "")}k${suffix}`;
   return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}m${suffix}`;
 }
 
@@ -178,7 +187,11 @@ function formatTimer(timestamp: number): string {
   return `auto ${seconds}s`;
 }
 
-function flattenWrappedLines(lines: string[], width: number, prefix = ""): string[] {
+function flattenWrappedLines(
+  lines: string[],
+  width: number,
+  prefix = "",
+): string[] {
   const result: string[] = [];
   const innerWidth = Math.max(1, width - visibleLength(prefix));
 
@@ -234,7 +247,11 @@ function renderEditor(
   }
 
   const visibleCount = clamp(lines.length, 1, Math.max(1, maxContentLines));
-  const windowStart = clamp(cursorRow - visibleCount + 1, 0, Math.max(0, lines.length - visibleCount));
+  const windowStart = clamp(
+    cursorRow - visibleCount + 1,
+    0,
+    Math.max(0, lines.length - visibleCount),
+  );
   const visibleLines = lines.slice(windowStart, windowStart + visibleCount);
 
   return {
@@ -256,7 +273,10 @@ function countWrappedRows(line: string, columns: number): number {
 
 function countScreenRows(lines: string[] | undefined, columns: number): number {
   if (!lines || lines.length === 0) return 0;
-  return lines.reduce((total, line) => total + countWrappedRows(line, columns), 0);
+  return lines.reduce(
+    (total, line) => total + countWrappedRows(line, columns),
+    0,
+  );
 }
 
 type AnsiWrapState = {
@@ -290,15 +310,17 @@ function cloneAnsiWrapState(state: AnsiWrapState): AnsiWrapState {
 }
 
 function hasAnsiWrapState(state: AnsiWrapState): boolean {
-  return state.bold
-    || state.dim
-    || state.italic
-    || state.underline
-    || state.inverse
-    || state.hidden
-    || state.strikethrough
-    || state.foreground !== null
-    || state.background !== null;
+  return (
+    state.bold ||
+    state.dim ||
+    state.italic ||
+    state.underline ||
+    state.inverse ||
+    state.hidden ||
+    state.strikethrough ||
+    state.foreground !== null ||
+    state.background !== null
+  );
 }
 
 function serializeAnsiWrapState(state: AnsiWrapState): string {
@@ -316,7 +338,10 @@ function serializeAnsiWrapState(state: AnsiWrapState): string {
 }
 
 function applyAnsiSgrSequence(state: AnsiWrapState, paramsText: string): void {
-  const params = paramsText.length === 0 ? [0] : paramsText.split(";").map((part) => Number.parseInt(part, 10) || 0);
+  const params =
+    paramsText.length === 0
+      ? [0]
+      : paramsText.split(";").map((part) => Number.parseInt(part, 10) || 0);
 
   for (let index = 0; index < params.length; index += 1) {
     const code = params[index];
@@ -438,7 +463,8 @@ function wrapAnsiStyledLine(text: string, width: number): string[] {
     textIndex += character.length;
 
     if (visibleCount >= width && textIndex < text.length) {
-      const nextPrefix = "   " + serializeAnsiWrapState(cloneAnsiWrapState(state));
+      const nextPrefix =
+        "   " + serializeAnsiWrapState(cloneAnsiWrapState(state));
       wrapped.push(`${current}${hasAnsiWrapState(state) ? "\x1b[0m" : ""}`);
       current = nextPrefix;
       visibleCount = 0;
@@ -453,7 +479,10 @@ function getOutputWrapWidth(columns: number): number {
   return Math.max(1, Math.min(150, columns - 3));
 }
 
-function findFirstDifferentLineIndex(previousLines: string[], nextLines: string[]): number {
+function findFirstDifferentLineIndex(
+  previousLines: string[],
+  nextLines: string[],
+): number {
   const sharedLength = Math.min(previousLines.length, nextLines.length);
   for (let index = 0; index < sharedLength; index += 1) {
     if (previousLines[index] !== nextLines[index]) {
@@ -481,7 +510,10 @@ export default class RawChatUI {
   private readonly options: RawChatUIOptions;
 
   private entryId = 0;
-  private activeTranscriptStream: {type: "output.chat" | "output.reasoning"; entry: TranscriptEntry} | null = null;
+  private activeTranscriptStream: {
+    type: "output.chat" | "output.reasoning";
+    entry: TranscriptEntry;
+  } | null = null;
   private activeVisibleStream: ActiveVisibleStream | null = null;
   private pendingSeparatorBeforeNextVisibleEntry = false;
   private completionState: CompletionState | null = null;
@@ -591,7 +623,11 @@ export default class RawChatUI {
     this.render();
   }
 
-  flash(text: string, tone: FlashMessage["tone"] = "info", durationMs = 2400): void {
+  flash(
+    text: string,
+    tone: FlashMessage["tone"] = "info",
+    durationMs = 2400,
+  ): void {
     this.flashMessage = {
       text,
       tone,
@@ -784,7 +820,10 @@ export default class RawChatUI {
     }
   }
 
-  private handleChatComposerKeypress(input: string, key: readline.Key): boolean {
+  private handleChatComposerKeypress(
+    input: string,
+    key: readline.Key,
+  ): boolean {
     if (this.fileSearchState) {
       if (key.name === "escape") {
         this.dismissFileSearch();
@@ -848,7 +887,10 @@ export default class RawChatUI {
       return true;
     }
 
-    if ((key.meta && key.name === "return") || (key.shift && key.name === "return")) {
+    if (
+      (key.meta && key.name === "return") ||
+      (key.shift && key.name === "return")
+    ) {
       this.chatEditor.insertNewline();
       this.afterChatEdit();
       return true;
@@ -927,7 +969,10 @@ export default class RawChatUI {
       return true;
     }
 
-    if ((key.meta && key.name === "return") || (key.shift && key.name === "return")) {
+    if (
+      (key.meta && key.name === "return") ||
+      (key.shift && key.name === "return")
+    ) {
       editor.insertNewline();
       return true;
     }
@@ -964,19 +1009,35 @@ export default class RawChatUI {
       return true;
     }
     if (key.name === "up") {
-      this.optionalQuestionIndex = clamp(this.optionalQuestionIndex - 1, 0, optionalQuestions.length - 1);
+      this.optionalQuestionIndex = clamp(
+        this.optionalQuestionIndex - 1,
+        0,
+        optionalQuestions.length - 1,
+      );
       return true;
     }
     if (key.name === "down") {
-      this.optionalQuestionIndex = clamp(this.optionalQuestionIndex + 1, 0, optionalQuestions.length - 1);
+      this.optionalQuestionIndex = clamp(
+        this.optionalQuestionIndex + 1,
+        0,
+        optionalQuestions.length - 1,
+      );
       return true;
     }
     if (key.name === "pageup") {
-      this.optionalQuestionIndex = clamp(this.optionalQuestionIndex - 8, 0, optionalQuestions.length - 1);
+      this.optionalQuestionIndex = clamp(
+        this.optionalQuestionIndex - 8,
+        0,
+        optionalQuestions.length - 1,
+      );
       return true;
     }
     if (key.name === "pagedown") {
-      this.optionalQuestionIndex = clamp(this.optionalQuestionIndex + 8, 0, optionalQuestions.length - 1);
+      this.optionalQuestionIndex = clamp(
+        this.optionalQuestionIndex + 8,
+        0,
+        optionalQuestions.length - 1,
+      );
       return true;
     }
     if (key.name === "return") {
@@ -991,7 +1052,11 @@ export default class RawChatUI {
     return false;
   }
 
-  private applyEditorKeypress(editor: InputEditor, input: string, key: InlineKeypress): boolean {
+  private applyEditorKeypress(
+    editor: InputEditor,
+    input: string,
+    key: InlineKeypress,
+  ): boolean {
     if (key.ctrl && key.name === "a") {
       editor.moveHome();
       return true;
@@ -1077,14 +1142,19 @@ export default class RawChatUI {
       this.optionalPickerOpen = !this.optionalPickerOpen;
     }
 
-    this.optionalQuestionIndex = clamp(this.optionalQuestionIndex, 0, optionalQuestions.length - 1);
+    this.optionalQuestionIndex = clamp(
+      this.optionalQuestionIndex,
+      0,
+      optionalQuestions.length - 1,
+    );
     this.render();
   }
 
   private insertSelectedCommandCompletion(): boolean {
     if (!this.completionState) return false;
 
-    const selectedCommand = this.completionState.matches[this.completionState.selectedIndex];
+    const selectedCommand =
+      this.completionState.matches[this.completionState.selectedIndex];
     if (!selectedCommand) {
       this.flash("No matching command.", "warning");
       return true;
@@ -1114,12 +1184,19 @@ export default class RawChatUI {
     return true;
   }
 
-  private applyCompletion(start: number, end: number, replacement: string): void {
+  private applyCompletion(
+    start: number,
+    end: number,
+    replacement: string,
+  ): void {
     const text = this.chatEditor.getText();
     const prefix = text.slice(0, start);
     const suffix = text.slice(end);
 
-    this.chatEditor.setText(`${prefix}/${replacement}${suffix}`, prefix.length + replacement.length + 1);
+    this.chatEditor.setText(
+      `${prefix}/${replacement}${suffix}`,
+      prefix.length + replacement.length + 1,
+    );
     this.historyIndex = null;
     this.historyDraft = "";
     this.dismissedCompletionSignature = null;
@@ -1169,7 +1246,10 @@ export default class RawChatUI {
     this.afterChatEdit();
   }
 
-  private triggerShortcutCommand(commandName: string, flashMessage: string): void {
+  private triggerShortcutCommand(
+    commandName: string,
+    flashMessage: string,
+  ): void {
     if (!this.hasCommand(commandName)) {
       this.flash(`/${commandName} is not available.`, "warning");
       return;
@@ -1182,7 +1262,9 @@ export default class RawChatUI {
   }
 
   private hasCommand(commandName: string): boolean {
-    return this.options.commands.some((command) => command.name === commandName);
+    return this.options.commands.some(
+      (command) => command.name === commandName,
+    );
   }
 
   private afterChatEdit(): void {
@@ -1206,7 +1288,10 @@ export default class RawChatUI {
     }
 
     const signature = this.getCommandCompletionSignature(context);
-    if (this.dismissedCompletionSignature && this.dismissedCompletionSignature !== signature) {
+    if (
+      this.dismissedCompletionSignature &&
+      this.dismissedCompletionSignature !== signature
+    ) {
       this.dismissedCompletionSignature = null;
     }
 
@@ -1215,19 +1300,31 @@ export default class RawChatUI {
       return;
     }
 
-    const previousSelection = this.completionState?.matches[this.completionState.selectedIndex]?.name ?? null;
+    const previousSelection =
+      this.completionState?.matches[this.completionState.selectedIndex]?.name ??
+      null;
     let selectedIndex = 0;
 
     if (context.matches.length > 0) {
       if (previousSelection) {
-        const nextIndex = context.matches.findIndex((command) => command.name === previousSelection);
+        const nextIndex = context.matches.findIndex(
+          (command) => command.name === previousSelection,
+        );
         if (nextIndex !== -1) {
           selectedIndex = nextIndex;
         } else if (this.completionState?.sourceQuery === context.query) {
-          selectedIndex = clamp(this.completionState.selectedIndex, 0, context.matches.length - 1);
+          selectedIndex = clamp(
+            this.completionState.selectedIndex,
+            0,
+            context.matches.length - 1,
+          );
         }
       } else if (this.completionState?.sourceQuery === context.query) {
-        selectedIndex = clamp(this.completionState.selectedIndex, 0, context.matches.length - 1);
+        selectedIndex = clamp(
+          this.completionState.selectedIndex,
+          0,
+          context.matches.length - 1,
+        );
       }
     }
 
@@ -1240,15 +1337,13 @@ export default class RawChatUI {
     };
   }
 
-  private getCommandCompletionSignature(
-    context: {
-      replacementStart: number;
-      replacementEnd: number;
-      sourceQuery?: string;
-      query?: string;
-      matches: CommandDefinition[];
-    },
-  ): string {
+  private getCommandCompletionSignature(context: {
+    replacementStart: number;
+    replacementEnd: number;
+    sourceQuery?: string;
+    query?: string;
+    matches: CommandDefinition[];
+  }): string {
     const sourceQuery = context.sourceQuery ?? context.query ?? "";
     return `${context.replacementStart}:${context.replacementEnd}:${sourceQuery}:${context.matches.map((command) => command.name).join(",")}`;
   }
@@ -1256,12 +1351,17 @@ export default class RawChatUI {
   private dismissCommandCompletion(): void {
     if (!this.completionState) return;
 
-    this.dismissedCompletionSignature = this.getCommandCompletionSignature(this.completionState);
+    this.dismissedCompletionSignature = this.getCommandCompletionSignature(
+      this.completionState,
+    );
     this.completionState = null;
   }
 
   private syncChatFileSearchState(): void {
-    const token = findActiveFileSearchToken(this.chatEditor.getText(), this.chatEditor.getCursor());
+    const token = findActiveFileSearchToken(
+      this.chatEditor.getText(),
+      this.chatEditor.getCursor(),
+    );
 
     if (!token) {
       this.fileSearchState = null;
@@ -1270,7 +1370,10 @@ export default class RawChatUI {
     }
 
     const tokenSignature = this.getFileSearchTokenSignature(token);
-    if (this.dismissedFileSearchSignature && this.dismissedFileSearchSignature !== tokenSignature) {
+    if (
+      this.dismissedFileSearchSignature &&
+      this.dismissedFileSearchSignature !== tokenSignature
+    ) {
       this.dismissedFileSearchSignature = null;
     }
 
@@ -1279,7 +1382,8 @@ export default class RawChatUI {
       return;
     }
 
-    const previousSelection = this.fileSearchState?.matches[this.fileSearchState.selectedIndex] ?? null;
+    const previousSelection =
+      this.fileSearchState?.matches[this.fileSearchState.selectedIndex] ?? null;
     const matches = this.workspaceFiles
       ? getFileSearchMatches(this.workspaceFiles, token.query, 48)
       : [];
@@ -1291,10 +1395,18 @@ export default class RawChatUI {
         if (nextIndex !== -1) {
           selectedIndex = nextIndex;
         } else if (this.fileSearchState?.token.query === token.query) {
-          selectedIndex = clamp(this.fileSearchState.selectedIndex, 0, matches.length - 1);
+          selectedIndex = clamp(
+            this.fileSearchState.selectedIndex,
+            0,
+            matches.length - 1,
+          );
         }
       } else if (this.fileSearchState?.token.query === token.query) {
-        selectedIndex = clamp(this.fileSearchState.selectedIndex, 0, matches.length - 1);
+        selectedIndex = clamp(
+          this.fileSearchState.selectedIndex,
+          0,
+          matches.length - 1,
+        );
       }
     }
 
@@ -1318,7 +1430,9 @@ export default class RawChatUI {
   private dismissFileSearch(): void {
     if (!this.fileSearchState) return;
 
-    this.dismissedFileSearchSignature = this.getFileSearchTokenSignature(this.fileSearchState.token);
+    this.dismissedFileSearchSignature = this.getFileSearchTokenSignature(
+      this.fileSearchState.token,
+    );
     this.fileSearchState = null;
   }
 
@@ -1351,7 +1465,8 @@ export default class RawChatUI {
       return true;
     }
 
-    const selectedPath = this.fileSearchState.matches[this.fileSearchState.selectedIndex];
+    const selectedPath =
+      this.fileSearchState.matches[this.fileSearchState.selectedIndex];
     if (!selectedPath) {
       this.flash("No matching files.", "muted");
       return true;
@@ -1369,7 +1484,7 @@ export default class RawChatUI {
     return true;
   }
 
-  private async loadWorkspaceFiles(): Promise<void> {
+  private loadWorkspaceFiles(): MaybePromise<void> {
     if (this.workspaceFilesPromise) {
       return this.workspaceFilesPromise;
     }
@@ -1385,13 +1500,20 @@ export default class RawChatUI {
     this.workspaceFilesLoadError = null;
     this.workspaceFilesPromise = (async () => {
       try {
-        const files = await fileSystem.glob("**/*", {includeDirectories: false}, this.options.agent);
-        this.workspaceFiles = Array.from(new Set(files)).sort(compareFilePathsForBrowsing);
+        const files = await fileSystem.glob(
+          "**/*",
+          {includeDirectories: false},
+          this.options.agent,
+        );
+        this.workspaceFiles = Array.from(new Set(files)).sort(
+          compareFilePathsForBrowsing,
+        );
       } catch (error) {
         this.workspaceFiles = null;
-        this.workspaceFilesLoadError = error instanceof Error
-          ? `Workspace file search failed: ${error.message}`
-          : "Workspace file search failed.";
+        this.workspaceFilesLoadError =
+          error instanceof Error
+            ? `Workspace file search failed: ${error.message}`
+            : "Workspace file search failed.";
       } finally {
         this.workspaceFilesPromise = null;
         this.syncChatFileSearchState();
@@ -1423,11 +1545,21 @@ export default class RawChatUI {
         break;
 
       case "output.chat":
-        this.appendTranscriptStream("output.chat", "Assistant", event.message, "chat");
+        this.appendTranscriptStream(
+          "output.chat",
+          "Assistant",
+          event.message,
+          "chat",
+        );
         break;
 
       case "output.reasoning":
-        this.appendTranscriptStream("output.reasoning", "Reasoning", event.message, "reasoning");
+        this.appendTranscriptStream(
+          "output.reasoning",
+          "Reasoning",
+          event.message,
+          "reasoning",
+        );
         break;
 
       case "output.info":
@@ -1468,7 +1600,10 @@ export default class RawChatUI {
         this.addEntry({
           kind: "artifact",
           title: `Artifact: ${event.name}`,
-          body: event.encoding === "text" ? event.body : `Generated ${event.mimeType} artifact`,
+          body:
+            event.encoding === "text"
+              ? event.body
+              : `Generated ${event.mimeType} artifact`,
           tone: "info",
           markdown: event.encoding === "text",
         });
@@ -1507,21 +1642,59 @@ export default class RawChatUI {
 
     switch (event.type) {
       case "agent.created":
-        return this.buildCompleteEntryDelta("System", event.message, "info", false, columns);
+        return this.buildCompleteEntryDelta(
+          "System",
+          event.message,
+          "info",
+          false,
+          columns,
+        );
       case "output.chat":
-        return this.buildStreamDelta("output.chat", "Assistant", event.message, "chat", columns, rows);
+        return this.buildStreamDelta(
+          "output.chat",
+          "Assistant",
+          event.message,
+          "chat",
+          columns,
+          rows,
+        );
       case "output.reasoning":
         if (!this.verbose) {
           this.closeVisibleStream();
           return {kind: "none"};
         }
-        return this.buildStreamDelta("output.reasoning", "Reasoning", event.message, "reasoning", columns, rows);
+        return this.buildStreamDelta(
+          "output.reasoning",
+          "Reasoning",
+          event.message,
+          "reasoning",
+          columns,
+          rows,
+        );
       case "output.info":
-        return this.buildCompleteEntryDelta("Info", event.message, "info", false, columns);
+        return this.buildCompleteEntryDelta(
+          "Info",
+          event.message,
+          "info",
+          false,
+          columns,
+        );
       case "output.warning":
-        return this.buildCompleteEntryDelta("Warning", event.message, "warning", false, columns);
+        return this.buildCompleteEntryDelta(
+          "Warning",
+          event.message,
+          "warning",
+          false,
+          columns,
+        );
       case "output.error":
-        return this.buildCompleteEntryDelta("Error", event.message, "error", false, columns);
+        return this.buildCompleteEntryDelta(
+          "Error",
+          event.message,
+          "error",
+          false,
+          columns,
+        );
       case "output.artifact":
         if (!this.verbose) {
           this.closeVisibleStream();
@@ -1529,7 +1702,9 @@ export default class RawChatUI {
         }
         return this.buildCompleteEntryDelta(
           `Artifact: ${event.name}`,
-          event.encoding === "text" ? event.body : `Generated ${event.mimeType} artifact`,
+          event.encoding === "text"
+            ? event.body
+            : `Generated ${event.mimeType} artifact`,
           "info",
           event.encoding === "text",
           columns,
@@ -1543,7 +1718,13 @@ export default class RawChatUI {
           columns,
         );
       case "input.received":
-        return this.buildCompleteEntryDelta("You", event.input.message, "input", false, columns);
+        return this.buildCompleteEntryDelta(
+          "You",
+          event.input.message,
+          "input",
+          false,
+          columns,
+        );
       case "agent.stopped":
       case "agent.status":
       case "input.execution":
@@ -1566,14 +1747,17 @@ export default class RawChatUI {
     this.pendingSeparatorBeforeNextVisibleEntry = false;
     return {
       kind: "append",
-      text: `${prefix}${this.renderEntryText({
-        id: 0,
-        kind: "info",
-        title,
-        body,
-        tone,
-        markdown,
-      }, columns)}`,
+      text: `${prefix}${this.renderEntryText(
+        {
+          id: 0,
+          kind: "info",
+          title,
+          body,
+          tone,
+          markdown,
+        },
+        columns,
+      )}`,
       footerNeedsLeadingNewline: false,
     };
   }
@@ -1592,8 +1776,15 @@ export default class RawChatUI {
       const prefix = this.pendingSeparatorBeforeNextVisibleEntry ? "\n" : "";
       this.pendingSeparatorBeforeNextVisibleEntry = false;
       const rawBuffer = `${TEXT_INDENT}${rawChunk}`;
-      const displayedBuffer = this.renderBufferedStream(rawBuffer, tone, columns);
-      const screenLineCount = countScreenRows(splitLines(displayedBuffer), columns);
+      const displayedBuffer = this.renderBufferedStream(
+        rawBuffer,
+        tone,
+        columns,
+      );
+      const screenLineCount = countScreenRows(
+        splitLines(displayedBuffer),
+        columns,
+      );
 
       if (screenLineCount > rows) {
         this.scheduleFullReplay();
@@ -1618,7 +1809,11 @@ export default class RawChatUI {
     const previousLines = splitLines(previousDisplayedBuffer);
     const previousScreenLineCount = this.activeVisibleStream.screenLineCount;
     this.activeVisibleStream.rawBuffer += rawChunk;
-    const displayedBuffer = this.renderBufferedStream(this.activeVisibleStream.rawBuffer, tone, columns);
+    const displayedBuffer = this.renderBufferedStream(
+      this.activeVisibleStream.rawBuffer,
+      tone,
+      columns,
+    );
     const nextLines = splitLines(displayedBuffer);
     const screenLineCount = countScreenRows(nextLines, columns);
 
@@ -1728,7 +1923,9 @@ export default class RawChatUI {
       process.stdout.write(output);
       this.footerSnapshot = {
         lineCount: 1,
-        lines: [TONE_COLORS.warning("Terminal too small. Resize to at least 40x10.")],
+        lines: [
+          TONE_COLORS.warning("Terminal too small. Resize to at least 40x10."),
+        ],
         cursorRow: 0,
         cursorColumn: 0,
         showCursor: false,
@@ -1780,7 +1977,10 @@ export default class RawChatUI {
       return;
     }
 
-    if (delta.kind === "none" && footer.lines.length !== this.footerSnapshot.lineCount) {
+    if (
+      delta.kind === "none" &&
+      footer.lines.length !== this.footerSnapshot.lineCount
+    ) {
       this.renderFullReplay();
       return;
     }
@@ -1809,11 +2009,29 @@ export default class RawChatUI {
         ...delta.previousLines,
         ...this.footerSnapshot.lines,
       ];
-      if (!this.rewriteTailBlock(previousDisplay, nextTail, footer, delta.blockTopOffsetFromFooterTop, columns, rows)) {
+      if (
+        !this.rewriteTailBlock(
+          previousDisplay,
+          nextTail,
+          footer,
+          delta.blockTopOffsetFromFooterTop,
+          columns,
+          rows,
+        )
+      ) {
         return;
       }
     } else {
-      if (!this.rewriteTailBlock(this.footerSnapshot.lines, footer.lines, footer, 0, columns, rows)) {
+      if (
+        !this.rewriteTailBlock(
+          this.footerSnapshot.lines,
+          footer.lines,
+          footer,
+          0,
+          columns,
+          rows,
+        )
+      ) {
         return;
       }
     }
@@ -1855,12 +2073,21 @@ export default class RawChatUI {
       return false;
     }
 
-    let firstDifferentLine = findFirstDifferentLineIndex(previousLines, nextLines);
-    if (firstDifferentLine === previousLines.length && firstDifferentLine === nextLines.length) {
+    let firstDifferentLine = findFirstDifferentLineIndex(
+      previousLines,
+      nextLines,
+    );
+    if (
+      firstDifferentLine === previousLines.length &&
+      firstDifferentLine === nextLines.length
+    ) {
       firstDifferentLine = 0;
     }
 
-    const prefixRowCount = countScreenRows(previousLines.slice(0, firstDifferentLine), columns);
+    const prefixRowCount = countScreenRows(
+      previousLines.slice(0, firstDifferentLine),
+      columns,
+    );
     let output = "\x1b[?25l";
     output += this.moveToFooterTop();
     if (blockTopOffsetFromFooterTop > 0) {
@@ -1875,7 +2102,10 @@ export default class RawChatUI {
     if (tailText.length > 0) {
       output += tailText;
     }
-    output += footer.lines.length > 0 ? this.getFooterCursorSequence(footer) : "\x1b[?25h";
+    output +=
+      footer.lines.length > 0
+        ? this.getFooterCursorSequence(footer)
+        : "\x1b[?25h";
 
     process.stdout.write(output);
     return true;
@@ -1917,7 +2147,9 @@ export default class RawChatUI {
 
     if (columns < 40 || rows < 10) {
       return {
-        lines: [TONE_COLORS.warning("Terminal too small. Resize to at least 40x10.")],
+        lines: [
+          TONE_COLORS.warning("Terminal too small. Resize to at least 40x10."),
+        ],
         showCursor: false,
       };
     }
@@ -1943,11 +2175,15 @@ export default class RawChatUI {
         sections.push(this.renderCommandCompletionPicker(columns, rows));
       }
       if (!followup && this.fileSearchState) {
-        sections.push(this.renderFileSearchPicker(columns, rows, workingDirectory));
+        sections.push(
+          this.renderFileSearchPicker(columns, rows, workingDirectory),
+        );
       }
-      sections.push(followup
-        ? this.renderFollowupComposer(followup, columns, rows)
-        : this.renderChatComposer(columns, rows));
+      sections.push(
+        followup
+          ? this.renderFollowupComposer(followup, columns, rows)
+          : this.renderChatComposer(columns, rows),
+      );
     }
 
     sections.push({
@@ -1960,7 +2196,10 @@ export default class RawChatUI {
       Math.max(0, rows - footerContent.lines.length),
       columns,
     );
-    const spacerCount = Math.max(0, rows - footerContent.lines.length - transcriptVisibleRows);
+    const spacerCount = Math.max(
+      0,
+      rows - footerContent.lines.length - transcriptVisibleRows,
+    );
 
     if (spacerCount === 0) {
       return footerContent;
@@ -1971,7 +2210,10 @@ export default class RawChatUI {
         ...Array.from({length: spacerCount}, () => ""),
         ...footerContent.lines,
       ],
-      cursorRow: footerContent.cursorRow === undefined ? undefined : footerContent.cursorRow + spacerCount,
+      cursorRow:
+        footerContent.cursorRow === undefined
+          ? undefined
+          : footerContent.cursorRow + spacerCount,
       cursorColumn: footerContent.cursorColumn,
       showCursor: footerContent.showCursor,
     };
@@ -2012,41 +2254,54 @@ export default class RawChatUI {
     const continuationPrefixWidth = visibleLength(RAW_CONTINUATION_PREFIX);
     const innerWidth = Math.max(10, columns - promptPrefixWidth);
     const maxContentLines = clamp(Math.floor(rows * 0.25), 1, 8);
-    const renderedInput = renderEditor(this.chatEditor, innerWidth, maxContentLines);
+    const renderedInput = renderEditor(
+      this.chatEditor,
+      innerWidth,
+      maxContentLines,
+    );
     const lines: string[] = [];
 
     renderedInput.visibleLines.forEach((line, index) => {
       const prefix = index === 0 ? PROMPT_PREFIX : CONTINUATION_PREFIX;
-      const body = renderedInput.isEmpty && index === 0
-        ? PLACEHOLDER_COLOR("Write a message or /command")
-        : line;
+      const body =
+        renderedInput.isEmpty && index === 0
+          ? PLACEHOLDER_COLOR("Write a message or /command")
+          : line;
       lines.push(`${prefix}${body}`);
     });
 
     return {
       lines,
       cursorRow: renderedInput.cursorRow,
-      cursorColumn: (renderedInput.cursorRow === 0 ? promptPrefixWidth : continuationPrefixWidth) + renderedInput.cursorColumn,
+      cursorColumn:
+        (renderedInput.cursorRow === 0
+          ? promptPrefixWidth
+          : continuationPrefixWidth) + renderedInput.cursorColumn,
       showCursor: true,
     };
   }
 
-  private renderCommandCompletionPicker(columns: number, rows: number): RenderBlock {
+  private renderCommandCompletionPicker(
+    columns: number,
+    rows: number,
+  ): RenderBlock {
     const state = this.completionState;
     if (!state) {
       return {lines: [], showCursor: false};
     }
 
-    const lines = [
-      TITLE_COLOR(`${HEADER_PREFIX}Commands`),
-    ];
+    const lines = [TITLE_COLOR(`${HEADER_PREFIX}Commands`)];
 
     if (state.matches.length === 0) {
-      lines.push(TONE_COLORS.muted(`${TEXT_INDENT}No matches for /${state.sourceQuery}`));
+      lines.push(
+        TONE_COLORS.muted(`${TEXT_INDENT}No matches for /${state.sourceQuery}`),
+      );
       return {lines, showCursor: false};
     }
 
-    lines.push(TONE_COLORS.muted(`${TEXT_INDENT}${state.matches.length} matches`));
+    lines.push(
+      TONE_COLORS.muted(`${TEXT_INDENT}${state.matches.length} matches`),
+    );
 
     const maxVisibleItems = clamp(rows - 16, 3, 6);
     const windowStart = clamp(
@@ -2054,12 +2309,18 @@ export default class RawChatUI {
       0,
       Math.max(0, state.matches.length - maxVisibleItems),
     );
-    const visibleMatches = state.matches.slice(windowStart, windowStart + maxVisibleItems);
+    const visibleMatches = state.matches.slice(
+      windowStart,
+      windowStart + maxVisibleItems,
+    );
 
     visibleMatches.forEach((match, index) => {
       const actualIndex = windowStart + index;
       const prefix = actualIndex === state.selectedIndex ? "›" : " ";
-      const label = truncateVisible(`/${match.name}  ${match.description}`, Math.max(10, columns - 4));
+      const label = truncateVisible(
+        `/${match.name}  ${match.description}`,
+        Math.max(10, columns - 4),
+      );
       lines.push(
         actualIndex === state.selectedIndex
           ? FILE_SEARCH_SELECTED(`${prefix} ${label}`)
@@ -2073,7 +2334,11 @@ export default class RawChatUI {
     };
   }
 
-  private renderFileSearchPicker(columns: number, rows: number, workingDirectory: string): RenderBlock {
+  private renderFileSearchPicker(
+    columns: number,
+    rows: number,
+    workingDirectory: string,
+  ): RenderBlock {
     const state = this.fileSearchState;
     if (!state) {
       return {lines: [], showCursor: false};
@@ -2096,11 +2361,17 @@ export default class RawChatUI {
     }
 
     if (state.matches.length === 0) {
-      lines.push(TONE_COLORS.muted(`${TEXT_INDENT}No matches for @${state.token.query}`));
+      lines.push(
+        TONE_COLORS.muted(`${TEXT_INDENT}No matches for @${state.token.query}`),
+      );
       return {lines, showCursor: false};
     }
 
-    lines.push(TONE_COLORS.muted(`${TEXT_INDENT}${state.matches.length} matches · ${indexedCount} indexed`));
+    lines.push(
+      TONE_COLORS.muted(
+        `${TEXT_INDENT}${state.matches.length} matches · ${indexedCount} indexed`,
+      ),
+    );
 
     const maxVisibleItems = clamp(rows - 16, 3, 6);
     const windowStart = clamp(
@@ -2108,7 +2379,10 @@ export default class RawChatUI {
       0,
       Math.max(0, state.matches.length - maxVisibleItems),
     );
-    const visibleMatches = state.matches.slice(windowStart, windowStart + maxVisibleItems);
+    const visibleMatches = state.matches.slice(
+      windowStart,
+      windowStart + maxVisibleItems,
+    );
 
     visibleMatches.forEach((match, index) => {
       const actualIndex = windowStart + index;
@@ -2140,21 +2414,30 @@ export default class RawChatUI {
     const renderedInput = renderEditor(editor, innerWidth, maxContentLines);
     const lines = [
       TITLE_COLOR(`${HEADER_PREFIX}Follow-up`),
-      ...flattenWrappedLines([followup.message], columns, TEXT_INDENT).map((line) => TONE_COLORS.info(line)),
+      ...flattenWrappedLines([followup.message], columns, TEXT_INDENT).map(
+        (line) => TONE_COLORS.info(line),
+      ),
     ];
 
     renderedInput.visibleLines.forEach((line, index) => {
       const prefix = index === 0 ? PROMPT_PREFIX : CONTINUATION_PREFIX;
-      const body = renderedInput.isEmpty && index === 0
-        ? PLACEHOLDER_COLOR("Reply to continue the current run")
-        : line;
+      const body =
+        renderedInput.isEmpty && index === 0
+          ? PLACEHOLDER_COLOR("Reply to continue the current run")
+          : line;
       lines.push(`${prefix}${body}`);
     });
 
     return {
       lines,
-      cursorRow: lines.length - renderedInput.visibleLines.length + renderedInput.cursorRow,
-      cursorColumn: (renderedInput.cursorRow === 0 ? promptPrefixWidth : continuationPrefixWidth) + renderedInput.cursorColumn,
+      cursorRow:
+        lines.length -
+        renderedInput.visibleLines.length +
+        renderedInput.cursorRow,
+      cursorColumn:
+        (renderedInput.cursorRow === 0
+          ? promptPrefixWidth
+          : continuationPrefixWidth) + renderedInput.cursorColumn,
       showCursor: true,
     };
   }
@@ -2166,18 +2449,30 @@ export default class RawChatUI {
   ): RenderBlock {
     const session = this.getQuestionSession(question);
     const child = session.render({columns, rows});
-    const childIndent = question.question.type === "treeSelect" || question.question.type === "fileSelect" ? "" : TEXT_INDENT;
-    const indentedChildLines = child.lines.map((line) => `${childIndent}${line}`);
+    const childIndent =
+      question.question.type === "treeSelect" ||
+      question.question.type === "fileSelect"
+        ? ""
+        : TEXT_INDENT;
+    const indentedChildLines = child.lines.map(
+      (line) => `${childIndent}${line}`,
+    );
     const title = this.getQuestionTitle(question);
     const lines = [
       TITLE_COLOR(`${HEADER_PREFIX}${title}`),
       "",
-      ...flattenWrappedLines([question.message], columns, TEXT_INDENT).map((line) => TONE_COLORS.info(line)),
+      ...flattenWrappedLines([question.message], columns, TEXT_INDENT).map(
+        (line) => TONE_COLORS.info(line),
+      ),
       "",
     ];
 
     if (question.autoSubmitAt) {
-      lines.push(TONE_COLORS.warning(`${TEXT_INDENT}${formatTimer(question.autoSubmitAt)}`));
+      lines.push(
+        TONE_COLORS.warning(
+          `${TEXT_INDENT}${formatTimer(question.autoSubmitAt)}`,
+        ),
+      );
       lines.push("");
     }
 
@@ -2186,20 +2481,39 @@ export default class RawChatUI {
 
     return {
       lines,
-      cursorRow: child.cursorRow === undefined ? undefined : child.cursorRow + offset,
-      cursorColumn: child.cursorColumn === undefined ? undefined : child.cursorColumn + visibleLength(childIndent),
+      cursorRow:
+        child.cursorRow === undefined ? undefined : child.cursorRow + offset,
+      cursorColumn:
+        child.cursorColumn === undefined
+          ? undefined
+          : child.cursorColumn + visibleLength(childIndent),
       showCursor: child.showCursor,
     };
   }
 
-  private renderOptionalQuestionPicker(columns: number, rows: number): RenderBlock {
+  private renderOptionalQuestionPicker(
+    columns: number,
+    rows: number,
+  ): RenderBlock {
     const optionalQuestions = this.getOptionalQuestions();
     const maxVisibleItems = Math.max(4, rows - 10);
     const visibleQuestions = optionalQuestions.slice(
-      clamp(this.optionalQuestionIndex - maxVisibleItems + 1, 0, Math.max(0, optionalQuestions.length - maxVisibleItems)),
-      clamp(this.optionalQuestionIndex - maxVisibleItems + 1, 0, Math.max(0, optionalQuestions.length - maxVisibleItems)) + maxVisibleItems,
+      clamp(
+        this.optionalQuestionIndex - maxVisibleItems + 1,
+        0,
+        Math.max(0, optionalQuestions.length - maxVisibleItems),
+      ),
+      clamp(
+        this.optionalQuestionIndex - maxVisibleItems + 1,
+        0,
+        Math.max(0, optionalQuestions.length - maxVisibleItems),
+      ) + maxVisibleItems,
     );
-    const start = clamp(this.optionalQuestionIndex - maxVisibleItems + 1, 0, Math.max(0, optionalQuestions.length - maxVisibleItems));
+    const start = clamp(
+      this.optionalQuestionIndex - maxVisibleItems + 1,
+      0,
+      Math.max(0, optionalQuestions.length - maxVisibleItems),
+    );
 
     const lines = [
       TITLE_COLOR(`${HEADER_PREFIX}Optional Questions`),
@@ -2209,10 +2523,21 @@ export default class RawChatUI {
     visibleQuestions.forEach((question, index) => {
       const actualIndex = start + index;
       const prefix = actualIndex === this.optionalQuestionIndex ? "›" : " ";
-      const timer = question.autoSubmitAt ? ` · ${formatTimer(question.autoSubmitAt)}` : "";
-      const label = truncateVisible(`${this.getQuestionLabel(question)}${timer}`, Math.max(10, columns - 6));
+      const timer = question.autoSubmitAt
+        ? ` · ${formatTimer(question.autoSubmitAt)}`
+        : "";
+      const label = truncateVisible(
+        `${this.getQuestionLabel(question)}${timer}`,
+        Math.max(10, columns - 6),
+      );
       lines.push(`${prefix} ${label}`);
-      lines.push(...flattenWrappedLines([question.message], Math.max(20, columns - 4), "  ").map((line) => TONE_COLORS.muted(line)));
+      lines.push(
+        ...flattenWrappedLines(
+          [question.message],
+          Math.max(20, columns - 4),
+          "  ",
+        ).map((line) => TONE_COLORS.muted(line)),
+      );
     });
 
     lines.push(TONE_COLORS.muted("Enter open · Esc close"));
@@ -2232,7 +2557,8 @@ export default class RawChatUI {
     let tone: TranscriptTone;
 
     const optionalCount = this.getOptionalQuestions().length;
-    const optionalHint = optionalCount > 0 ? `  Alt+Q optional ${optionalCount}` : "";
+    const optionalHint =
+      optionalCount > 0 ? `  Alt+Q optional ${optionalCount}` : "";
     const activeQuestion = this.getFocusedQuestion();
     const followup = this.getPrimaryFollowup();
 
@@ -2250,8 +2576,12 @@ export default class RawChatUI {
         text = `@ file search · Up/Down move  Enter insert  Esc close`;
         tone = "info";
       }
-    } else if (this.completionState && this.completionState.matches.length > 0) {
-      const selected = this.completionState.matches[this.completionState.selectedIndex];
+    } else if (
+      this.completionState &&
+      this.completionState.matches.length > 0
+    ) {
+      const selected =
+        this.completionState.matches[this.completionState.selectedIndex];
       text = `/ commands · Up/Down move  Enter insert  Esc close · ${selected.description}`;
       tone = "info";
     } else if (activeQuestion) {
@@ -2277,7 +2607,8 @@ export default class RawChatUI {
   }
 
   private getActivityLabel(): string {
-    const state = this.latestState ?? this.options.agent.getState(AgentEventState);
+    const state =
+      this.latestState ?? this.options.agent.getState(AgentEventState);
     if (state.currentlyExecutingInputItem?.executionState.currentActivity) {
       return `${brailleSpinner[this.spinnerIndex]} ${state.currentlyExecutingInputItem.executionState.currentActivity}`;
     }
@@ -2285,16 +2616,19 @@ export default class RawChatUI {
   }
 
   private isAgentExecuting(): boolean {
-    const state = this.latestState ?? this.options.agent.getState(AgentEventState);
+    const state =
+      this.latestState ?? this.options.agent.getState(AgentEventState);
     return state.currentlyExecutingInputItem !== null;
   }
 
   private getStatusLine(columns: number, workingDirectory: string): string {
     const activeQuestion = this.getFocusedQuestion();
     if (activeQuestion) {
-      const cancelHint = activeQuestion.question.type === "treeSelect" || activeQuestion.question.type === "fileSelect"
-        ? "Waiting for input · Esc or q to cancel"
-        : "Waiting for input · Esc to cancel";
+      const cancelHint =
+        activeQuestion.question.type === "treeSelect" ||
+        activeQuestion.question.type === "fileSelect"
+          ? "Waiting for input · Esc or q to cancel"
+          : "Waiting for input · Esc to cancel";
       return STATUS_BAR(truncateVisible(cancelHint, columns));
     }
 
@@ -2325,7 +2659,8 @@ export default class RawChatUI {
 
   private getRemainingContextPercent(): number | null {
     const chatService = this.options.agent.getServiceByType(ChatService);
-    const modelRegistry = this.options.agent.getServiceByType(ChatModelRegistry);
+    const modelRegistry =
+      this.options.agent.getServiceByType(ChatModelRegistry);
     if (!chatService || !modelRegistry) return null;
 
     const message = chatService.getLastMessage(this.options.agent);
@@ -2359,11 +2694,13 @@ export default class RawChatUI {
 
     return messages.reduce((total, message) => {
       const usage = message.response.totalUsage;
-      return total
-        + (usage.inputTokens ?? 0)
-        + (usage.outputTokens ?? 0)
-        + (usage.cachedInputTokens ?? 0)
-        + (usage.reasoningTokens ?? 0);
+      return (
+        total +
+        (usage.inputTokens ?? 0) +
+        (usage.outputTokens ?? 0) +
+        (usage.cachedInputTokens ?? 0) +
+        (usage.reasoningTokens ?? 0)
+      );
     }, 0);
   }
 
@@ -2374,10 +2711,13 @@ export default class RawChatUI {
     const messages = chatService.getChatMessages(this.options.agent);
     if (messages.length === 0) return 0;
 
-    return messages.reduce((total, message) => total + (message.response.cost.total ?? 0), 0);
+    return messages.reduce(
+      (total, message) => total + (message.response.cost.total ?? 0),
+      0,
+    );
   }
 
-  private getTerminalSize(): {columns: number; rows: number} {
+  private getTerminalSize(): { columns: number; rows: number } {
     return {
       columns: process.stdout.columns ?? 80,
       rows: process.stdout.rows ?? 24,
@@ -2399,53 +2739,77 @@ export default class RawChatUI {
     activeStream: ActiveVisibleStream | null;
   } {
     const visibleEntries = this.getVisibleTranscript();
-    const activeEntry = this.activeTranscriptStream && this.isEntryVisible(this.activeTranscriptStream.entry)
-      ? this.activeTranscriptStream.entry
-      : null;
+    const activeEntry =
+      this.activeTranscriptStream &&
+      this.isEntryVisible(this.activeTranscriptStream.entry)
+        ? this.activeTranscriptStream.entry
+        : null;
 
     let text = "";
     for (const entry of visibleEntries) {
-      text += this.renderEntryText(entry, columns, activeEntry?.id === entry.id);
+      text += this.renderEntryText(
+        entry,
+        columns,
+        activeEntry?.id === entry.id,
+      );
     }
 
-    const activeStream = activeEntry && this.activeTranscriptStream
-      ? this.createActiveVisibleStream(
-        this.activeTranscriptStream.type,
-        `${TEXT_INDENT}${this.getRawStreamText(activeEntry.body)}`,
-        activeEntry.tone,
-        columns,
-      )
-      : null;
+    const activeStream =
+      activeEntry && this.activeTranscriptStream
+        ? this.createActiveVisibleStream(
+          this.activeTranscriptStream.type,
+          `${TEXT_INDENT}${this.getRawStreamText(activeEntry.body)}`,
+          activeEntry.tone,
+          columns,
+        )
+        : null;
 
     return {text, activeStream};
   }
 
   private getVisibleTranscript(): TranscriptEntry[] {
     if (this.verbose) return this.transcript;
-    return this.transcript.filter((entry) => entry.kind !== "reasoning" && entry.kind !== "artifact");
+    return this.transcript.filter(
+      (entry) => entry.kind !== "reasoning" && entry.kind !== "artifact",
+    );
   }
 
-  private getVisibleTranscriptViewportLineCount(maxRows: number, columns: number): number {
+  private getVisibleTranscriptViewportLineCount(
+    maxRows: number,
+    columns: number,
+  ): number {
     if (maxRows <= 0) return 0;
 
     const visibleEntries = this.getVisibleTranscript();
-    const activeEntryId = this.activeTranscriptStream && this.isEntryVisible(this.activeTranscriptStream.entry)
-      ? this.activeTranscriptStream.entry.id
-      : null;
+    const activeEntryId =
+      this.activeTranscriptStream &&
+      this.isEntryVisible(this.activeTranscriptStream.entry)
+        ? this.activeTranscriptStream.entry.id
+        : null;
 
     let totalLines = 0;
     for (const entry of visibleEntries) {
-      totalLines += this.getRenderedEntryLineCount(entry, columns, activeEntryId === entry.id);
+      totalLines += this.getRenderedEntryLineCount(
+        entry,
+        columns,
+        activeEntryId === entry.id,
+      );
     }
 
     return Math.min(maxRows, totalLines);
   }
 
   private isEntryVisible(entry: TranscriptEntry): boolean {
-    return this.verbose || (entry.kind !== "reasoning" && entry.kind !== "artifact");
+    return (
+      this.verbose || (entry.kind !== "reasoning" && entry.kind !== "artifact")
+    );
   }
 
-  private getRenderedEntryLineCount(entry: TranscriptEntry, columns: number, keepOpen = false): number {
+  private getRenderedEntryLineCount(
+    entry: TranscriptEntry,
+    columns: number,
+    keepOpen = false,
+  ): number {
     let count = entry.title ? 1 : 0;
 
     const outputWidth = getOutputWrapWidth(columns);
@@ -2455,7 +2819,10 @@ export default class RawChatUI {
         const styled = entry.markdown
           ? TONE_COLORS[entry.tone](applyMarkdownStyles(sourceLine))
           : TONE_COLORS[entry.tone](sourceLine);
-        count += wrapAnsiStyledLine(`${TEXT_INDENT}${styled}`, outputWidth).length;
+        count += wrapAnsiStyledLine(
+          `${TEXT_INDENT}${styled}`,
+          outputWidth,
+        ).length;
       }
     }
 
@@ -2466,7 +2833,11 @@ export default class RawChatUI {
     return count;
   }
 
-  private renderEntryText(entry: TranscriptEntry, columns: number, keepOpen = false): string {
+  private renderEntryText(
+    entry: TranscriptEntry,
+    columns: number,
+    keepOpen = false,
+  ): string {
     const lines: string[] = [];
 
     if (entry.title) {
@@ -2480,7 +2851,9 @@ export default class RawChatUI {
         const styled = entry.markdown
           ? TONE_COLORS[entry.tone](applyMarkdownStyles(sourceLine))
           : TONE_COLORS[entry.tone](sourceLine);
-        lines.push(...wrapAnsiStyledLine(`${TEXT_INDENT}${styled}`, outputWidth));
+        lines.push(
+          ...wrapAnsiStyledLine(`${TEXT_INDENT}${styled}`, outputWidth),
+        );
       }
     }
 
@@ -2507,10 +2880,19 @@ export default class RawChatUI {
     };
   }
 
-  private renderBufferedStream(rawBuffer: string, tone: TranscriptTone, columns: number): string {
+  private renderBufferedStream(
+    rawBuffer: string,
+    tone: TranscriptTone,
+    columns: number,
+  ): string {
     const outputWidth = getOutputWrapWidth(columns);
     return splitLines(rawBuffer)
-      .flatMap((line) => wrapAnsiStyledLine(TONE_COLORS[tone](applyMarkdownStyles(line)), outputWidth))
+      .flatMap((line) =>
+        wrapAnsiStyledLine(
+          TONE_COLORS[tone](applyMarkdownStyles(line)),
+          outputWidth,
+        ),
+      )
       .join("\n");
   }
 
@@ -2519,24 +2901,36 @@ export default class RawChatUI {
   }
 
   private getAvailableInteractions(): ParsedInteractionRequest[] {
-    return this.latestState?.currentlyExecutingInputItem?.executionState.availableInteractions ?? [];
+    return (
+      this.latestState?.currentlyExecutingInputItem?.executionState
+        .availableInteractions ?? []
+    );
   }
 
   private getPrimaryFollowup(): FollowupInteraction | null {
-    return this.getAvailableInteractions().find(
-      (interaction): interaction is FollowupInteraction => interaction.type === "followup",
-    ) ?? null;
+    return (
+      this.getAvailableInteractions().find(
+        (interaction): interaction is FollowupInteraction =>
+          interaction.type === "followup",
+      ) ?? null
+    );
   }
 
   private getRequiredQuestions(): QuestionInteraction[] {
     return this.getAvailableInteractions()
-      .filter((interaction): interaction is QuestionInteraction => interaction.type === "question" && !interaction.optional)
+      .filter(
+        (interaction): interaction is QuestionInteraction =>
+          interaction.type === "question" && !interaction.optional,
+      )
       .sort((left, right) => left.timestamp - right.timestamp);
   }
 
   private getOptionalQuestions(): QuestionInteraction[] {
     return this.getAvailableInteractions()
-      .filter((interaction): interaction is QuestionInteraction => interaction.type === "question" && interaction.optional)
+      .filter(
+        (interaction): interaction is QuestionInteraction =>
+          interaction.type === "question" && interaction.optional,
+      )
       .sort((left, right) => left.timestamp - right.timestamp);
   }
 
@@ -2549,7 +2943,12 @@ export default class RawChatUI {
     }
 
     if (this.activeOptionalQuestionId) {
-      return this.getOptionalQuestions().find((question) => question.interactionId === this.activeOptionalQuestionId) ?? null;
+      return (
+        this.getOptionalQuestions().find(
+          (question) =>
+            question.interactionId === this.activeOptionalQuestionId,
+        ) ?? null
+      );
     }
 
     return null;
@@ -2568,7 +2967,9 @@ export default class RawChatUI {
 
   private cleanupInteractionState(): void {
     const interactions = this.getAvailableInteractions();
-    const interactionIds = new Set(interactions.map((interaction) => interaction.interactionId));
+    const interactionIds = new Set(
+      interactions.map((interaction) => interaction.interactionId),
+    );
 
     for (const interactionId of this.followupEditors.keys()) {
       if (!interactionIds.has(interactionId)) {
@@ -2582,7 +2983,10 @@ export default class RawChatUI {
       }
     }
 
-    if (this.activeOptionalQuestionId && !interactionIds.has(this.activeOptionalQuestionId)) {
+    if (
+      this.activeOptionalQuestionId &&
+      !interactionIds.has(this.activeOptionalQuestionId)
+    ) {
       this.activeOptionalQuestionId = null;
     }
 
@@ -2591,7 +2995,11 @@ export default class RawChatUI {
       this.optionalPickerOpen = false;
       this.optionalQuestionIndex = 0;
     } else {
-      this.optionalQuestionIndex = clamp(this.optionalQuestionIndex, 0, optionalQuestions.length - 1);
+      this.optionalQuestionIndex = clamp(
+        this.optionalQuestionIndex,
+        0,
+        optionalQuestions.length - 1,
+      );
     }
   }
 
@@ -2604,23 +3012,36 @@ export default class RawChatUI {
     return editor;
   }
 
-  private getQuestionSession(question: QuestionInteraction): InlineQuestionSession {
+  private getQuestionSession(
+    question: QuestionInteraction,
+  ): InlineQuestionSession {
     let session = this.questionSessions.get(question.interactionId);
     if (session) return session;
 
-    session = createInlineQuestionSession(question.question, {
-      onSubmit: (result) => this.sendInteractionResponse(question.interactionId, result),
-      onCancel: () => this.sendInteractionResponse(question.interactionId, null),
-      onRender: () => this.render(),
-      listFileSelectEntries: (path) => this.listQuestionDirectoryEntries(path),
-    }, question.message);
+    session = createInlineQuestionSession(
+      question.question,
+      {
+        onSubmit: (result) =>
+          this.sendInteractionResponse(question.interactionId, result),
+        onCancel: () =>
+          this.sendInteractionResponse(question.interactionId, null),
+        onRender: () => this.render(),
+        listFileSelectEntries: (path) =>
+          this.listQuestionDirectoryEntries(path),
+      },
+      question.message,
+    );
 
     this.questionSessions.set(question.interactionId, session);
     return session;
   }
 
-  private sendInteractionResponse(interactionId: string, result: unknown): void {
-    const requestId = this.latestState?.currentlyExecutingInputItem?.request.requestId;
+  private sendInteractionResponse(
+    interactionId: string,
+    result: unknown,
+  ): void {
+    const requestId =
+      this.latestState?.currentlyExecutingInputItem?.request.requestId;
     if (!requestId) {
       this.flash("No active interaction is waiting for a response.", "warning");
       return;
@@ -2638,12 +3059,15 @@ export default class RawChatUI {
     });
   }
 
-  private async listQuestionDirectoryEntries(path: string): Promise<string[]> {
-    const fileSystem = this.options.agent.requireServiceByType(FileSystemService);
-    return Array.fromAsync(fileSystem.getDirectoryTree(
-      path,
-      {recursive: false, ignoreFilter: () => false},
-      this.options.agent,
-    ));
+  private listQuestionDirectoryEntries(path: string): Promise<string[]> {
+    const fileSystem =
+      this.options.agent.requireServiceByType(FileSystemService);
+    return Array.fromAsync(
+      fileSystem.getDirectoryTree(
+        path,
+        {recursive: false, ignoreFilter: () => false},
+        this.options.agent,
+      ),
+    );
   }
 }

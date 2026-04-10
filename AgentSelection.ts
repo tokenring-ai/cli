@@ -1,10 +1,12 @@
 export type AgentSelectionResult =
-  | {type: "spawn"; agentType: string}
-  | {type: "connect"; agentId: string}
-  | {type: "open"; url: string}
-  | {type: "workflow"; workflowKey: string};
+  | { type: "spawn"; agentType: string }
+  | { type: "connect"; agentId: string }
+  | { type: "open"; url: string }
+  | { type: "workflow"; workflowKey: string };
 
-export function parseAgentSelectionValue(value: string): AgentSelectionResult | null {
+export function parseAgentSelectionValue(
+  value: string,
+): AgentSelectionResult | null {
   const match = value.match(/^(.*?):(.*)$/);
   if (!match) return null;
 

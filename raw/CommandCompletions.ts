@@ -16,7 +16,11 @@ export function getLongestCommonPrefix(values: string[]): string {
   let prefix = values[0] ?? "";
   for (const value of values.slice(1)) {
     let index = 0;
-    while (index < prefix.length && index < value.length && prefix[index] === value[index]) {
+    while (
+      index < prefix.length &&
+      index < value.length &&
+      prefix[index] === value[index]
+      ) {
       index += 1;
     }
     prefix = prefix.slice(0, index);

@@ -20,14 +20,15 @@ export interface CommandPromptOptions {
 /**
  * A prompt implementation using a shared Node.js readline interface.
  */
-export async function commandPrompt(options: CommandPromptOptions): Promise<string> {
+export function commandPrompt(
+  options: CommandPromptOptions,
+): Promise<string> {
   const {
     rl,
     message = ">",
     prefix = chalk.yellowBright("user"),
     history = [],
-    autoCompletion = [],
-    signal
+    signal,
   } = options;
 
   if (signal?.aborted) {
@@ -45,7 +46,7 @@ export async function commandPrompt(options: CommandPromptOptions): Promise<stri
 
   // Seed history
   if (history.length > 0) {
-    // @ts-ignore
+    // @ts-expect-error
     rl.history = [...history].reverse();
   }
 
@@ -81,7 +82,7 @@ export async function commandPrompt(options: CommandPromptOptions): Promise<stri
     };
 
     if (signal) {
-      signal.addEventListener("abort", onAbort, { once: true });
+      signal.addEventListener("abort", onAbort, {once: true});
     }
 
     rl.on("line", onLine);

@@ -38,11 +38,17 @@ function getPathDepth(filePath: string): number {
   return filePath.split("/").length - 1;
 }
 
-export function compareFilePathsForBrowsing(left: string, right: string): number {
+export function compareFilePathsForBrowsing(
+  left: string,
+  right: string,
+): number {
   const depthDifference = getPathDepth(left) - getPathDepth(right);
   if (depthDifference !== 0) return depthDifference;
 
-  const baseNameDifference = COLLATOR.compare(getBaseName(left), getBaseName(right));
+  const baseNameDifference = COLLATOR.compare(
+    getBaseName(left),
+    getBaseName(right),
+  );
   if (baseNameDifference !== 0) return baseNameDifference;
 
   const lengthDifference = left.length - right.length;
@@ -51,7 +57,10 @@ export function compareFilePathsForBrowsing(left: string, right: string): number
   return COLLATOR.compare(left, right);
 }
 
-export function findActiveFileSearchToken(text: string, cursor: number): FileSearchToken | null {
+export function findActiveFileSearchToken(
+  text: string,
+  cursor: number,
+): FileSearchToken | null {
   const boundedCursor = clamp(cursor, 0, text.length);
   let start = boundedCursor;
   let end = boundedCursor;
@@ -82,7 +91,7 @@ export function scoreFileSearchMatch(filePath: string, query: string): number {
   const baseName = getBaseName(normalizedPath);
 
   if (normalizedQuery.length === 0) {
-    return 1_000_000 - (getPathDepth(filePath) * 1000) - normalizedPath.length;
+    return 1_000_000 - getPathDepth(filePath) * 1000 - normalizedPath.length;
   }
 
   let score = 0;
@@ -97,12 +106,12 @@ export function scoreFileSearchMatch(filePath: string, query: string): number {
 
   const baseNameIndex = baseName.indexOf(normalizedQuery);
   if (baseNameIndex !== -1) {
-    score += SCORE_BASE_NAME_CONTAINS - (baseNameIndex * 200);
+    score += SCORE_BASE_NAME_CONTAINS - baseNameIndex * 200;
   }
 
   const pathIndex = normalizedPath.indexOf(normalizedQuery);
   if (pathIndex !== -1) {
-    score += SCORE_PATH_CONTAINS - (pathIndex * 50);
+    score += SCORE_PATH_CONTAINS - pathIndex * 50;
   }
 
   let lastMatchIndex = -1;
@@ -123,7 +132,8 @@ export function scoreFileSearchMatch(filePath: string, query: string): number {
       consecutiveMatches = 0;
     }
 
-    const previousChar = nextMatchIndex === 0 ? "/" : normalizedPath[nextMatchIndex - 1];
+    const previousChar =
+      nextMatchIndex === 0 ? "/" : normalizedPath[nextMatchIndex - 1];
     if (PATH_SEPARATORS.has(previousChar)) {
       score += SCORE_PATH_SEPARATOR_BONUS;
     }
@@ -171,7 +181,7 @@ export function replaceFileSearchToken(
   text: string,
   token: FileSearchToken,
   replacement: string,
-): {text: string; cursor: number} {
+): { text: string; cursor: number } {
   const prefix = text.slice(0, token.start);
   const suffix = text.slice(token.end);
   const insertion = suffix.length === 0 ? `${replacement} ` : replacement;

@@ -6,11 +6,13 @@ export const CLIConfigSchema = z.object({
   loadingBannerWide: z.string(),
   loadingBannerCompact: z.string(),
   screenBanner: z.string(),
-  uiFramework: z.enum(['ink', 'opentui']).default('opentui'),
+  uiFramework: z.enum(["ink", "opentui"]).default("opentui"),
   verbose: z.boolean().default(false),
-  startAgent: z.object({
-    type: z.string(),
-    prompt: z.string().optional(),
-    shutdownWhenDone: z.boolean().default(true),
-  }).optional(),
-})
+  startAgent: z
+    .object({
+      type: z.string(),
+      prompt: z.string().optional(),
+      shutdownWhenDone: z.boolean().default(true),
+    })
+    .optional(),
+});
