@@ -16,7 +16,7 @@ import process from "node:process";
 import readline from "node:readline";
 import {setInterval as setIntervalPromise} from "node:timers/promises";
 import type {z} from "zod";
-import {type AgentSelectionResult, parseAgentSelectionValue,} from "../AgentSelection.ts";
+import {type AgentSelectionResult, parseAgentSelectionValue} from "../AgentSelection.ts";
 import type {CLIConfigSchema} from "../schema.ts";
 import {theme} from "../theme.ts";
 

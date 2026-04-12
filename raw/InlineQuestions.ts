@@ -1,4 +1,4 @@
-import type {ParsedFileSelectQuestion, ParsedFormQuestion, ParsedTextQuestion, ParsedTreeSelectQuestion, TreeLeaf,} from "@tokenring-ai/agent/question";
+import type {ParsedFileSelectQuestion, ParsedFormQuestion, ParsedTextQuestion, ParsedTreeSelectQuestion, TreeLeaf} from "@tokenring-ai/agent/question";
 import {clamp} from "@tokenring-ai/utility/number/clamp";
 import {flattenWrappedLines} from "@tokenring-ai/utility/string/flattenWrappedLines";
 import {truncateVisible} from "@tokenring-ai/utility/string/truncateVisible";

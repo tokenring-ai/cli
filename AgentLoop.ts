@@ -1,7 +1,7 @@
 import type Agent from "@tokenring-ai/agent/Agent";
 import type {AgentEventEnvelope} from "@tokenring-ai/agent/AgentEvents";
 import AgentManager from "@tokenring-ai/agent/services/AgentManager";
-import {type AgentEventCursor, AgentEventState,} from "@tokenring-ai/agent/state/agentEventState";
+import {type AgentEventCursor, AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
 import process from "node:process";
 import type {z} from "zod";
@@ -140,10 +140,26 @@ export default class AgentLoop {
       if (signal.aborted) return;
 
       for (const event of state.yieldEventsByCursor(this.eventCursor)) {
-        this.renderEvent(event);
+        try {
+          this.renderEvent(event);
+        } catch (error) {
+          this.ui?.flash(
+            `Failed to render event: ${error instanceof Error ? error.message : String(error)}`,
+            "error",
+            10_000,
+          );
+        }
       }
 
-      this.handleAgentState(state);
+      try {
+        this.handleAgentState(state);
+      } catch (error) {
+        this.ui?.flash(
+          `Failed to sync agent state: ${error instanceof Error ? error.message : String(error)}`,
+          "error",
+          10_000,
+        );
+      }
     }
   }
 

@@ -1,4 +1,4 @@
-import {type CommandDefinition, getCommandCompletionContext, getLongestCommonPrefix,} from "./CommandCompletions.ts";
+import {type CommandDefinition, getCommandCompletionContext, getLongestCommonPrefix} from "./CommandCompletions.ts";
 
 const commands: CommandDefinition[] = [
   {name: "model get", description: "Get the current model"},

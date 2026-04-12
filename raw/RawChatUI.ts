@@ -1,17 +1,13 @@
 import type Agent from "@tokenring-ai/agent/Agent";
-import type {AgentEventEnvelope, ParsedInteractionRequest,} from "@tokenring-ai/agent/AgentEvents";
+import type {AgentEventEnvelope, ParsedInteractionRequest} from "@tokenring-ai/agent/AgentEvents";
 import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
-import {ChatModelRegistry} from "@tokenring-ai/ai-client/ModelRegistry";
-import {parseModelAndSettings} from "@tokenring-ai/ai-client/util/modelSettings";
-import {ChatService} from "@tokenring-ai/chat";
 import {FileSystemService} from "@tokenring-ai/filesystem";
 import {FileSystemState} from "@tokenring-ai/filesystem/state/fileSystemState";
 import {clamp} from "@tokenring-ai/utility/number/clamp";
 import {brailleSpinner} from "@tokenring-ai/utility/string/brailleSpinner";
 import {truncateVisible} from "@tokenring-ai/utility/string/truncateVisible";
 import {visibleLength} from "@tokenring-ai/utility/string/visibleLength";
-import {wrapPlainText} from "@tokenring-ai/utility/string/wrapPlainText";
 import type {MaybePromise} from "bun";
 import chalk from "chalk";
 import process from "node:process";
@@ -19,41 +15,48 @@ import readline from "node:readline";
 import type {z} from "zod";
 import type {CLIConfigSchema} from "../schema.ts";
 import {theme} from "../theme.ts";
-import applyMarkdownStyles from "../utility/applyMarkdownStyles.ts";
-import {type CommandDefinition, getCommandCompletionContext,} from "./CommandCompletions.ts";
-import {compareFilePathsForBrowsing, type FileSearchToken, findActiveFileSearchToken, getFileSearchMatches, replaceFileSearchToken,} from "./FileSearch.ts";
-import {createInlineQuestionSession, type InlineQuestionSession, type Keypress as InlineKeypress, type RenderBlock,} from "./InlineQuestions.ts";
+import {
+  combineBlocks, formatArtifactBody,
+  formatToolCallBody,
+  getCommandCompletionSignature,
+  getFileSearchTokenSignature,
+  getFooterCursorSequence,
+  getQuestionLabel,
+  getQuestionTitle,
+  getRawStreamText,
+  HEADER_PREFIX,
+  moveToFooterTop,
+  type QuestionInteraction,
+  renderBufferedStream,
+  renderEntryText,
+  TEXT_INDENT,
+  TITLE_COLOR,
+  TONE_COLORS,
+  type TranscriptEntry,
+  type TranscriptEntryKind,
+  type TranscriptTone
+} from "./ChatRenderUtils.ts";
+import {type CommandDefinition, getCommandCompletionContext} from "./CommandCompletions.ts";
+import {compareFilePathsForBrowsing, type FileSearchToken, findActiveFileSearchToken, getFileSearchMatches, replaceFileSearchToken} from "./FileSearch.ts";
+import {createInlineQuestionSession, type InlineQuestionSession, type Keypress as InlineKeypress, type RenderBlock} from "./InlineQuestions.ts";
 import InputEditor from "./InputEditor.ts";
-
-type TranscriptTone =
-  | "chat"
-  | "reasoning"
-  | "info"
-  | "warning"
-  | "error"
-  | "input"
-  | "success"
-  | "muted";
-
-type TranscriptEntry = {
-  id: number;
-  kind: TranscriptEntryKind;
-  title: string | null;
-  body: string;
-  tone: TranscriptTone;
-  markdown: boolean;
-};
-
-type TranscriptEntryKind =
-  | "system"
-  | "input"
-  | "chat"
-  | "reasoning"
-  | "info"
-  | "warning"
-  | "error"
-  | "artifact"
-  | "response";
+import {
+  countScreenRows,
+  findFirstDifferentLineIndex,
+  flattenWrappedLines,
+  formatCompactNumber,
+  formatCurrency,
+  formatPercentLeft,
+  formatTimer,
+  getActiveToolCount,
+  getChatCost,
+  getCurrentModelLabel,
+  getRemainingContextPercent,
+  getTerminalSize,
+  getTokenUsage,
+  shortenPath,
+  splitLines
+} from "./utility.ts";
 
 type CompletionState = {
   replacementStart: number;
@@ -103,6 +106,11 @@ type TranscriptDelta =
   previousLines: string[];
 };
 
+type TranscriptEventAction =
+  | { action: "clearOnly" }
+  | { action: "addEntry"; kind: TranscriptEntryKind; title: string; body: string; tone: TranscriptTone; markdown: boolean }
+  | { action: "stream"; type: "output.chat" | "output.reasoning"; title: string; message: string; tone: TranscriptTone };
+
 type ActiveVisibleStream = {
   type: "output.chat" | "output.reasoning";
   tone: TranscriptTone;
@@ -115,24 +123,8 @@ type FollowupInteraction = Extract<
   ParsedInteractionRequest,
   { type: "followup" }
 >;
-type QuestionInteraction = Extract<
-  ParsedInteractionRequest,
-  { type: "question" }
->;
-
-const TONE_COLORS: Record<TranscriptTone, (text: string) => string> = {
-  chat: chalk.hex(theme.chatOutputText),
-  reasoning: chalk.hex(theme.chatReasoningText),
-  info: chalk.hex(theme.chatSystemInfoMessage),
-  warning: chalk.hex(theme.chatSystemWarningMessage),
-  error: chalk.hex(theme.chatSystemErrorMessage),
-  input: chalk.hex(theme.chatPreviousInput),
-  success: chalk.hex(theme.chatInputHandledSuccess),
-  muted: chalk.hex(theme.chatDivider),
-};
 
 const STATUS_BAR = chalk.hex(theme.chatDivider);
-const TITLE_COLOR = chalk.hex(theme.boxTitle).bold;
 const PROMPT_ARROW_COLOR = chalk.hex(theme.askMessage).bold;
 const PLACEHOLDER_COLOR = chalk.hex(theme.chatDivider);
 const FILE_SEARCH_SELECTED = chalk.hex(theme.treeHighlightedItem).bold;
@@ -141,68 +133,8 @@ const RAW_PROMPT_PREFIX = " → ";
 const RAW_CONTINUATION_PREFIX = "   ";
 const PROMPT_PREFIX = ` ${PROMPT_ARROW_COLOR("→")} `;
 const CONTINUATION_PREFIX = RAW_CONTINUATION_PREFIX;
-const HEADER_PREFIX = " · ";
-const TEXT_INDENT = "   ";
 const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";
-const ANSI_SGR_PATTERN = /\x1b\[([0-9;]*)m/g;
-
-function trimBoundaryNewlines(text: string): string {
-  return text.replace(/^\n+|\n+$/g, "");
-}
-
-function shortenPath(path: string): string {
-  const home = process.env.HOME;
-  if (home && path.startsWith(home)) {
-    return `~${path.slice(home.length) || "/"}`;
-  }
-  return path;
-}
-
-function formatPercentLeft(value: number | null): string {
-  if (value === null) return "-- left";
-  return `${value}% left`;
-}
-
-function formatCompactNumber(value: number | null, suffix = ""): string {
-  if (value === null) return `--${suffix}`;
-  if (value < 1000) return `${value}${suffix}`;
-  if (value < 1_000_000)
-    return `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1).replace(/\.0$/, "")}k${suffix}`;
-  return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}m${suffix}`;
-}
-
-function formatCurrency(value: number | null): string {
-  if (value === null) return "$--";
-  if (value >= 100) return `$${value.toFixed(0)}`;
-  if (value >= 10) return `$${value.toFixed(1)}`;
-  if (value >= 1) return `$${value.toFixed(2)}`;
-  if (value >= 0.1) return `$${value.toFixed(3)}`;
-  return `$${value.toFixed(4)}`;
-}
-
-function formatTimer(timestamp: number): string {
-  const remainingMs = Math.max(0, timestamp - Date.now());
-  const seconds = Math.ceil(remainingMs / 1000);
-  return `auto ${seconds}s`;
-}
-
-function flattenWrappedLines(
-  lines: string[],
-  width: number,
-  prefix = "",
-): string[] {
-  const result: string[] = [];
-  const innerWidth = Math.max(1, width - visibleLength(prefix));
-
-  for (const line of lines) {
-    for (const wrapped of wrapPlainText(line, innerWidth)) {
-      result.push(`${prefix}${wrapped}`);
-    }
-  }
-
-  return result.length > 0 ? result : [prefix];
-}
 
 function renderEditor(
   editor: InputEditor,
@@ -260,236 +192,6 @@ function renderEditor(
     cursorColumn,
     isEmpty: text.length === 0,
   };
-}
-
-function splitLines(text: string): string[] {
-  return text.length === 0 ? [] : text.split("\n");
-}
-
-function countWrappedRows(line: string, columns: number): number {
-  const width = Math.max(1, columns);
-  return Math.max(1, Math.ceil(visibleLength(line) / width));
-}
-
-function countScreenRows(lines: string[] | undefined, columns: number): number {
-  if (!lines || lines.length === 0) return 0;
-  return lines.reduce(
-    (total, line) => total + countWrappedRows(line, columns),
-    0,
-  );
-}
-
-type AnsiWrapState = {
-  bold: boolean;
-  dim: boolean;
-  italic: boolean;
-  underline: boolean;
-  inverse: boolean;
-  hidden: boolean;
-  strikethrough: boolean;
-  foreground: string | null;
-  background: string | null;
-};
-
-function createAnsiWrapState(): AnsiWrapState {
-  return {
-    bold: false,
-    dim: false,
-    italic: false,
-    underline: false,
-    inverse: false,
-    hidden: false,
-    strikethrough: false,
-    foreground: null,
-    background: null,
-  };
-}
-
-function cloneAnsiWrapState(state: AnsiWrapState): AnsiWrapState {
-  return {...state};
-}
-
-function hasAnsiWrapState(state: AnsiWrapState): boolean {
-  return (
-    state.bold ||
-    state.dim ||
-    state.italic ||
-    state.underline ||
-    state.inverse ||
-    state.hidden ||
-    state.strikethrough ||
-    state.foreground !== null ||
-    state.background !== null
-  );
-}
-
-function serializeAnsiWrapState(state: AnsiWrapState): string {
-  const sequences: string[] = [];
-  if (state.bold) sequences.push("\x1b[1m");
-  if (state.dim) sequences.push("\x1b[2m");
-  if (state.italic) sequences.push("\x1b[3m");
-  if (state.underline) sequences.push("\x1b[4m");
-  if (state.inverse) sequences.push("\x1b[7m");
-  if (state.hidden) sequences.push("\x1b[8m");
-  if (state.strikethrough) sequences.push("\x1b[9m");
-  if (state.foreground) sequences.push(`\x1b[${state.foreground}m`);
-  if (state.background) sequences.push(`\x1b[${state.background}m`);
-  return sequences.join("");
-}
-
-function applyAnsiSgrSequence(state: AnsiWrapState, paramsText: string): void {
-  const params =
-    paramsText.length === 0
-      ? [0]
-      : paramsText.split(";").map((part) => Number.parseInt(part, 10) || 0);
-
-  for (let index = 0; index < params.length; index += 1) {
-    const code = params[index];
-
-    switch (code) {
-      case 0:
-        Object.assign(state, createAnsiWrapState());
-        break;
-      case 1:
-        state.bold = true;
-        break;
-      case 2:
-        state.dim = true;
-        break;
-      case 3:
-        state.italic = true;
-        break;
-      case 4:
-        state.underline = true;
-        break;
-      case 7:
-        state.inverse = true;
-        break;
-      case 8:
-        state.hidden = true;
-        break;
-      case 9:
-        state.strikethrough = true;
-        break;
-      case 22:
-        state.bold = false;
-        state.dim = false;
-        break;
-      case 23:
-        state.italic = false;
-        break;
-      case 24:
-        state.underline = false;
-        break;
-      case 27:
-        state.inverse = false;
-        break;
-      case 28:
-        state.hidden = false;
-        break;
-      case 29:
-        state.strikethrough = false;
-        break;
-      case 39:
-        state.foreground = null;
-        break;
-      case 49:
-        state.background = null;
-        break;
-      default:
-        if ((code >= 30 && code <= 37) || (code >= 90 && code <= 97)) {
-          state.foreground = `${code}`;
-          break;
-        }
-        if ((code >= 40 && code <= 47) || (code >= 100 && code <= 107)) {
-          state.background = `${code}`;
-          break;
-        }
-        if (code === 38 || code === 48) {
-          const mode = params[index + 1];
-          if (mode === 5 && index + 2 < params.length) {
-            const sequence = `${code};${mode};${params[index + 2]}`;
-            if (code === 38) {
-              state.foreground = sequence;
-            } else {
-              state.background = sequence;
-            }
-            index += 2;
-          } else if (mode === 2 && index + 4 < params.length) {
-            const sequence = `${code};${mode};${params[index + 2]};${params[index + 3]};${params[index + 4]}`;
-            if (code === 38) {
-              state.foreground = sequence;
-            } else {
-              state.background = sequence;
-            }
-            index += 4;
-          }
-        }
-        break;
-    }
-  }
-}
-
-function wrapAnsiStyledLine(text: string, width: number): string[] {
-  if (width <= 0) return [""];
-  if (text.length === 0) return [""];
-
-  const segments = Array.from(text.matchAll(ANSI_SGR_PATTERN));
-  const wrapped: string[] = [];
-  const state = createAnsiWrapState();
-  let segmentIndex = 0;
-  let current = "";
-  let visibleCount = 0;
-  let textIndex = 0;
-
-  while (textIndex < text.length) {
-    const nextSegment = segments[segmentIndex];
-    if (nextSegment && nextSegment.index === textIndex) {
-      current += nextSegment[0];
-      applyAnsiSgrSequence(state, nextSegment[1] ?? "");
-      textIndex += nextSegment[0].length;
-      segmentIndex += 1;
-      continue;
-    }
-
-    const codePoint = text.codePointAt(textIndex);
-    if (codePoint === undefined) {
-      break;
-    }
-
-    const character = String.fromCodePoint(codePoint);
-    current += character;
-    visibleCount += 1;
-    textIndex += character.length;
-
-    if (visibleCount >= width && textIndex < text.length) {
-      const nextPrefix =
-        "   " + serializeAnsiWrapState(cloneAnsiWrapState(state));
-      wrapped.push(`${current}${hasAnsiWrapState(state) ? "\x1b[0m" : ""}`);
-      current = nextPrefix;
-      visibleCount = 0;
-    }
-  }
-
-  wrapped.push(current.length > 0 ? current : "");
-  return wrapped;
-}
-
-function getOutputWrapWidth(columns: number): number {
-  return Math.max(1, Math.min(150, columns - 3));
-}
-
-function findFirstDifferentLineIndex(
-  previousLines: string[],
-  nextLines: string[],
-): number {
-  const sharedLength = Math.min(previousLines.length, nextLines.length);
-  for (let index = 0; index < sharedLength; index += 1) {
-    if (previousLines[index] !== nextLines[index]) {
-      return index;
-    }
-  }
-  return sharedLength;
 }
 
 export interface RawChatUIOptions {
@@ -601,26 +303,35 @@ export default class RawChatUI {
   }
 
   renderEvent(event: AgentEventEnvelope): void {
-    this.applyTranscriptEvent(event);
+    try {
+      this.applyTranscriptEvent(event);
 
-    if (!this.started || this.suspended || !process.stdout.isTTY) {
-      return;
-    }
+      if (!this.started || this.suspended || !process.stdout.isTTY) {
+        return;
+      }
 
-    if (this.fullReplayRequested) {
-      return;
-    }
+      if (this.fullReplayRequested) {
+        return;
+      }
 
-    const delta = this.buildTranscriptDelta(event);
-    if (delta.kind !== "none") {
-      this.renderIncremental(delta);
+      const delta = this.buildTranscriptDelta(event);
+      if (delta.kind !== "none") {
+        this.renderIncremental(delta);
+      }
+    } catch (error) {
+      this.reportInternalError("Failed to process event", error);
     }
   }
 
   syncState(state: AgentEventState): void {
-    this.latestState = state;
-    this.cleanupInteractionState();
-    this.render();
+    try {
+      this.latestState = state;
+      this.cleanupInteractionState();
+      this.render();
+    } catch (error) {
+      this.latestState = null;
+      this.reportInternalError("Failed to sync state", error);
+    }
   }
 
   flash(
@@ -628,12 +339,31 @@ export default class RawChatUI {
     tone: FlashMessage["tone"] = "info",
     durationMs = 2400,
   ): void {
+    this.setFlashMessage(text, tone, durationMs);
+    this.render();
+  }
+
+  private setFlashMessage(
+    text: string,
+    tone: FlashMessage["tone"],
+    durationMs = 2400,
+  ): void {
     this.flashMessage = {
       text,
       tone,
       expiresAt: Date.now() + durationMs,
     };
-    this.render();
+  }
+
+  private describeError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  private reportInternalError(prefix: string, error: unknown): void {
+    this.setFlashMessage(
+      `${prefix}: ${this.describeError(error)}`,
+      "error",
+    );
   }
 
   private attachTerminal(): void {
@@ -1287,7 +1017,7 @@ export default class RawChatUI {
       return;
     }
 
-    const signature = this.getCommandCompletionSignature(context);
+    const signature = getCommandCompletionSignature(context);
     if (
       this.dismissedCompletionSignature &&
       this.dismissedCompletionSignature !== signature
@@ -1337,21 +1067,10 @@ export default class RawChatUI {
     };
   }
 
-  private getCommandCompletionSignature(context: {
-    replacementStart: number;
-    replacementEnd: number;
-    sourceQuery?: string;
-    query?: string;
-    matches: CommandDefinition[];
-  }): string {
-    const sourceQuery = context.sourceQuery ?? context.query ?? "";
-    return `${context.replacementStart}:${context.replacementEnd}:${sourceQuery}:${context.matches.map((command) => command.name).join(",")}`;
-  }
-
   private dismissCommandCompletion(): void {
     if (!this.completionState) return;
 
-    this.dismissedCompletionSignature = this.getCommandCompletionSignature(
+    this.dismissedCompletionSignature = getCommandCompletionSignature(
       this.completionState,
     );
     this.completionState = null;
@@ -1369,7 +1088,7 @@ export default class RawChatUI {
       return;
     }
 
-    const tokenSignature = this.getFileSearchTokenSignature(token);
+    const tokenSignature = getFileSearchTokenSignature(token);
     if (
       this.dismissedFileSearchSignature &&
       this.dismissedFileSearchSignature !== tokenSignature
@@ -1423,14 +1142,10 @@ export default class RawChatUI {
     }
   }
 
-  private getFileSearchTokenSignature(token: FileSearchToken): string {
-    return `${token.start}:${token.end}:${token.query}`;
-  }
-
   private dismissFileSearch(): void {
     if (!this.fileSearchState) return;
 
-    this.dismissedFileSearchSignature = this.getFileSearchTokenSignature(
+    this.dismissedFileSearchSignature = getFileSearchTokenSignature(
       this.fileSearchState.token,
     );
     this.fileSearchState = null;
@@ -1524,214 +1239,121 @@ export default class RawChatUI {
     return this.workspaceFilesPromise;
   }
 
-  private applyTranscriptEvent(event: AgentEventEnvelope): void {
+  private classifyTranscriptEvent(event: AgentEventEnvelope): TranscriptEventAction {
     switch (event.type) {
       case "agent.created":
-        this.clearActiveTranscriptStream();
-        this.addEntry({
-          kind: "system",
-          title: "System",
-          body: event.message,
-          tone: "info",
-          markdown: false,
-        });
-        break;
-
-      case "agent.stopped":
-      case "agent.status":
-      case "input.execution":
-      case "cancel":
-        this.clearActiveTranscriptStream();
-        break;
-
+        return {action: "addEntry", kind: "system", title: "System", body: this.verbose ? event.message : event.message.split("\n")[0] ?? "", tone: "info", markdown: false};
       case "output.chat":
-        this.appendTranscriptStream(
-          "output.chat",
-          "Assistant",
-          event.message,
-          "chat",
-        );
-        break;
-
+        return {action: "stream", type: "output.chat", title: "Assistant", message: event.message, tone: "chat"};
       case "output.reasoning":
-        this.appendTranscriptStream(
-          "output.reasoning",
-          "Reasoning",
-          event.message,
-          "reasoning",
-        );
-        break;
-
+        return {action: "stream", type: "output.reasoning", title: "Reasoning", message: event.message, tone: "reasoning"};
       case "output.info":
-        this.clearActiveTranscriptStream();
-        this.addEntry({
-          kind: "info",
-          title: "Info",
-          body: event.message,
-          tone: "info",
-          markdown: false,
-        });
-        break;
-
+        return {action: "addEntry", kind: "info", title: "Info", body: event.message, tone: "info", markdown: false};
       case "output.warning":
-        this.clearActiveTranscriptStream();
-        this.addEntry({
-          kind: "warning",
-          title: "Warning",
-          body: event.message,
-          tone: "warning",
-          markdown: false,
-        });
-        break;
-
+        return {action: "addEntry", kind: "warning", title: "Warning", body: event.message, tone: "warning", markdown: false};
       case "output.error":
-        this.clearActiveTranscriptStream();
-        this.addEntry({
-          kind: "error",
-          title: "Error",
-          body: event.message,
-          tone: "error",
-          markdown: false,
-        });
-        break;
-
+        return {action: "addEntry", kind: "error", title: "Error", body: event.message, tone: "error", markdown: false};
       case "output.artifact":
-        this.clearActiveTranscriptStream();
-        this.addEntry({
+        return {
+          action: "addEntry",
           kind: "artifact",
           title: `Artifact: ${event.name}`,
-          body:
-            event.encoding === "text"
-              ? event.body
-              : `Generated ${event.mimeType} artifact`,
           tone: "info",
-          markdown: event.encoding === "text",
-        });
-        break;
-
+          ...formatArtifactBody(event, this.verbose),
+        };
+      case "toolCall":
+        return {
+          action: "addEntry",
+          kind: "toolCall",
+          title: event.summary,
+          body: formatToolCallBody(event, this.verbose),
+          tone: "info",
+          markdown: true,
+        };
       case "agent.response":
-        this.clearActiveTranscriptStream();
-        this.addEntry({
+        return {
+          action: "addEntry",
           kind: "response",
           title: event.status === "success" ? "Response" : "Error",
           body: event.message,
           tone: event.status === "success" ? "success" : "error",
           markdown: event.status === "success",
-        });
-        break;
-
+        };
       case "input.received":
-        this.clearActiveTranscriptStream();
-        this.addEntry({
-          kind: "input",
-          title: "You",
-          body: event.input.message,
-          tone: "input",
-          markdown: false,
-        });
-        break;
-
-      case "input.interaction":
-        this.clearActiveTranscriptStream();
-        break;
-    }
-  }
-
-  private buildTranscriptDelta(event: AgentEventEnvelope): TranscriptDelta {
-    const {columns, rows} = this.getTerminalSize();
-
-    switch (event.type) {
-      case "agent.created":
-        return this.buildCompleteEntryDelta(
-          "System",
-          event.message,
-          "info",
-          false,
-          columns,
-        );
-      case "output.chat":
-        return this.buildStreamDelta(
-          "output.chat",
-          "Assistant",
-          event.message,
-          "chat",
-          columns,
-          rows,
-        );
-      case "output.reasoning":
-        if (!this.verbose) {
-          this.closeVisibleStream();
-          return {kind: "none"};
-        }
-        return this.buildStreamDelta(
-          "output.reasoning",
-          "Reasoning",
-          event.message,
-          "reasoning",
-          columns,
-          rows,
-        );
-      case "output.info":
-        return this.buildCompleteEntryDelta(
-          "Info",
-          event.message,
-          "info",
-          false,
-          columns,
-        );
-      case "output.warning":
-        return this.buildCompleteEntryDelta(
-          "Warning",
-          event.message,
-          "warning",
-          false,
-          columns,
-        );
-      case "output.error":
-        return this.buildCompleteEntryDelta(
-          "Error",
-          event.message,
-          "error",
-          false,
-          columns,
-        );
-      case "output.artifact":
-        if (!this.verbose) {
-          this.closeVisibleStream();
-          return {kind: "none"};
-        }
-        return this.buildCompleteEntryDelta(
-          `Artifact: ${event.name}`,
-          event.encoding === "text"
-            ? event.body
-            : `Generated ${event.mimeType} artifact`,
-          "info",
-          event.encoding === "text",
-          columns,
-        );
-      case "agent.response":
-        return this.buildCompleteEntryDelta(
-          event.status === "success" ? "Response" : "Error",
-          event.message,
-          event.status === "success" ? "success" : "error",
-          event.status === "success",
-          columns,
-        );
-      case "input.received":
-        return this.buildCompleteEntryDelta(
-          "You",
-          event.input.message,
-          "input",
-          false,
-          columns,
-        );
+        return {action: "addEntry", kind: "input", title: "You", body: event.input.message, tone: "input", markdown: false};
       case "agent.stopped":
       case "agent.status":
       case "input.execution":
       case "cancel":
       case "input.interaction":
+        return {action: "clearOnly"};
+      default: {
+        // noinspection UnnecessaryLocalVariableJS
+        const _exhaustive: never = event;
+        throw new Error(`Unhandled event type: ${_exhaustive}`);
+      }
+    }
+  }
+
+  private applyTranscriptEvent(event: AgentEventEnvelope): void {
+    const classified = this.classifyTranscriptEvent(event);
+    switch (classified.action) {
+      case "clearOnly":
+        this.clearActiveTranscriptStream();
+        break;
+      case "addEntry":
+        this.clearActiveTranscriptStream();
+        this.addEntry({
+          kind: classified.kind,
+          title: classified.title,
+          body: classified.body,
+          tone: classified.tone,
+          markdown: classified.markdown,
+        });
+        break;
+      case "stream":
+        this.appendTranscriptStream(classified.type, classified.title, classified.message, classified.tone);
+        break;
+    }
+  }
+
+  private buildTranscriptDelta(event: AgentEventEnvelope): TranscriptDelta {
+    const {columns, rows} = getTerminalSize();
+    const classified = this.classifyTranscriptEvent(event);
+
+    switch (classified.action) {
+      case "clearOnly":
         this.closeVisibleStream();
         return {kind: "none"};
+      case "addEntry": {
+        // Verbose-gated entries that are hidden in quiet mode
+        if (!this.verbose && (classified.kind === "reasoning" || classified.kind === "artifact")) {
+          this.closeVisibleStream();
+          return {kind: "none"};
+        }
+        return this.buildCompleteEntryDelta(
+          classified.title,
+          classified.body,
+          classified.tone,
+          classified.markdown,
+          columns,
+          classified.kind,
+        );
+      }
+      case "stream": {
+        if (!this.verbose && classified.type === "output.reasoning") {
+          this.closeVisibleStream();
+          return {kind: "none"};
+        }
+        return this.buildStreamDelta(
+          classified.type,
+          classified.title,
+          classified.message,
+          classified.tone,
+          columns,
+          rows,
+        );
+      }
     }
   }
 
@@ -1741,16 +1363,17 @@ export default class RawChatUI {
     tone: TranscriptTone,
     markdown: boolean,
     columns: number,
+    kind: TranscriptEntryKind = "info",
   ): TranscriptDelta {
     this.closeVisibleStream();
     const prefix = this.pendingSeparatorBeforeNextVisibleEntry ? "\n" : "";
     this.pendingSeparatorBeforeNextVisibleEntry = false;
     return {
       kind: "append",
-      text: `${prefix}${this.renderEntryText(
+      text: `${prefix}${renderEntryText(
         {
           id: 0,
-          kind: "info",
+          kind,
           title,
           body,
           tone,
@@ -1770,13 +1393,13 @@ export default class RawChatUI {
     columns: number,
     rows: number,
   ): TranscriptDelta {
-    const rawChunk = this.getRawStreamText(message);
+    const rawChunk = getRawStreamText(message);
 
     if (!this.activeVisibleStream || this.activeVisibleStream.type !== type) {
       const prefix = this.pendingSeparatorBeforeNextVisibleEntry ? "\n" : "";
       this.pendingSeparatorBeforeNextVisibleEntry = false;
       const rawBuffer = `${TEXT_INDENT}${rawChunk}`;
-      const displayedBuffer = this.renderBufferedStream(
+      const displayedBuffer = renderBufferedStream(
         rawBuffer,
         tone,
         columns,
@@ -1809,7 +1432,7 @@ export default class RawChatUI {
     const previousLines = splitLines(previousDisplayedBuffer);
     const previousScreenLineCount = this.activeVisibleStream.screenLineCount;
     this.activeVisibleStream.rawBuffer += rawChunk;
-    const displayedBuffer = this.renderBufferedStream(
+    const displayedBuffer = renderBufferedStream(
       this.activeVisibleStream.rawBuffer,
       tone,
       columns,
@@ -1901,11 +1524,23 @@ export default class RawChatUI {
 
   private render(): void {
     if (!this.started || this.suspended || !process.stdout.isTTY) return;
-    if (this.fullReplayRequested) {
-      this.renderFullReplay();
-      return;
+
+    try {
+      if (this.fullReplayRequested) {
+        this.renderFullReplay();
+        return;
+      }
+      this.renderFooterOnly();
+    } catch (error) {
+      this.latestState = null;
+      this.reportInternalError("Render failed", error);
+      try {
+        this.fullReplayRequested = true;
+        this.renderFullReplay();
+      } catch {
+        // Swallow the recovery failure; the UI is already degraded.
+      }
     }
-    this.renderFooterOnly();
   }
 
   private renderFullReplay(): void {
@@ -1915,7 +1550,7 @@ export default class RawChatUI {
       this.rebuildTranscriptFromEvents(this.latestState.events);
     }
 
-    const {columns, rows} = this.getTerminalSize();
+    const {columns, rows} = getTerminalSize();
     const footer = this.renderFooter(columns, rows);
 
     if (columns < 40 || rows < 10) {
@@ -1943,7 +1578,7 @@ export default class RawChatUI {
         output += "\n";
       }
       output += footer.lines.join("\n");
-      output += this.getFooterCursorSequence(footer);
+      output += getFooterCursorSequence(footer);
     } else {
       output += "\x1b[?25h";
     }
@@ -1969,7 +1604,7 @@ export default class RawChatUI {
   private renderIncremental(delta: TranscriptDelta): void {
     if (!process.stdout.isTTY) return;
 
-    const {columns, rows} = this.getTerminalSize();
+    const {columns, rows} = getTerminalSize();
     const footer = this.renderFooter(columns, rows);
 
     if (columns < 40 || rows < 10) {
@@ -1987,7 +1622,7 @@ export default class RawChatUI {
 
     if (delta.kind === "append") {
       let output = "\x1b[?25l";
-      output += this.moveToFooterTop();
+      output += moveToFooterTop(this.footerSnapshot);
       output += "\x1b[J";
       output += delta.text;
       if (footer.lines.length > 0 && delta.footerNeedsLeadingNewline) {
@@ -1995,7 +1630,7 @@ export default class RawChatUI {
       }
       if (footer.lines.length > 0) {
         output += footer.lines.join("\n");
-        output += this.getFooterCursorSequence(footer);
+        output += getFooterCursorSequence(footer);
       } else {
         output += "\x1b[?25h";
       }
@@ -2047,7 +1682,7 @@ export default class RawChatUI {
 
   private clearFooter(): void {
     if (!process.stdout.isTTY || this.footerSnapshot.lineCount === 0) return;
-    const output = `${this.moveToFooterTop()}\x1b[J\r\n`;
+    const output = `${moveToFooterTop(this.footerSnapshot)}\x1b[J\r\n`;
     process.stdout.write(output);
     this.footerSnapshot = {
       lineCount: 0,
@@ -2089,7 +1724,7 @@ export default class RawChatUI {
       columns,
     );
     let output = "\x1b[?25l";
-    output += this.moveToFooterTop();
+    output += moveToFooterTop(this.footerSnapshot);
     if (blockTopOffsetFromFooterTop > 0) {
       output += `\x1b[${blockTopOffsetFromFooterTop}F`;
     }
@@ -2104,46 +1739,21 @@ export default class RawChatUI {
     }
     output +=
       footer.lines.length > 0
-        ? this.getFooterCursorSequence(footer)
+        ? getFooterCursorSequence(footer)
         : "\x1b[?25h";
 
     process.stdout.write(output);
     return true;
   }
 
-  private moveToFooterTop(): string {
-    if (this.footerSnapshot.lineCount === 0) {
-      return "";
-    }
-
-    let output = "\r";
-    if (this.footerSnapshot.cursorRow > 0) {
-      output += `\x1b[${this.footerSnapshot.cursorRow}F`;
-    }
-    return output;
-  }
-
-  private getFooterCursorSequence(block: RenderBlock): string {
-    const lineCount = block.lines.length;
-    if (lineCount === 0) {
-      return block.showCursor === false ? "\x1b[?25l" : "\x1b[?25h";
-    }
-
-    const cursorRow = block.cursorRow ?? Math.max(0, lineCount - 1);
-    const cursorColumn = block.cursorColumn ?? 0;
-    const moveUp = Math.max(0, lineCount - 1 - cursorRow);
-
-    let output = "\r";
-    if (moveUp > 0) {
-      output += `\x1b[${moveUp}F`;
-    }
-    output += `\x1b[${cursorColumn + 1}G`;
-    output += block.showCursor === false ? "\x1b[?25l" : "\x1b[?25h";
-    return output;
-  }
-
   private renderFooter(columns: number, rows: number): RenderBlock {
-    const {workingDirectory} = this.options.agent.getState(FileSystemState);
+    let workingDirectory = process.cwd();
+    try {
+      workingDirectory =
+        this.options.agent.getState(FileSystemState).workingDirectory;
+    } catch (error) {
+      this.reportInternalError("File system state unavailable", error);
+    }
 
     if (columns < 40 || rows < 10) {
       return {
@@ -2191,7 +1801,7 @@ export default class RawChatUI {
       showCursor: false,
     });
 
-    const footerContent = this.combineBlocks(sections);
+    const footerContent = combineBlocks(sections);
     const transcriptVisibleRows = this.getVisibleTranscriptViewportLineCount(
       Math.max(0, rows - footerContent.lines.length),
       columns,
@@ -2216,36 +1826,6 @@ export default class RawChatUI {
           : footerContent.cursorRow + spacerCount,
       cursorColumn: footerContent.cursorColumn,
       showCursor: footerContent.showCursor,
-    };
-  }
-
-  private combineBlocks(blocks: RenderBlock[]): RenderBlock {
-    const lines: string[] = [];
-    let cursorRow: number | undefined;
-    let cursorColumn: number | undefined;
-    let showCursor = false;
-
-    for (const block of blocks) {
-      if (block.lines.length === 0) continue;
-      if (lines.length > 0) {
-        lines.push("");
-      }
-
-      const offset = lines.length;
-      lines.push(...block.lines);
-
-      if (block.cursorRow !== undefined) {
-        cursorRow = offset + block.cursorRow;
-        cursorColumn = block.cursorColumn ?? 0;
-        showCursor = block.showCursor !== false;
-      }
-    }
-
-    return {
-      lines,
-      cursorRow,
-      cursorColumn,
-      showCursor,
     };
   }
 
@@ -2457,7 +2037,7 @@ export default class RawChatUI {
     const indentedChildLines = child.lines.map(
       (line) => `${childIndent}${line}`,
     );
-    const title = this.getQuestionTitle(question);
+    const title = getQuestionTitle(question);
     const lines = [
       TITLE_COLOR(`${HEADER_PREFIX}${title}`),
       "",
@@ -2527,7 +2107,7 @@ export default class RawChatUI {
         ? ` · ${formatTimer(question.autoSubmitAt)}`
         : "";
       const label = truncateVisible(
-        `${this.getQuestionLabel(question)}${timer}`,
+        `${getQuestionLabel(question)}${timer}`,
         Math.max(10, columns - 6),
       );
       lines.push(`${prefix} ${label}`);
@@ -2633,95 +2213,15 @@ export default class RawChatUI {
     }
 
     const segments = [
-      this.getCurrentModelLabel(),
-      formatPercentLeft(this.getRemainingContextPercent()),
-      `${formatCompactNumber(this.getActiveToolCount())} tools`,
-      `${formatCompactNumber(this.getTokenUsage(), " tk")}`,
-      formatCurrency(this.getChatCost()),
+      getCurrentModelLabel(this.options.agent),
+      formatPercentLeft(getRemainingContextPercent(this.options.agent)),
+      `${formatCompactNumber(getActiveToolCount(this.options.agent))} tools`,
+      `${formatCompactNumber(getTokenUsage(this.options.agent), " tk")}`,
+      formatCurrency(getChatCost(this.options.agent)),
       shortenPath(workingDirectory),
     ];
 
     return STATUS_BAR(truncateVisible(segments.join(" · "), columns));
-  }
-
-  private getQuestionTitle(question: QuestionInteraction): string {
-    const inner = question.question;
-    if ("label" in inner && inner.label.trim().length > 0) {
-      return inner.label.trim();
-    }
-    return question.optional ? "Optional Question" : "Question";
-  }
-
-  private getCurrentModelLabel(): string {
-    const chatService = this.options.agent.getServiceByType(ChatService);
-    return chatService?.getModel(this.options.agent) ?? "(no model)";
-  }
-
-  private getRemainingContextPercent(): number | null {
-    const chatService = this.options.agent.getServiceByType(ChatService);
-    const modelRegistry =
-      this.options.agent.getServiceByType(ChatModelRegistry);
-    if (!chatService || !modelRegistry) return null;
-
-    const message = chatService.getLastMessage(this.options.agent);
-    if (!message) return 100;
-
-    const model = chatService.getModel(this.options.agent);
-    if (!model) return null;
-
-    const {base} = parseModelAndSettings(model.toLowerCase());
-    const spec = modelRegistry.modelSpecs.getItemByName(base);
-    if (!spec?.maxContextLength) return null;
-
-    const usage = message.response.lastStepUsage;
-    const usedTokens = (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
-    const remaining = 1 - usedTokens / spec.maxContextLength;
-    return clamp(Math.round(remaining * 100), 0, 100);
-  }
-
-  private getActiveToolCount(): number | null {
-    const chatService = this.options.agent.getServiceByType(ChatService);
-    if (!chatService) return null;
-    return chatService.getEnabledTools(this.options.agent).length;
-  }
-
-  private getTokenUsage(): number | null {
-    const chatService = this.options.agent.getServiceByType(ChatService);
-    if (!chatService) return null;
-
-    const messages = chatService.getChatMessages(this.options.agent);
-    if (messages.length === 0) return 0;
-
-    return messages.reduce((total, message) => {
-      const usage = message.response.totalUsage;
-      return (
-        total +
-        (usage.inputTokens ?? 0) +
-        (usage.outputTokens ?? 0) +
-        (usage.cachedInputTokens ?? 0) +
-        (usage.reasoningTokens ?? 0)
-      );
-    }, 0);
-  }
-
-  private getChatCost(): number | null {
-    const chatService = this.options.agent.getServiceByType(ChatService);
-    if (!chatService) return null;
-
-    const messages = chatService.getChatMessages(this.options.agent);
-    if (messages.length === 0) return 0;
-
-    return messages.reduce(
-      (total, message) => total + (message.response.cost.total ?? 0),
-      0,
-    );
-  }
-
-  private getTerminalSize(): { columns: number; rows: number } {
-    return {
-      columns: process.stdout.columns ?? 80,
-      rows: process.stdout.rows ?? 24,
-    };
   }
 
   private rebuildTranscriptFromEvents(events: AgentEventEnvelope[]): void {
@@ -2747,7 +2247,7 @@ export default class RawChatUI {
 
     let text = "";
     for (const entry of visibleEntries) {
-      text += this.renderEntryText(
+      text += renderEntryText(
         entry,
         columns,
         activeEntry?.id === entry.id,
@@ -2758,7 +2258,7 @@ export default class RawChatUI {
       activeEntry && this.activeTranscriptStream
         ? this.createActiveVisibleStream(
           this.activeTranscriptStream.type,
-          `${TEXT_INDENT}${this.getRawStreamText(activeEntry.body)}`,
+          `${TEXT_INDENT}${getRawStreamText(activeEntry.body)}`,
           activeEntry.tone,
           columns,
         )
@@ -2768,10 +2268,11 @@ export default class RawChatUI {
   }
 
   private getVisibleTranscript(): TranscriptEntry[] {
-    if (this.verbose) return this.transcript;
+    return this.transcript;
+    /*if (this.verbose) return this.transcript;
     return this.transcript.filter(
       (entry) => entry.kind !== "reasoning" && entry.kind !== "artifact",
-    );
+    );*/
   }
 
   private getVisibleTranscriptViewportLineCount(
@@ -2789,79 +2290,22 @@ export default class RawChatUI {
 
     let totalLines = 0;
     for (const entry of visibleEntries) {
-      totalLines += this.getRenderedEntryLineCount(
-        entry,
-        columns,
-        activeEntryId === entry.id,
-      );
+      const isActive = activeEntryId === entry.id;
+      const rendered = renderEntryText(entry, columns, isActive);
+      totalLines += splitLines(rendered).length;
+      // Complete entries end with \n\n; the trailing "" from splitLines is the
+      // cursor position after writing (not a visible row), so subtract it.
+      if (!isActive) totalLines -= 1;
     }
 
     return Math.min(maxRows, totalLines);
   }
 
   private isEntryVisible(entry: TranscriptEntry): boolean {
+    return true;
     return (
       this.verbose || (entry.kind !== "reasoning" && entry.kind !== "artifact")
     );
-  }
-
-  private getRenderedEntryLineCount(
-    entry: TranscriptEntry,
-    columns: number,
-    keepOpen = false,
-  ): number {
-    let count = entry.title ? 1 : 0;
-
-    const outputWidth = getOutputWrapWidth(columns);
-    const body = trimBoundaryNewlines(entry.body);
-    if (body.length > 0) {
-      for (const sourceLine of body.split("\n")) {
-        const styled = entry.markdown
-          ? TONE_COLORS[entry.tone](applyMarkdownStyles(sourceLine))
-          : TONE_COLORS[entry.tone](sourceLine);
-        count += wrapAnsiStyledLine(
-          `${TEXT_INDENT}${styled}`,
-          outputWidth,
-        ).length;
-      }
-    }
-
-    if (!keepOpen) {
-      count += 1;
-    }
-
-    return count;
-  }
-
-  private renderEntryText(
-    entry: TranscriptEntry,
-    columns: number,
-    keepOpen = false,
-  ): string {
-    const lines: string[] = [];
-
-    if (entry.title) {
-      lines.push(TITLE_COLOR(`${HEADER_PREFIX}${entry.title}`));
-    }
-
-    const outputWidth = getOutputWrapWidth(columns);
-    const body = trimBoundaryNewlines(entry.body);
-    if (body.length > 0) {
-      for (const sourceLine of body.split("\n")) {
-        const styled = entry.markdown
-          ? TONE_COLORS[entry.tone](applyMarkdownStyles(sourceLine))
-          : TONE_COLORS[entry.tone](sourceLine);
-        lines.push(
-          ...wrapAnsiStyledLine(`${TEXT_INDENT}${styled}`, outputWidth),
-        );
-      }
-    }
-
-    if (keepOpen) {
-      return lines.join("\n");
-    }
-
-    return `${lines.join("\n")}\n\n`;
   }
 
   private createActiveVisibleStream(
@@ -2870,7 +2314,7 @@ export default class RawChatUI {
     tone: TranscriptTone,
     columns: number,
   ): ActiveVisibleStream {
-    const displayedBuffer = this.renderBufferedStream(rawBuffer, tone, columns);
+    const displayedBuffer = renderBufferedStream(rawBuffer, tone, columns);
     return {
       type,
       tone,
@@ -2878,26 +2322,6 @@ export default class RawChatUI {
       displayedBuffer,
       screenLineCount: countScreenRows(splitLines(displayedBuffer), columns),
     };
-  }
-
-  private renderBufferedStream(
-    rawBuffer: string,
-    tone: TranscriptTone,
-    columns: number,
-  ): string {
-    const outputWidth = getOutputWrapWidth(columns);
-    return splitLines(rawBuffer)
-      .flatMap((line) =>
-        wrapAnsiStyledLine(
-          TONE_COLORS[tone](applyMarkdownStyles(line)),
-          outputWidth,
-        ),
-      )
-      .join("\n");
-  }
-
-  private getRawStreamText(message: string): string {
-    return message.replace(/\n/g, `\n${TEXT_INDENT}`);
   }
 
   private getAvailableInteractions(): ParsedInteractionRequest[] {
@@ -2952,17 +2376,6 @@ export default class RawChatUI {
     }
 
     return null;
-  }
-
-  private getQuestionLabel(question: QuestionInteraction): string {
-    switch (question.question.type) {
-      case "text":
-      case "treeSelect":
-      case "fileSelect":
-        return question.question.label;
-      case "form":
-        return "Form";
-    }
   }
 
   private cleanupInteractionState(): void {

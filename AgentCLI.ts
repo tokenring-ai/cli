@@ -72,7 +72,7 @@ export default class AgentCLI implements TokenRingService {
     if (this.config.startAgent) {
       try {
         const agentManager = this.app.requireService(AgentManager);
-        initialAgent = await agentManager.spawnAgent({
+        initialAgent = agentManager.spawnAgent({
           agentType: this.config.startAgent.type,
           headless: true,
         });
@@ -171,7 +171,7 @@ export default class AgentCLI implements TokenRingService {
 
       switch (selection.type) {
         case "spawn":
-          return await agentManager.spawnAgent({
+          return agentManager.spawnAgent({
             agentType: selection.agentType,
             headless: false,
           });
@@ -191,7 +191,7 @@ export default class AgentCLI implements TokenRingService {
       process.stderr.write(
         formatLogMessages(["Error selecting agent", error as Error]),
       );
-      await delay(1000);
+      await delay(5000);
       return "retry";
     }
   }
