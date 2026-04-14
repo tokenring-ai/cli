@@ -536,7 +536,7 @@ export async function runLoadingScreen(
       renderTick += 1;
       render();
     }
-  } catch (error) {
+  } catch (error: unknown) {
     if (!(error instanceof Error) || error.name !== "AbortError") {
       throw error;
     }
@@ -621,7 +621,7 @@ export async function promptForAgentSelection(
     signal.addEventListener("abort", abortHandler, {once: true});
     try {
       render();
-    } catch (error) {
+    } catch (error: unknown) {
       signal.removeEventListener("abort", abortHandler);
       cleanupTerminal(terminalState, keyHandler, resizeHandler);
       reject(error);

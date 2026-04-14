@@ -88,7 +88,7 @@ export default class AgentCLI implements TokenRingService {
             });
           }
         }
-      } catch (error) {
+      } catch (error: unknown) {
         throw new Error(
           formatLogMessages(["Error while spawning agent", error as Error]),
         );
@@ -108,7 +108,7 @@ export default class AgentCLI implements TokenRingService {
         });
 
         await agentLoop.run(signal);
-      } catch (error) {
+      } catch (error: unknown) {
         process.stderr.write(
           formatLogMessages(["Error while running agent loop", error as Error]),
         );
@@ -182,12 +182,12 @@ export default class AgentCLI implements TokenRingService {
           return "retry";
         case "workflow": {
           const workflowService = this.app.requireService(WorkflowService);
-          return await workflowService.spawnWorkflow(selection.workflowKey, {
+          return workflowService.spawnWorkflow(selection.workflowKey, {
             headless: false,
           });
         }
       }
-    } catch (error) {
+    } catch (error: unknown) {
       process.stderr.write(
         formatLogMessages(["Error selecting agent", error as Error]),
       );

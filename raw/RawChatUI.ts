@@ -318,7 +318,7 @@ export default class RawChatUI {
       if (delta.kind !== "none") {
         this.renderIncremental(delta);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       this.reportInternalError("Failed to process event", error);
     }
   }
@@ -328,7 +328,7 @@ export default class RawChatUI {
       this.latestState = state;
       this.cleanupInteractionState();
       this.render();
-    } catch (error) {
+    } catch (error: unknown) {
       this.latestState = null;
       this.reportInternalError("Failed to sync state", error);
     }
@@ -1223,7 +1223,7 @@ export default class RawChatUI {
         this.workspaceFiles = Array.from(new Set(files)).sort(
           compareFilePathsForBrowsing,
         );
-      } catch (error) {
+      } catch (error: unknown) {
         this.workspaceFiles = null;
         this.workspaceFilesLoadError =
           error instanceof Error
@@ -1289,8 +1289,8 @@ export default class RawChatUI {
         return {action: "clearOnly"};
       default: {
         // noinspection UnnecessaryLocalVariableJS
-        const _exhaustive: never = event;
-        throw new Error(`Unhandled event type: ${_exhaustive}`);
+        const unknownEventType: never = event;
+        throw new Error(`Unhandled event type: ${unknownEventType as string}`);
       }
     }
   }
@@ -1531,7 +1531,7 @@ export default class RawChatUI {
         return;
       }
       this.renderFooterOnly();
-    } catch (error) {
+    } catch (error: unknown) {
       this.latestState = null;
       this.reportInternalError("Render failed", error);
       try {
@@ -1751,7 +1751,7 @@ export default class RawChatUI {
     try {
       workingDirectory =
         this.options.agent.getState(FileSystemState).workingDirectory;
-    } catch (error) {
+    } catch (error: unknown) {
       this.reportInternalError("File system state unavailable", error);
     }
 

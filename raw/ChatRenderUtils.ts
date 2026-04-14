@@ -224,7 +224,7 @@ function decodeAsText(body: string, encoding: "text" | "base64"): string {
     default: {
       // noinspection JSUnusedLocalSymbols
       const _foo: never = encoding;
-      throw new Error(`Unsupported encoding: ${encoding}`);
+      throw new Error(`Unsupported encoding: ${encoding as string}`);
     }
   }
 }
@@ -261,7 +261,7 @@ export function formatArtifactBody(
           break;
         default: {
           const _unknownMimeType: never = event.mimeType;
-          lines.push(`Unknown MIME type '${_unknownMimeType}' encountered. Artifact cannot be displayed.`);
+          lines.push(`Unknown MIME type '${_unknownMimeType as string}' encountered. Artifact cannot be displayed.`);
           markdown = false;
           break;
         }

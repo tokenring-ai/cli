@@ -89,7 +89,7 @@ export default class AgentLoop {
     try {
       const events$ = this.agent.subscribeStateAsync(AgentEventState, signal);
       await raceAbort(this.consumeEvents(events$, signal), signal);
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof DOMException && error.name === "AbortError") {
       } else if (error instanceof Error && error.name === "AbortError") {
       } else {
@@ -106,7 +106,7 @@ export default class AgentLoop {
     }
 
     if (this.exitAction === "delete-agent") {
-      await this.deleteCurrentAgent();
+      this.deleteCurrentAgent();
     }
     this.exitAction = null;
   }
@@ -115,14 +115,14 @@ export default class AgentLoop {
     this.abort?.abort();
   }
 
-  private async deleteCurrentAgent(): Promise<void> {
+  private deleteCurrentAgent() {
     try {
       const agentManager = this.agent.app.requireService(AgentManager);
-      await agentManager.deleteAgent(
+      agentManager.deleteAgent(
         this.agent.id,
         "Agent was shut down from the CLI",
       );
-    } catch (error) {
+    } catch (error: unknown) {
       process.stderr.write(
         formatLogMessages([
           "Error while deleting agent from CLI",
@@ -142,7 +142,7 @@ export default class AgentLoop {
       for (const event of state.yieldEventsByCursor(this.eventCursor)) {
         try {
           this.renderEvent(event);
-        } catch (error) {
+        } catch (error: unknown) {
           this.ui?.flash(
             `Failed to render event: ${error instanceof Error ? error.message : String(error)}`,
             "error",
@@ -153,7 +153,7 @@ export default class AgentLoop {
 
       try {
         this.handleAgentState(state);
-      } catch (error) {
+      } catch (error: unknown) {
         this.ui?.flash(
           `Failed to sync agent state: ${error instanceof Error ? error.message : String(error)}`,
           "error",
