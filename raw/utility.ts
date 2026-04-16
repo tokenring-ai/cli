@@ -315,7 +315,7 @@ export function getRemainingContextPercent(agent: Agent): number | null {
   if (!model) return null;
 
   const {base} = parseModelAndSettings(model.toLowerCase());
-  const spec = modelRegistry.modelSpecs.getItemByName(base);
+  const spec = modelRegistry.modelSpecs.get(base);
   if (!spec?.maxContextLength) return null;
 
   const usage = message.response.lastStepUsage;

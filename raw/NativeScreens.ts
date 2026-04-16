@@ -339,16 +339,16 @@ function buildSelectionEntries(app: TokenRingApp): SelectionEntry[] {
   }
 
   if (workflowService) {
-    const workflows = workflowService.listWorkflows();
+    const workflows = workflowService.listWorkflowEntries();
     if (workflows.length > 0) {
       categories.set(
         "Workflows",
         workflows
-          .map(({key, workflow}) => ({
+          .map(([name, workflow]) => ({
             type: "option" as const,
-            label: `${workflow.name} (${key})`,
-            value: `workflow:${key}`,
-            previewTitle: workflow.name,
+            label: `${workflow.displayName} (${name})`,
+            value: `workflow:${name}`,
+            previewTitle: workflow.displayName,
             previewLines: [workflow.description],
           }))
           .sort((left, right) => left.label.localeCompare(right.label)),
