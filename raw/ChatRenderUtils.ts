@@ -1,32 +1,14 @@
-import type {AgentEventEnvelope, ParsedInteractionRequest} from "@tokenring-ai/agent/AgentEvents";
+import type { AgentEventEnvelope, ParsedInteractionRequest } from "@tokenring-ai/agent/AgentEvents";
 import chalk from "chalk";
-import {theme} from "../theme.ts";
+import { theme } from "../theme.ts";
 import applyMarkdownStyles from "../utility/applyMarkdownStyles.ts";
-import type {FileSearchToken} from "./FileSearch.ts";
-import type {RenderBlock} from "./InlineQuestions.ts";
-import {getOutputWrapWidth, splitLines, trimBoundaryNewlines, wrapAnsiStyledLine} from "./utility.ts";
+import type { FileSearchToken } from "./FileSearch.ts";
+import type { RenderBlock } from "./InlineQuestions.ts";
+import { getOutputWrapWidth, splitLines, trimBoundaryNewlines, wrapAnsiStyledLine } from "./utility.ts";
 
-export type TranscriptTone =
-  | "chat"
-  | "reasoning"
-  | "info"
-  | "warning"
-  | "error"
-  | "input"
-  | "success"
-  | "muted";
+export type TranscriptTone = "chat" | "reasoning" | "info" | "warning" | "error" | "input" | "success" | "muted";
 
-export type TranscriptEntryKind =
-  | "system"
-  | "input"
-  | "chat"
-  | "reasoning"
-  | "info"
-  | "warning"
-  | "error"
-  | "artifact"
-  | "toolCall"
-  | "response";
+export type TranscriptEntryKind = "system" | "input" | "chat" | "reasoning" | "info" | "warning" | "error" | "artifact" | "toolCall" | "response";
 
 export type TranscriptEntry = {
   id: number;
@@ -37,10 +19,7 @@ export type TranscriptEntry = {
   markdown: boolean;
 };
 
-export type QuestionInteraction = Extract<
-  ParsedInteractionRequest,
-  { type: "question" }
->;
+export type QuestionInteraction = Extract<ParsedInteractionRequest, { type: "question" }>;
 
 export type ToolCallEvent = Extract<AgentEventEnvelope, { type: "toolCall" }>;
 export type ArtifactEvent = Extract<AgentEventEnvelope, { type: "output.artifact" }>;
@@ -63,12 +42,12 @@ export const TEXT_INDENT = "   ";
 export function getCommandCompletionSignature(context: {
   replacementStart: number;
   replacementEnd: number;
-  sourceQuery?: string;
-  query?: string;
+  sourceQuery?: string | undefined;
+  query?: string | undefined;
   matches: Array<{ name: string }>;
 }): string {
   const sourceQuery = context.sourceQuery ?? context.query ?? "";
-  return `${context.replacementStart}:${context.replacementEnd}:${sourceQuery}:${context.matches.map((command) => command.name).join(",")}`;
+  return `${context.replacementStart}:${context.replacementEnd}:${sourceQuery}:${context.matches.map(command => command.name).join(",")}`;
 }
 
 export function getFileSearchTokenSignature(token: FileSearchToken): string {
@@ -94,10 +73,7 @@ export function getQuestionLabel(question: QuestionInteraction): string {
   }
 }
 
-export function moveToFooterTop(snapshot: {
-  lineCount: number;
-  cursorRow: number;
-}): string {
+export function moveToFooterTop(snapshot: { lineCount: number; cursorRow: number }): string {
   if (snapshot.lineCount === 0) {
     return "";
   }
@@ -158,27 +134,19 @@ export function combineBlocks(blocks: RenderBlock[]): RenderBlock {
   };
 }
 
-export function renderEntryText(
-  entry: TranscriptEntry,
-  columns: number,
-  keepOpen = false,
-): string {
+export function renderEntryText(entry: TranscriptEntry, columns: number, keepOpen = false): string {
   const lines: string[] = [];
   const outputWidth = getOutputWrapWidth(columns);
 
   if (entry.title) {
-    const styledTitle = TITLE_COLOR(
-      `${HEADER_PREFIX}${applyMarkdownStyles(entry.title)}`,
-    );
+    const styledTitle = TITLE_COLOR(`${HEADER_PREFIX}${applyMarkdownStyles(entry.title)}`);
     lines.push(...wrapAnsiStyledLine(styledTitle, outputWidth));
   }
 
   const body = trimBoundaryNewlines(entry.body);
   if (body.length > 0) {
     for (const sourceLine of body.split("\n")) {
-      const styled = entry.markdown
-        ? TONE_COLORS[entry.tone](applyMarkdownStyles(sourceLine))
-        : TONE_COLORS[entry.tone](sourceLine);
+      const styled = entry.markdown ? TONE_COLORS[entry.tone](applyMarkdownStyles(sourceLine)) : TONE_COLORS[entry.tone](sourceLine);
       lines.push(...wrapAnsiStyledLine(`${TEXT_INDENT}${styled}`, outputWidth));
     }
   }
@@ -190,10 +158,7 @@ export function renderEntryText(
   return `${lines.join("\n")}\n\n`;
 }
 
-export function formatToolCallBody(
-  event: ToolCallEvent,
-  includeResult = false,
-): string {
+export function formatToolCallBody(event: ToolCallEvent, includeResult = false): string {
   const lines: string[] = [];
   const result = trimBoundaryNewlines(event.result);
 
@@ -204,7 +169,7 @@ export function formatToolCallBody(
 
       const [firstLine, ...remainingLines] = actionText.split("\n");
       lines.push(`└ ${firstLine}`);
-      lines.push(...remainingLines.map((line) => ` ${line}`));
+      lines.push(...remainingLines.map(line => ` ${line}`));
     }
   }
 
@@ -229,17 +194,13 @@ function decodeAsText(body: string, encoding: "text" | "base64"): string {
   }
 }
 
-export function formatArtifactBody(
-  event: ArtifactEvent,
-  verbose: boolean
-): { body: string, markdown: boolean } {
+export function formatArtifactBody(event: ArtifactEvent, verbose: boolean): { body: string; markdown: boolean } {
   let markdown = true;
   const lines = [`${event.name} (${event.mimeType})`];
   if (verbose) {
-    if (event.encoding === 'href') {
+    if (event.encoding === "href") {
       lines.push(`Artifact can be viewed at: [${event.body}](${event.body})`);
     } else {
-
       switch (event.mimeType) {
         case "application/json":
           lines.push(`\`\`\`json\n${decodeAsText(event.body, event.encoding)}\n\`\`\``);
@@ -268,22 +229,13 @@ export function formatArtifactBody(
       }
     }
   }
-  return {markdown, body: lines.join("\n")};
+  return { markdown, body: lines.join("\n") };
 }
 
-export function renderBufferedStream(
-  rawBuffer: string,
-  tone: TranscriptTone,
-  columns: number,
-): string {
+export function renderBufferedStream(rawBuffer: string, tone: TranscriptTone, columns: number): string {
   const outputWidth = getOutputWrapWidth(columns);
   return splitLines(rawBuffer)
-    .flatMap((line) =>
-      wrapAnsiStyledLine(
-        TONE_COLORS[tone](applyMarkdownStyles(line)),
-        outputWidth,
-      ),
-    )
+    .flatMap(line => wrapAnsiStyledLine(TONE_COLORS[tone](applyMarkdownStyles(line)), outputWidth))
     .join("\n");
 }
 

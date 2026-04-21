@@ -1,28 +1,15 @@
-import chalk from "chalk";
 import process from "node:process";
+import chalk from "chalk";
 
 function applyInlineStyles(text: string): string {
   let result = text;
-  result = result.replace(/\*\*(.*?)\*\*/g, (_, content) =>
-    chalk.bold(content),
-  );
-  result = result.replace(/(?<![\w])__(.*?)__(?![\w])/g, (_, content) =>
-    chalk.bold(content),
-  );
+  result = result.replace(/\*\*(.*?)\*\*/g, (_, content) => chalk.bold(content));
+  result = result.replace(/(?<![\w])__(.*?)__(?![\w])/g, (_, content) => chalk.bold(content));
   result = result.replace(/\*(.*?)\*/g, (_, content) => chalk.italic(content));
-  result = result.replace(/(?<![\w])_(.*?)_(?![\w])/g, (_, content) =>
-    chalk.italic(content),
-  );
-  result = result.replace(/~~(.*?)~~/g, (_, content) =>
-    chalk.strikethrough(content),
-  );
-  result = result.replace(/`(.*?)`/g, (_, content) =>
-    chalk.bgWhite.black(` ${content} `),
-  );
-  result = result.replace(
-    /\[(.*?)\]\((.*?)\)/g,
-    (_, text, url) => `${chalk.cyan.underline(text)} ${chalk.gray(`(${url})`)}`,
-  );
+  result = result.replace(/(?<![\w])_(.*?)_(?![\w])/g, (_, content) => chalk.italic(content));
+  result = result.replace(/~~(.*?)~~/g, (_, content) => chalk.strikethrough(content));
+  result = result.replace(/`(.*?)`/g, (_, content) => chalk.bgWhite.black(` ${content} `));
+  result = result.replace(/\[(.*?)\]\((.*?)\)/g, (_, text, url) => `${chalk.cyan.underline(text)} ${chalk.gray(`(${url})`)}`);
   return result;
 }
 
@@ -32,17 +19,13 @@ export default function applyMarkdownStyles(text: string): string {
   // Code blocks (triple backticks) - convert to 20char horizontal line
   if (result.trim().startsWith("```")) {
     const lang = result.trim().slice(3).trim();
-    const line = lang
-      ? "─── " + lang + " " + "─".repeat(35 - lang.length)
-      : "─".repeat(40);
+    const line = lang ? "─── " + lang + " " + "─".repeat(35 - lang.length) : "─".repeat(40);
     return chalk.gray(line);
   }
 
   // Horizontal Rules (---, ***, ___)
   if (result.trim().match(/^([-*_])\1{2,}$/)) {
-    const width = process.stdout.columns
-      ? Math.floor(process.stdout.columns * 0.6)
-      : 40;
+    const width = process.stdout.columns ? Math.floor(process.stdout.columns * 0.6) : 40;
     return chalk.gray("─".repeat(width));
   }
 

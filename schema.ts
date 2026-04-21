@@ -1,4 +1,4 @@
-import {z} from "zod";
+import { z } from "zod";
 
 export const CLIConfigSchema = z.object({
   chatBanner: z.string(),
@@ -11,8 +11,8 @@ export const CLIConfigSchema = z.object({
   startAgent: z
     .object({
       type: z.string(),
-      prompt: z.string().optional(),
+      prompt: z.string().exactOptional(),
       shutdownWhenDone: z.boolean().default(true),
     })
-    .optional(),
+    .exactOptional(),
 });

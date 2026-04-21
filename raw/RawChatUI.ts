@@ -1,22 +1,23 @@
-import type Agent from "@tokenring-ai/agent/Agent";
-import type {AgentEventEnvelope, ParsedInteractionRequest} from "@tokenring-ai/agent/AgentEvents";
-import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
-import {CommandHistoryState} from "@tokenring-ai/agent/state/commandHistoryState";
-import {FileSystemService} from "@tokenring-ai/filesystem";
-import {FileSystemState} from "@tokenring-ai/filesystem/state/fileSystemState";
-import {clamp} from "@tokenring-ai/utility/number/clamp";
-import {brailleSpinner} from "@tokenring-ai/utility/string/brailleSpinner";
-import {truncateVisible} from "@tokenring-ai/utility/string/truncateVisible";
-import {visibleLength} from "@tokenring-ai/utility/string/visibleLength";
-import type {MaybePromise} from "bun";
-import chalk from "chalk";
 import process from "node:process";
 import readline from "node:readline";
-import type {z} from "zod";
-import type {CLIConfigSchema} from "../schema.ts";
-import {theme} from "../theme.ts";
+import type Agent from "@tokenring-ai/agent/Agent";
+import type { AgentEventEnvelope, ParsedInteractionRequest } from "@tokenring-ai/agent/AgentEvents";
+import { AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
+import { CommandHistoryState } from "@tokenring-ai/agent/state/commandHistoryState";
+import { FileSystemService } from "@tokenring-ai/filesystem";
+import { FileSystemState } from "@tokenring-ai/filesystem/state/fileSystemState";
+import { clamp } from "@tokenring-ai/utility/number/clamp";
+import { brailleSpinner } from "@tokenring-ai/utility/string/brailleSpinner";
+import { truncateVisible } from "@tokenring-ai/utility/string/truncateVisible";
+import { visibleLength } from "@tokenring-ai/utility/string/visibleLength";
+import type { MaybePromise } from "bun";
+import chalk from "chalk";
+import type { z } from "zod";
+import type { CLIConfigSchema } from "../schema.ts";
+import { theme } from "../theme.ts";
 import {
-  combineBlocks, formatArtifactBody,
+  combineBlocks,
+  formatArtifactBody,
   formatToolCallBody,
   getCommandCompletionSignature,
   getFileSearchTokenSignature,
@@ -34,11 +35,11 @@ import {
   TONE_COLORS,
   type TranscriptEntry,
   type TranscriptEntryKind,
-  type TranscriptTone
+  type TranscriptTone,
 } from "./ChatRenderUtils.ts";
-import {type CommandDefinition, getCommandCompletionContext} from "./CommandCompletions.ts";
-import {compareFilePathsForBrowsing, type FileSearchToken, findActiveFileSearchToken, getFileSearchMatches, replaceFileSearchToken} from "./FileSearch.ts";
-import {createInlineQuestionSession, type InlineQuestionSession, type Keypress as InlineKeypress, type RenderBlock} from "./InlineQuestions.ts";
+import { type CommandDefinition, getCommandCompletionContext } from "./CommandCompletions.ts";
+import { compareFilePathsForBrowsing, type FileSearchToken, findActiveFileSearchToken, getFileSearchMatches, replaceFileSearchToken } from "./FileSearch.ts";
+import { createInlineQuestionSession, type Keypress as InlineKeypress, type InlineQuestionSession, type RenderBlock } from "./InlineQuestions.ts";
 import InputEditor from "./InputEditor.ts";
 import {
   countScreenRows,
@@ -55,7 +56,7 @@ import {
   getTerminalSize,
   getTokenUsage,
   shortenPath,
-  splitLines
+  splitLines,
 } from "./utility.ts";
 
 type CompletionState = {
@@ -76,9 +77,7 @@ type FileSearchState = {
 
 type FlashMessage = {
   text: string;
-  tone:
-    | Exclude<TranscriptTone, "chat" | "reasoning" | "input" | "muted">
-    | "muted";
+  tone: Exclude<TranscriptTone, "chat" | "reasoning" | "input" | "muted"> | "muted";
   expiresAt: number;
 };
 
@@ -92,19 +91,19 @@ type FooterSnapshot = {
 
 type TranscriptDelta =
   | {
-  kind: "none";
-}
+      kind: "none";
+    }
   | {
-  kind: "append";
-  text: string;
-  footerNeedsLeadingNewline: boolean;
-}
+      kind: "append";
+      text: string;
+      footerNeedsLeadingNewline: boolean;
+    }
   | {
-  kind: "rewriteStreamTail";
-  footerNeedsLeadingNewline: boolean;
-  blockTopOffsetFromFooterTop: number;
-  previousLines: string[];
-};
+      kind: "rewriteStreamTail";
+      footerNeedsLeadingNewline: boolean;
+      blockTopOffsetFromFooterTop: number;
+      previousLines: string[];
+    };
 
 type TranscriptEventAction =
   | { action: "clearOnly" }
@@ -119,10 +118,7 @@ type ActiveVisibleStream = {
   screenLineCount: number;
 };
 
-type FollowupInteraction = Extract<
-  ParsedInteractionRequest,
-  { type: "followup" }
->;
+type FollowupInteraction = Extract<ParsedInteractionRequest, { type: "followup" }>;
 
 const STATUS_BAR = chalk.hex(theme.chatDivider);
 const PROMPT_ARROW_COLOR = chalk.hex(theme.askMessage).bold;
@@ -179,11 +175,7 @@ function renderEditor(
   }
 
   const visibleCount = clamp(lines.length, 1, Math.max(1, maxContentLines));
-  const windowStart = clamp(
-    cursorRow - visibleCount + 1,
-    0,
-    Math.max(0, lines.length - visibleCount),
-  );
+  const windowStart = clamp(cursorRow - visibleCount + 1, 0, Math.max(0, lines.length - visibleCount));
   const visibleLines = lines.slice(windowStart, windowStart + visibleCount);
 
   return {
@@ -334,20 +326,12 @@ export default class RawChatUI {
     }
   }
 
-  flash(
-    text: string,
-    tone: FlashMessage["tone"] = "info",
-    durationMs = 2400,
-  ): void {
+  flash(text: string, tone: FlashMessage["tone"] = "info", durationMs = 2400): void {
     this.setFlashMessage(text, tone, durationMs);
     this.render();
   }
 
-  private setFlashMessage(
-    text: string,
-    tone: FlashMessage["tone"],
-    durationMs = 2400,
-  ): void {
+  private setFlashMessage(text: string, tone: FlashMessage["tone"], durationMs = 2400): void {
     this.flashMessage = {
       text,
       tone,
@@ -360,10 +344,7 @@ export default class RawChatUI {
   }
 
   private reportInternalError(prefix: string, error: unknown): void {
-    this.setFlashMessage(
-      `${prefix}: ${this.describeError(error)}`,
-      "error",
-    );
+    this.setFlashMessage(`${prefix}: ${this.describeError(error)}`, "error");
   }
 
   private attachTerminal(): void {
@@ -526,7 +507,7 @@ export default class RawChatUI {
       const session = this.getQuestionSession(activeQuestion);
       const handled = session.handleKeypress(input, key as InlineKeypress);
       if (handled instanceof Promise) {
-        void handled.then((didHandle) => {
+        void handled.then(didHandle => {
           if (didHandle) {
             this.render();
           }
@@ -550,10 +531,7 @@ export default class RawChatUI {
     }
   }
 
-  private handleChatComposerKeypress(
-    input: string,
-    key: readline.Key,
-  ): boolean {
+  private handleChatComposerKeypress(input: string, key: readline.Key): boolean {
     if (this.fileSearchState) {
       if (key.name === "escape") {
         this.dismissFileSearch();
@@ -617,10 +595,7 @@ export default class RawChatUI {
       return true;
     }
 
-    if (
-      (key.meta && key.name === "return") ||
-      (key.shift && key.name === "return")
-    ) {
+    if ((key.meta && key.name === "return") || (key.shift && key.name === "return")) {
       this.chatEditor.insertNewline();
       this.afterChatEdit();
       return true;
@@ -643,7 +618,7 @@ export default class RawChatUI {
     }
 
     if (key.name === "up") {
-      const {lineIndex} = this.chatEditor.getCursorLocation();
+      const { lineIndex } = this.chatEditor.getCursorLocation();
       if (lineIndex > 0) {
         this.chatEditor.moveUp();
         this.afterChatEdit();
@@ -654,7 +629,7 @@ export default class RawChatUI {
     }
 
     if (key.name === "down") {
-      const {lineIndex} = this.chatEditor.getCursorLocation();
+      const { lineIndex } = this.chatEditor.getCursorLocation();
       if (lineIndex < this.chatEditor.getLineCount() - 1) {
         this.chatEditor.moveDown();
         this.afterChatEdit();
@@ -683,11 +658,7 @@ export default class RawChatUI {
     return false;
   }
 
-  private handleFollowupKeypress(
-    followup: FollowupInteraction,
-    input: string,
-    key: InlineKeypress,
-  ): boolean {
+  private handleFollowupKeypress(followup: FollowupInteraction, input: string, key: InlineKeypress): boolean {
     const editor = this.getFollowupEditor(followup.interactionId);
 
     if (key.name === "escape") {
@@ -699,10 +670,7 @@ export default class RawChatUI {
       return true;
     }
 
-    if (
-      (key.meta && key.name === "return") ||
-      (key.shift && key.name === "return")
-    ) {
+    if ((key.meta && key.name === "return") || (key.shift && key.name === "return")) {
       editor.insertNewline();
       return true;
     }
@@ -739,35 +707,19 @@ export default class RawChatUI {
       return true;
     }
     if (key.name === "up") {
-      this.optionalQuestionIndex = clamp(
-        this.optionalQuestionIndex - 1,
-        0,
-        optionalQuestions.length - 1,
-      );
+      this.optionalQuestionIndex = clamp(this.optionalQuestionIndex - 1, 0, optionalQuestions.length - 1);
       return true;
     }
     if (key.name === "down") {
-      this.optionalQuestionIndex = clamp(
-        this.optionalQuestionIndex + 1,
-        0,
-        optionalQuestions.length - 1,
-      );
+      this.optionalQuestionIndex = clamp(this.optionalQuestionIndex + 1, 0, optionalQuestions.length - 1);
       return true;
     }
     if (key.name === "pageup") {
-      this.optionalQuestionIndex = clamp(
-        this.optionalQuestionIndex - 8,
-        0,
-        optionalQuestions.length - 1,
-      );
+      this.optionalQuestionIndex = clamp(this.optionalQuestionIndex - 8, 0, optionalQuestions.length - 1);
       return true;
     }
     if (key.name === "pagedown") {
-      this.optionalQuestionIndex = clamp(
-        this.optionalQuestionIndex + 8,
-        0,
-        optionalQuestions.length - 1,
-      );
+      this.optionalQuestionIndex = clamp(this.optionalQuestionIndex + 8, 0, optionalQuestions.length - 1);
       return true;
     }
     if (key.name === "return") {
@@ -782,11 +734,7 @@ export default class RawChatUI {
     return false;
   }
 
-  private applyEditorKeypress(
-    editor: InputEditor,
-    input: string,
-    key: InlineKeypress,
-  ): boolean {
+  private applyEditorKeypress(editor: InputEditor, input: string, key: InlineKeypress): boolean {
     if (key.ctrl && key.name === "a") {
       editor.moveHome();
       return true;
@@ -872,29 +820,20 @@ export default class RawChatUI {
       this.optionalPickerOpen = !this.optionalPickerOpen;
     }
 
-    this.optionalQuestionIndex = clamp(
-      this.optionalQuestionIndex,
-      0,
-      optionalQuestions.length - 1,
-    );
+    this.optionalQuestionIndex = clamp(this.optionalQuestionIndex, 0, optionalQuestions.length - 1);
     this.render();
   }
 
   private insertSelectedCommandCompletion(): boolean {
     if (!this.completionState) return false;
 
-    const selectedCommand =
-      this.completionState.matches[this.completionState.selectedIndex];
+    const selectedCommand = this.completionState.matches[this.completionState.selectedIndex];
     if (!selectedCommand) {
       this.flash("No matching command.", "warning");
       return true;
     }
 
-    this.applyCompletion(
-      this.completionState.replacementStart,
-      this.completionState.replacementEnd,
-      `${selectedCommand.name} `,
-    );
+    this.applyCompletion(this.completionState.replacementStart, this.completionState.replacementEnd, `${selectedCommand.name} `);
     return true;
   }
 
@@ -905,28 +844,17 @@ export default class RawChatUI {
 
     this.completionState = {
       ...this.completionState,
-      selectedIndex: clamp(
-        this.completionState.selectedIndex + offset,
-        0,
-        this.completionState.matches.length - 1,
-      ),
+      selectedIndex: clamp(this.completionState.selectedIndex + offset, 0, this.completionState.matches.length - 1),
     };
     return true;
   }
 
-  private applyCompletion(
-    start: number,
-    end: number,
-    replacement: string,
-  ): void {
+  private applyCompletion(start: number, end: number, replacement: string): void {
     const text = this.chatEditor.getText();
     const prefix = text.slice(0, start);
     const suffix = text.slice(end);
 
-    this.chatEditor.setText(
-      `${prefix}/${replacement}${suffix}`,
-      prefix.length + replacement.length + 1,
-    );
+    this.chatEditor.setText(`${prefix}/${replacement}${suffix}`, prefix.length + replacement.length + 1);
     this.historyIndex = null;
     this.historyDraft = "";
     this.dismissedCompletionSignature = null;
@@ -976,10 +904,7 @@ export default class RawChatUI {
     this.afterChatEdit();
   }
 
-  private triggerShortcutCommand(
-    commandName: string,
-    flashMessage: string,
-  ): void {
+  private triggerShortcutCommand(commandName: string, flashMessage: string): void {
     if (!this.hasCommand(commandName)) {
       this.flash(`/${commandName} is not available.`, "warning");
       return;
@@ -992,9 +917,7 @@ export default class RawChatUI {
   }
 
   private hasCommand(commandName: string): boolean {
-    return this.options.commands.some(
-      (command) => command.name === commandName,
-    );
+    return this.options.commands.some(command => command.name === commandName);
   }
 
   private afterChatEdit(): void {
@@ -1005,11 +928,7 @@ export default class RawChatUI {
   }
 
   private syncChatCommandCompletionState(): void {
-    const context = getCommandCompletionContext(
-      this.chatEditor.getText(),
-      this.chatEditor.getCursor(),
-      this.options.commands,
-    );
+    const context = getCommandCompletionContext(this.chatEditor.getText(), this.chatEditor.getCursor(), this.options.commands);
 
     if (!context) {
       this.completionState = null;
@@ -1018,10 +937,7 @@ export default class RawChatUI {
     }
 
     const signature = getCommandCompletionSignature(context);
-    if (
-      this.dismissedCompletionSignature &&
-      this.dismissedCompletionSignature !== signature
-    ) {
+    if (this.dismissedCompletionSignature && this.dismissedCompletionSignature !== signature) {
       this.dismissedCompletionSignature = null;
     }
 
@@ -1030,31 +946,19 @@ export default class RawChatUI {
       return;
     }
 
-    const previousSelection =
-      this.completionState?.matches[this.completionState.selectedIndex]?.name ??
-      null;
+    const previousSelection = this.completionState?.matches[this.completionState.selectedIndex]?.name ?? null;
     let selectedIndex = 0;
 
     if (context.matches.length > 0) {
       if (previousSelection) {
-        const nextIndex = context.matches.findIndex(
-          (command) => command.name === previousSelection,
-        );
+        const nextIndex = context.matches.findIndex(command => command.name === previousSelection);
         if (nextIndex !== -1) {
           selectedIndex = nextIndex;
         } else if (this.completionState?.sourceQuery === context.query) {
-          selectedIndex = clamp(
-            this.completionState.selectedIndex,
-            0,
-            context.matches.length - 1,
-          );
+          selectedIndex = clamp(this.completionState.selectedIndex, 0, context.matches.length - 1);
         }
       } else if (this.completionState?.sourceQuery === context.query) {
-        selectedIndex = clamp(
-          this.completionState.selectedIndex,
-          0,
-          context.matches.length - 1,
-        );
+        selectedIndex = clamp(this.completionState.selectedIndex, 0, context.matches.length - 1);
       }
     }
 
@@ -1070,17 +974,12 @@ export default class RawChatUI {
   private dismissCommandCompletion(): void {
     if (!this.completionState) return;
 
-    this.dismissedCompletionSignature = getCommandCompletionSignature(
-      this.completionState,
-    );
+    this.dismissedCompletionSignature = getCommandCompletionSignature(this.completionState);
     this.completionState = null;
   }
 
   private syncChatFileSearchState(): void {
-    const token = findActiveFileSearchToken(
-      this.chatEditor.getText(),
-      this.chatEditor.getCursor(),
-    );
+    const token = findActiveFileSearchToken(this.chatEditor.getText(), this.chatEditor.getCursor());
 
     if (!token) {
       this.fileSearchState = null;
@@ -1089,10 +988,7 @@ export default class RawChatUI {
     }
 
     const tokenSignature = getFileSearchTokenSignature(token);
-    if (
-      this.dismissedFileSearchSignature &&
-      this.dismissedFileSearchSignature !== tokenSignature
-    ) {
+    if (this.dismissedFileSearchSignature && this.dismissedFileSearchSignature !== tokenSignature) {
       this.dismissedFileSearchSignature = null;
     }
 
@@ -1101,11 +997,8 @@ export default class RawChatUI {
       return;
     }
 
-    const previousSelection =
-      this.fileSearchState?.matches[this.fileSearchState.selectedIndex] ?? null;
-    const matches = this.workspaceFiles
-      ? getFileSearchMatches(this.workspaceFiles, token.query, 48)
-      : [];
+    const previousSelection = this.fileSearchState?.matches[this.fileSearchState.selectedIndex] ?? null;
+    const matches = this.workspaceFiles ? getFileSearchMatches(this.workspaceFiles, token.query, 48) : [];
 
     let selectedIndex = 0;
     if (matches.length > 0) {
@@ -1114,18 +1007,10 @@ export default class RawChatUI {
         if (nextIndex !== -1) {
           selectedIndex = nextIndex;
         } else if (this.fileSearchState?.token.query === token.query) {
-          selectedIndex = clamp(
-            this.fileSearchState.selectedIndex,
-            0,
-            matches.length - 1,
-          );
+          selectedIndex = clamp(this.fileSearchState.selectedIndex, 0, matches.length - 1);
         }
       } else if (this.fileSearchState?.token.query === token.query) {
-        selectedIndex = clamp(
-          this.fileSearchState.selectedIndex,
-          0,
-          matches.length - 1,
-        );
+        selectedIndex = clamp(this.fileSearchState.selectedIndex, 0, matches.length - 1);
       }
     }
 
@@ -1145,9 +1030,7 @@ export default class RawChatUI {
   private dismissFileSearch(): void {
     if (!this.fileSearchState) return;
 
-    this.dismissedFileSearchSignature = getFileSearchTokenSignature(
-      this.fileSearchState.token,
-    );
+    this.dismissedFileSearchSignature = getFileSearchTokenSignature(this.fileSearchState.token);
     this.fileSearchState = null;
   }
 
@@ -1158,11 +1041,7 @@ export default class RawChatUI {
 
     this.fileSearchState = {
       ...this.fileSearchState,
-      selectedIndex: clamp(
-        this.fileSearchState.selectedIndex + offset,
-        0,
-        this.fileSearchState.matches.length - 1,
-      ),
+      selectedIndex: clamp(this.fileSearchState.selectedIndex + offset, 0, this.fileSearchState.matches.length - 1),
     };
     return true;
   }
@@ -1180,18 +1059,13 @@ export default class RawChatUI {
       return true;
     }
 
-    const selectedPath =
-      this.fileSearchState.matches[this.fileSearchState.selectedIndex];
+    const selectedPath = this.fileSearchState.matches[this.fileSearchState.selectedIndex];
     if (!selectedPath) {
       this.flash("No matching files.", "muted");
       return true;
     }
 
-    const nextValue = replaceFileSearchToken(
-      this.chatEditor.getText(),
-      this.fileSearchState.token,
-      selectedPath,
-    );
+    const nextValue = replaceFileSearchToken(this.chatEditor.getText(), this.fileSearchState.token, selectedPath);
 
     this.chatEditor.setText(nextValue.text, nextValue.cursor);
     this.dismissedFileSearchSignature = null;
@@ -1215,20 +1089,11 @@ export default class RawChatUI {
     this.workspaceFilesLoadError = null;
     this.workspaceFilesPromise = (async () => {
       try {
-        const files = await fileSystem.glob(
-          "**/*",
-          {includeDirectories: false},
-          this.options.agent,
-        );
-        this.workspaceFiles = Array.from(new Set(files)).sort(
-          compareFilePathsForBrowsing,
-        );
+        const files = await fileSystem.glob("**/*", { includeDirectories: false }, this.options.agent);
+        this.workspaceFiles = Array.from(new Set(files)).sort(compareFilePathsForBrowsing);
       } catch (error: unknown) {
         this.workspaceFiles = null;
-        this.workspaceFilesLoadError =
-          error instanceof Error
-            ? `Workspace file search failed: ${error.message}`
-            : "Workspace file search failed.";
+        this.workspaceFilesLoadError = error instanceof Error ? `Workspace file search failed: ${error.message}` : "Workspace file search failed.";
       } finally {
         this.workspaceFilesPromise = null;
         this.syncChatFileSearchState();
@@ -1242,17 +1107,24 @@ export default class RawChatUI {
   private classifyTranscriptEvent(event: AgentEventEnvelope): TranscriptEventAction {
     switch (event.type) {
       case "agent.created":
-        return {action: "addEntry", kind: "system", title: "System", body: this.verbose ? event.message : event.message.split("\n")[0] ?? "", tone: "info", markdown: false};
+        return {
+          action: "addEntry",
+          kind: "system",
+          title: "System",
+          body: this.verbose ? event.message : (event.message.split("\n")[0] ?? ""),
+          tone: "info",
+          markdown: false,
+        };
       case "output.chat":
-        return {action: "stream", type: "output.chat", title: "Assistant", message: event.message, tone: "chat"};
+        return { action: "stream", type: "output.chat", title: "Assistant", message: event.message, tone: "chat" };
       case "output.reasoning":
-        return {action: "stream", type: "output.reasoning", title: "Reasoning", message: event.message, tone: "reasoning"};
+        return { action: "stream", type: "output.reasoning", title: "Reasoning", message: event.message, tone: "reasoning" };
       case "output.info":
-        return {action: "addEntry", kind: "info", title: "Info", body: event.message, tone: "info", markdown: false};
+        return { action: "addEntry", kind: "info", title: "Info", body: event.message, tone: "info", markdown: false };
       case "output.warning":
-        return {action: "addEntry", kind: "warning", title: "Warning", body: event.message, tone: "warning", markdown: false};
+        return { action: "addEntry", kind: "warning", title: "Warning", body: event.message, tone: "warning", markdown: false };
       case "output.error":
-        return {action: "addEntry", kind: "error", title: "Error", body: event.message, tone: "error", markdown: false};
+        return { action: "addEntry", kind: "error", title: "Error", body: event.message, tone: "error", markdown: false };
       case "output.artifact":
         return {
           action: "addEntry",
@@ -1280,13 +1152,13 @@ export default class RawChatUI {
           markdown: event.status === "success",
         };
       case "input.received":
-        return {action: "addEntry", kind: "input", title: "You", body: event.input.message, tone: "input", markdown: false};
+        return { action: "addEntry", kind: "input", title: "You", body: event.input.message, tone: "input", markdown: false };
       case "agent.stopped":
       case "agent.status":
       case "input.execution":
       case "cancel":
       case "input.interaction":
-        return {action: "clearOnly"};
+        return { action: "clearOnly" };
       default: {
         // noinspection UnnecessaryLocalVariableJS
         const unknownEventType: never = event;
@@ -1318,41 +1190,27 @@ export default class RawChatUI {
   }
 
   private buildTranscriptDelta(event: AgentEventEnvelope): TranscriptDelta {
-    const {columns, rows} = getTerminalSize();
+    const { columns, rows } = getTerminalSize();
     const classified = this.classifyTranscriptEvent(event);
 
     switch (classified.action) {
       case "clearOnly":
         this.closeVisibleStream();
-        return {kind: "none"};
+        return { kind: "none" };
       case "addEntry": {
         // Verbose-gated entries that are hidden in quiet mode
         if (!this.verbose && (classified.kind === "reasoning" || classified.kind === "artifact")) {
           this.closeVisibleStream();
-          return {kind: "none"};
+          return { kind: "none" };
         }
-        return this.buildCompleteEntryDelta(
-          classified.title,
-          classified.body,
-          classified.tone,
-          classified.markdown,
-          columns,
-          classified.kind,
-        );
+        return this.buildCompleteEntryDelta(classified.title, classified.body, classified.tone, classified.markdown, columns, classified.kind);
       }
       case "stream": {
         if (!this.verbose && classified.type === "output.reasoning") {
           this.closeVisibleStream();
-          return {kind: "none"};
+          return { kind: "none" };
         }
-        return this.buildStreamDelta(
-          classified.type,
-          classified.title,
-          classified.message,
-          classified.tone,
-          columns,
-          rows,
-        );
+        return this.buildStreamDelta(classified.type, classified.title, classified.message, classified.tone, columns, rows);
       }
     }
   }
@@ -1399,19 +1257,12 @@ export default class RawChatUI {
       const prefix = this.pendingSeparatorBeforeNextVisibleEntry ? "\n" : "";
       this.pendingSeparatorBeforeNextVisibleEntry = false;
       const rawBuffer = `${TEXT_INDENT}${rawChunk}`;
-      const displayedBuffer = renderBufferedStream(
-        rawBuffer,
-        tone,
-        columns,
-      );
-      const screenLineCount = countScreenRows(
-        splitLines(displayedBuffer),
-        columns,
-      );
+      const displayedBuffer = renderBufferedStream(rawBuffer, tone, columns);
+      const screenLineCount = countScreenRows(splitLines(displayedBuffer), columns);
 
       if (screenLineCount > rows) {
         this.scheduleFullReplay();
-        return {kind: "none"};
+        return { kind: "none" };
       }
 
       this.activeVisibleStream = {
@@ -1432,17 +1283,13 @@ export default class RawChatUI {
     const previousLines = splitLines(previousDisplayedBuffer);
     const previousScreenLineCount = this.activeVisibleStream.screenLineCount;
     this.activeVisibleStream.rawBuffer += rawChunk;
-    const displayedBuffer = renderBufferedStream(
-      this.activeVisibleStream.rawBuffer,
-      tone,
-      columns,
-    );
+    const displayedBuffer = renderBufferedStream(this.activeVisibleStream.rawBuffer, tone, columns);
     const nextLines = splitLines(displayedBuffer);
     const screenLineCount = countScreenRows(nextLines, columns);
 
     if (screenLineCount > rows) {
       this.scheduleFullReplay();
-      return {kind: "none"};
+      return { kind: "none" };
     }
 
     this.activeVisibleStream.tone = tone;
@@ -1477,12 +1324,7 @@ export default class RawChatUI {
     this.activeTranscriptStream = null;
   }
 
-  private appendTranscriptStream(
-    type: "output.chat" | "output.reasoning",
-    title: string,
-    message: string,
-    tone: TranscriptTone,
-  ): void {
+  private appendTranscriptStream(type: "output.chat" | "output.reasoning", title: string, message: string, tone: TranscriptTone): void {
     if (this.activeTranscriptStream?.type === type) {
       this.activeTranscriptStream.entry.body += message;
       return;
@@ -1495,7 +1337,7 @@ export default class RawChatUI {
       tone,
       markdown: true,
     });
-    this.activeTranscriptStream = {type, entry};
+    this.activeTranscriptStream = { type, entry };
   }
 
   private requestFullReplay(): void {
@@ -1550,7 +1392,7 @@ export default class RawChatUI {
       this.rebuildTranscriptFromEvents(this.latestState.events);
     }
 
-    const {columns, rows} = getTerminalSize();
+    const { columns, rows } = getTerminalSize();
     const footer = this.renderFooter(columns, rows);
 
     if (columns < 40 || rows < 10) {
@@ -1558,9 +1400,7 @@ export default class RawChatUI {
       process.stdout.write(output);
       this.footerSnapshot = {
         lineCount: 1,
-        lines: [
-          TONE_COLORS.warning("Terminal too small. Resize to at least 40x10."),
-        ],
+        lines: [TONE_COLORS.warning("Terminal too small. Resize to at least 40x10.")],
         cursorRow: 0,
         cursorColumn: 0,
         showCursor: false,
@@ -1569,7 +1409,7 @@ export default class RawChatUI {
       return;
     }
 
-    const {text, activeStream} = this.renderTranscriptReplay(columns);
+    const { text, activeStream } = this.renderTranscriptReplay(columns);
     let output = "\x1b[?25l\x1b[3J\x1b[2J\x1b[H";
     output += text;
 
@@ -1598,13 +1438,13 @@ export default class RawChatUI {
   }
 
   private renderFooterOnly(): void {
-    this.renderIncremental({kind: "none"});
+    this.renderIncremental({ kind: "none" });
   }
 
   private renderIncremental(delta: TranscriptDelta): void {
     if (!process.stdout.isTTY) return;
 
-    const {columns, rows} = getTerminalSize();
+    const { columns, rows } = getTerminalSize();
     const footer = this.renderFooter(columns, rows);
 
     if (columns < 40 || rows < 10) {
@@ -1612,10 +1452,7 @@ export default class RawChatUI {
       return;
     }
 
-    if (
-      delta.kind === "none" &&
-      footer.lines.length !== this.footerSnapshot.lineCount
-    ) {
+    if (delta.kind === "none" && footer.lines.length !== this.footerSnapshot.lineCount) {
       this.renderFullReplay();
       return;
     }
@@ -1636,37 +1473,13 @@ export default class RawChatUI {
       }
       process.stdout.write(output);
     } else if (delta.kind === "rewriteStreamTail" && this.activeVisibleStream) {
-      const nextTail = [
-        ...splitLines(this.activeVisibleStream.displayedBuffer),
-        ...footer.lines,
-      ];
-      const previousDisplay = [
-        ...delta.previousLines,
-        ...this.footerSnapshot.lines,
-      ];
-      if (
-        !this.rewriteTailBlock(
-          previousDisplay,
-          nextTail,
-          footer,
-          delta.blockTopOffsetFromFooterTop,
-          columns,
-          rows,
-        )
-      ) {
+      const nextTail = [...splitLines(this.activeVisibleStream.displayedBuffer), ...footer.lines];
+      const previousDisplay = [...delta.previousLines, ...this.footerSnapshot.lines];
+      if (!this.rewriteTailBlock(previousDisplay, nextTail, footer, delta.blockTopOffsetFromFooterTop, columns, rows)) {
         return;
       }
     } else {
-      if (
-        !this.rewriteTailBlock(
-          this.footerSnapshot.lines,
-          footer.lines,
-          footer,
-          0,
-          columns,
-          rows,
-        )
-      ) {
+      if (!this.rewriteTailBlock(this.footerSnapshot.lines, footer.lines, footer, 0, columns, rows)) {
         return;
       }
     }
@@ -1708,21 +1521,12 @@ export default class RawChatUI {
       return false;
     }
 
-    let firstDifferentLine = findFirstDifferentLineIndex(
-      previousLines,
-      nextLines,
-    );
-    if (
-      firstDifferentLine === previousLines.length &&
-      firstDifferentLine === nextLines.length
-    ) {
+    let firstDifferentLine = findFirstDifferentLineIndex(previousLines, nextLines);
+    if (firstDifferentLine === previousLines.length && firstDifferentLine === nextLines.length) {
       firstDifferentLine = 0;
     }
 
-    const prefixRowCount = countScreenRows(
-      previousLines.slice(0, firstDifferentLine),
-      columns,
-    );
+    const prefixRowCount = countScreenRows(previousLines.slice(0, firstDifferentLine), columns);
     let output = "\x1b[?25l";
     output += moveToFooterTop(this.footerSnapshot);
     if (blockTopOffsetFromFooterTop > 0) {
@@ -1737,10 +1541,7 @@ export default class RawChatUI {
     if (tailText.length > 0) {
       output += tailText;
     }
-    output +=
-      footer.lines.length > 0
-        ? getFooterCursorSequence(footer)
-        : "\x1b[?25h";
+    output += footer.lines.length > 0 ? getFooterCursorSequence(footer) : "\x1b[?25h";
 
     process.stdout.write(output);
     return true;
@@ -1749,17 +1550,14 @@ export default class RawChatUI {
   private renderFooter(columns: number, rows: number): RenderBlock {
     let workingDirectory = process.cwd();
     try {
-      workingDirectory =
-        this.options.agent.getState(FileSystemState).workingDirectory;
+      workingDirectory = this.options.agent.getState(FileSystemState).workingDirectory;
     } catch (error: unknown) {
       this.reportInternalError("File system state unavailable", error);
     }
 
     if (columns < 40 || rows < 10) {
       return {
-        lines: [
-          TONE_COLORS.warning("Terminal too small. Resize to at least 40x10."),
-        ],
+        lines: [TONE_COLORS.warning("Terminal too small. Resize to at least 40x10.")],
         showCursor: false,
       };
     }
@@ -1785,15 +1583,9 @@ export default class RawChatUI {
         sections.push(this.renderCommandCompletionPicker(columns, rows));
       }
       if (!followup && this.fileSearchState) {
-        sections.push(
-          this.renderFileSearchPicker(columns, rows, workingDirectory),
-        );
+        sections.push(this.renderFileSearchPicker(columns, rows, workingDirectory));
       }
-      sections.push(
-        followup
-          ? this.renderFollowupComposer(followup, columns, rows)
-          : this.renderChatComposer(columns, rows),
-      );
+      sections.push(followup ? this.renderFollowupComposer(followup, columns, rows) : this.renderChatComposer(columns, rows));
     }
 
     sections.push({
@@ -1802,28 +1594,16 @@ export default class RawChatUI {
     });
 
     const footerContent = combineBlocks(sections);
-    const transcriptVisibleRows = this.getVisibleTranscriptViewportLineCount(
-      Math.max(0, rows - footerContent.lines.length),
-      columns,
-    );
-    const spacerCount = Math.max(
-      0,
-      rows - footerContent.lines.length - transcriptVisibleRows,
-    );
+    const transcriptVisibleRows = this.getVisibleTranscriptViewportLineCount(Math.max(0, rows - footerContent.lines.length), columns);
+    const spacerCount = Math.max(0, rows - footerContent.lines.length - transcriptVisibleRows);
 
     if (spacerCount === 0) {
       return footerContent;
     }
 
     return {
-      lines: [
-        ...Array.from({length: spacerCount}, () => ""),
-        ...footerContent.lines,
-      ],
-      cursorRow:
-        footerContent.cursorRow === undefined
-          ? undefined
-          : footerContent.cursorRow + spacerCount,
+      lines: [...Array.from({ length: spacerCount }, () => ""), ...footerContent.lines],
+      cursorRow: footerContent.cursorRow === undefined ? undefined : footerContent.cursorRow + spacerCount,
       cursorColumn: footerContent.cursorColumn,
       showCursor: footerContent.showCursor,
     };
@@ -1834,78 +1614,47 @@ export default class RawChatUI {
     const continuationPrefixWidth = visibleLength(RAW_CONTINUATION_PREFIX);
     const innerWidth = Math.max(10, columns - promptPrefixWidth);
     const maxContentLines = clamp(Math.floor(rows * 0.25), 1, 8);
-    const renderedInput = renderEditor(
-      this.chatEditor,
-      innerWidth,
-      maxContentLines,
-    );
+    const renderedInput = renderEditor(this.chatEditor, innerWidth, maxContentLines);
     const lines: string[] = [];
 
     renderedInput.visibleLines.forEach((line, index) => {
       const prefix = index === 0 ? PROMPT_PREFIX : CONTINUATION_PREFIX;
-      const body =
-        renderedInput.isEmpty && index === 0
-          ? PLACEHOLDER_COLOR("Write a message or /command")
-          : line;
+      const body = renderedInput.isEmpty && index === 0 ? PLACEHOLDER_COLOR("Write a message or /command") : line;
       lines.push(`${prefix}${body}`);
     });
 
     return {
       lines,
       cursorRow: renderedInput.cursorRow,
-      cursorColumn:
-        (renderedInput.cursorRow === 0
-          ? promptPrefixWidth
-          : continuationPrefixWidth) + renderedInput.cursorColumn,
+      cursorColumn: (renderedInput.cursorRow === 0 ? promptPrefixWidth : continuationPrefixWidth) + renderedInput.cursorColumn,
       showCursor: true,
     };
   }
 
-  private renderCommandCompletionPicker(
-    columns: number,
-    rows: number,
-  ): RenderBlock {
+  private renderCommandCompletionPicker(columns: number, rows: number): RenderBlock {
     const state = this.completionState;
     if (!state) {
-      return {lines: [], showCursor: false};
+      return { lines: [], showCursor: false };
     }
 
     const lines = [TITLE_COLOR(`${HEADER_PREFIX}Commands`)];
 
     if (state.matches.length === 0) {
-      lines.push(
-        TONE_COLORS.muted(`${TEXT_INDENT}No matches for /${state.sourceQuery}`),
-      );
-      return {lines, showCursor: false};
+      lines.push(TONE_COLORS.muted(`${TEXT_INDENT}No matches for /${state.sourceQuery}`));
+      return { lines, showCursor: false };
     }
 
-    lines.push(
-      TONE_COLORS.muted(`${TEXT_INDENT}${state.matches.length} matches`),
-    );
+    lines.push(TONE_COLORS.muted(`${TEXT_INDENT}${state.matches.length} matches`));
 
     const maxVisibleItems = clamp(rows - 16, 3, 6);
-    const windowStart = clamp(
-      state.selectedIndex - maxVisibleItems + 1,
-      0,
-      Math.max(0, state.matches.length - maxVisibleItems),
-    );
-    const visibleMatches = state.matches.slice(
-      windowStart,
-      windowStart + maxVisibleItems,
-    );
+    const windowStart = clamp(state.selectedIndex - maxVisibleItems + 1, 0, Math.max(0, state.matches.length - maxVisibleItems));
+    const visibleMatches = state.matches.slice(windowStart, windowStart + maxVisibleItems);
 
     visibleMatches.forEach((match, index) => {
       const actualIndex = windowStart + index;
       const prefix = actualIndex === state.selectedIndex ? "›" : " ";
-      const label = truncateVisible(
-        `/${match.name}  ${match.description}`,
-        Math.max(10, columns - 4),
-      );
-      lines.push(
-        actualIndex === state.selectedIndex
-          ? FILE_SEARCH_SELECTED(`${prefix} ${label}`)
-          : FILE_SEARCH_IDLE(`${prefix} ${label}`),
-      );
+      const label = truncateVisible(`/${match.name}  ${match.description}`, Math.max(10, columns - 4));
+      lines.push(actualIndex === state.selectedIndex ? FILE_SEARCH_SELECTED(`${prefix} ${label}`) : FILE_SEARCH_IDLE(`${prefix} ${label}`));
     });
 
     return {
@@ -1914,65 +1663,41 @@ export default class RawChatUI {
     };
   }
 
-  private renderFileSearchPicker(
-    columns: number,
-    rows: number,
-    workingDirectory: string,
-  ): RenderBlock {
+  private renderFileSearchPicker(columns: number, rows: number, workingDirectory: string): RenderBlock {
     const state = this.fileSearchState;
     if (!state) {
-      return {lines: [], showCursor: false};
+      return { lines: [], showCursor: false };
     }
 
     const indexedCount = this.workspaceFiles?.length ?? 0;
-    const lines = [
-      TITLE_COLOR(`${HEADER_PREFIX}Workspace Files`),
-      TONE_COLORS.muted(`${TEXT_INDENT}${shortenPath(workingDirectory)}`),
-    ];
+    const lines = [TITLE_COLOR(`${HEADER_PREFIX}Workspace Files`), TONE_COLORS.muted(`${TEXT_INDENT}${shortenPath(workingDirectory)}`)];
 
     if (state.loading) {
       lines.push(TONE_COLORS.info(`${TEXT_INDENT}Indexing workspace files...`));
-      return {lines, showCursor: false};
+      return { lines, showCursor: false };
     }
 
     if (state.error) {
       lines.push(TONE_COLORS.warning(`${TEXT_INDENT}${state.error}`));
-      return {lines, showCursor: false};
+      return { lines, showCursor: false };
     }
 
     if (state.matches.length === 0) {
-      lines.push(
-        TONE_COLORS.muted(`${TEXT_INDENT}No matches for @${state.token.query}`),
-      );
-      return {lines, showCursor: false};
+      lines.push(TONE_COLORS.muted(`${TEXT_INDENT}No matches for @${state.token.query}`));
+      return { lines, showCursor: false };
     }
 
-    lines.push(
-      TONE_COLORS.muted(
-        `${TEXT_INDENT}${state.matches.length} matches · ${indexedCount} indexed`,
-      ),
-    );
+    lines.push(TONE_COLORS.muted(`${TEXT_INDENT}${state.matches.length} matches · ${indexedCount} indexed`));
 
     const maxVisibleItems = clamp(rows - 16, 3, 6);
-    const windowStart = clamp(
-      state.selectedIndex - maxVisibleItems + 1,
-      0,
-      Math.max(0, state.matches.length - maxVisibleItems),
-    );
-    const visibleMatches = state.matches.slice(
-      windowStart,
-      windowStart + maxVisibleItems,
-    );
+    const windowStart = clamp(state.selectedIndex - maxVisibleItems + 1, 0, Math.max(0, state.matches.length - maxVisibleItems));
+    const visibleMatches = state.matches.slice(windowStart, windowStart + maxVisibleItems);
 
     visibleMatches.forEach((match, index) => {
       const actualIndex = windowStart + index;
       const prefix = actualIndex === state.selectedIndex ? "›" : " ";
       const label = truncateVisible(match, Math.max(10, columns - 4));
-      lines.push(
-        actualIndex === state.selectedIndex
-          ? FILE_SEARCH_SELECTED(`${prefix} ${label}`)
-          : FILE_SEARCH_IDLE(`${prefix} ${label}`),
-      );
+      lines.push(actualIndex === state.selectedIndex ? FILE_SEARCH_SELECTED(`${prefix} ${label}`) : FILE_SEARCH_IDLE(`${prefix} ${label}`));
     });
 
     return {
@@ -1981,11 +1706,7 @@ export default class RawChatUI {
     };
   }
 
-  private renderFollowupComposer(
-    followup: FollowupInteraction,
-    columns: number,
-    rows: number,
-  ): RenderBlock {
+  private renderFollowupComposer(followup: FollowupInteraction, columns: number, rows: number): RenderBlock {
     const editor = this.getFollowupEditor(followup.interactionId);
     const promptPrefixWidth = visibleLength(RAW_PROMPT_PREFIX);
     const continuationPrefixWidth = visibleLength(RAW_CONTINUATION_PREFIX);
@@ -1994,65 +1715,38 @@ export default class RawChatUI {
     const renderedInput = renderEditor(editor, innerWidth, maxContentLines);
     const lines = [
       TITLE_COLOR(`${HEADER_PREFIX}Follow-up`),
-      ...flattenWrappedLines([followup.message], columns, TEXT_INDENT).map(
-        (line) => TONE_COLORS.info(line),
-      ),
+      ...flattenWrappedLines([followup.message], columns, TEXT_INDENT).map(line => TONE_COLORS.info(line)),
     ];
 
     renderedInput.visibleLines.forEach((line, index) => {
       const prefix = index === 0 ? PROMPT_PREFIX : CONTINUATION_PREFIX;
-      const body =
-        renderedInput.isEmpty && index === 0
-          ? PLACEHOLDER_COLOR("Reply to continue the current run")
-          : line;
+      const body = renderedInput.isEmpty && index === 0 ? PLACEHOLDER_COLOR("Reply to continue the current run") : line;
       lines.push(`${prefix}${body}`);
     });
 
     return {
       lines,
-      cursorRow:
-        lines.length -
-        renderedInput.visibleLines.length +
-        renderedInput.cursorRow,
-      cursorColumn:
-        (renderedInput.cursorRow === 0
-          ? promptPrefixWidth
-          : continuationPrefixWidth) + renderedInput.cursorColumn,
+      cursorRow: lines.length - renderedInput.visibleLines.length + renderedInput.cursorRow,
+      cursorColumn: (renderedInput.cursorRow === 0 ? promptPrefixWidth : continuationPrefixWidth) + renderedInput.cursorColumn,
       showCursor: true,
     };
   }
 
-  private renderQuestionSection(
-    question: QuestionInteraction,
-    columns: number,
-    rows: number,
-  ): RenderBlock {
+  private renderQuestionSection(question: QuestionInteraction, columns: number, rows: number): RenderBlock {
     const session = this.getQuestionSession(question);
-    const child = session.render({columns, rows});
-    const childIndent =
-      question.question.type === "treeSelect" ||
-      question.question.type === "fileSelect"
-        ? ""
-        : TEXT_INDENT;
-    const indentedChildLines = child.lines.map(
-      (line) => `${childIndent}${line}`,
-    );
+    const child = session.render({ columns, rows });
+    const childIndent = question.question.type === "treeSelect" || question.question.type === "fileSelect" ? "" : TEXT_INDENT;
+    const indentedChildLines = child.lines.map(line => `${childIndent}${line}`);
     const title = getQuestionTitle(question);
     const lines = [
       TITLE_COLOR(`${HEADER_PREFIX}${title}`),
       "",
-      ...flattenWrappedLines([question.message], columns, TEXT_INDENT).map(
-        (line) => TONE_COLORS.info(line),
-      ),
+      ...flattenWrappedLines([question.message], columns, TEXT_INDENT).map(line => TONE_COLORS.info(line)),
       "",
     ];
 
     if (question.autoSubmitAt) {
-      lines.push(
-        TONE_COLORS.warning(
-          `${TEXT_INDENT}${formatTimer(question.autoSubmitAt)}`,
-        ),
-      );
+      lines.push(TONE_COLORS.warning(`${TEXT_INDENT}${formatTimer(question.autoSubmitAt)}`));
       lines.push("");
     }
 
@@ -2061,63 +1755,30 @@ export default class RawChatUI {
 
     return {
       lines,
-      cursorRow:
-        child.cursorRow === undefined ? undefined : child.cursorRow + offset,
-      cursorColumn:
-        child.cursorColumn === undefined
-          ? undefined
-          : child.cursorColumn + visibleLength(childIndent),
+      cursorRow: child.cursorRow === undefined ? undefined : child.cursorRow + offset,
+      cursorColumn: child.cursorColumn === undefined ? undefined : child.cursorColumn + visibleLength(childIndent),
       showCursor: child.showCursor,
     };
   }
 
-  private renderOptionalQuestionPicker(
-    columns: number,
-    rows: number,
-  ): RenderBlock {
+  private renderOptionalQuestionPicker(columns: number, rows: number): RenderBlock {
     const optionalQuestions = this.getOptionalQuestions();
     const maxVisibleItems = Math.max(4, rows - 10);
     const visibleQuestions = optionalQuestions.slice(
-      clamp(
-        this.optionalQuestionIndex - maxVisibleItems + 1,
-        0,
-        Math.max(0, optionalQuestions.length - maxVisibleItems),
-      ),
-      clamp(
-        this.optionalQuestionIndex - maxVisibleItems + 1,
-        0,
-        Math.max(0, optionalQuestions.length - maxVisibleItems),
-      ) + maxVisibleItems,
+      clamp(this.optionalQuestionIndex - maxVisibleItems + 1, 0, Math.max(0, optionalQuestions.length - maxVisibleItems)),
+      clamp(this.optionalQuestionIndex - maxVisibleItems + 1, 0, Math.max(0, optionalQuestions.length - maxVisibleItems)) + maxVisibleItems,
     );
-    const start = clamp(
-      this.optionalQuestionIndex - maxVisibleItems + 1,
-      0,
-      Math.max(0, optionalQuestions.length - maxVisibleItems),
-    );
+    const start = clamp(this.optionalQuestionIndex - maxVisibleItems + 1, 0, Math.max(0, optionalQuestions.length - maxVisibleItems));
 
-    const lines = [
-      TITLE_COLOR(`${HEADER_PREFIX}Optional Questions`),
-      TONE_COLORS.info(`${TEXT_INDENT}${optionalQuestions.length} available`),
-    ];
+    const lines = [TITLE_COLOR(`${HEADER_PREFIX}Optional Questions`), TONE_COLORS.info(`${TEXT_INDENT}${optionalQuestions.length} available`)];
 
     visibleQuestions.forEach((question, index) => {
       const actualIndex = start + index;
       const prefix = actualIndex === this.optionalQuestionIndex ? "›" : " ";
-      const timer = question.autoSubmitAt
-        ? ` · ${formatTimer(question.autoSubmitAt)}`
-        : "";
-      const label = truncateVisible(
-        `${getQuestionLabel(question)}${timer}`,
-        Math.max(10, columns - 6),
-      );
+      const timer = question.autoSubmitAt ? ` · ${formatTimer(question.autoSubmitAt)}` : "";
+      const label = truncateVisible(`${getQuestionLabel(question)}${timer}`, Math.max(10, columns - 6));
       lines.push(`${prefix} ${label}`);
-      lines.push(
-        ...flattenWrappedLines(
-          [question.message],
-          Math.max(20, columns - 4),
-          "  ",
-        ).map((line) => TONE_COLORS.muted(line)),
-      );
+      lines.push(...flattenWrappedLines([question.message], Math.max(20, columns - 4), "  ").map(line => TONE_COLORS.muted(line)));
     });
 
     lines.push(TONE_COLORS.muted("Enter open · Esc close"));
@@ -2137,8 +1798,7 @@ export default class RawChatUI {
     let tone: TranscriptTone;
 
     const optionalCount = this.getOptionalQuestions().length;
-    const optionalHint =
-      optionalCount > 0 ? `  Alt+Q optional ${optionalCount}` : "";
+    const optionalHint = optionalCount > 0 ? `  Alt+Q optional ${optionalCount}` : "";
     const activeQuestion = this.getFocusedQuestion();
     const followup = this.getPrimaryFollowup();
 
@@ -2156,12 +1816,8 @@ export default class RawChatUI {
         text = `@ file search · Up/Down move  Enter insert  Esc close`;
         tone = "info";
       }
-    } else if (
-      this.completionState &&
-      this.completionState.matches.length > 0
-    ) {
-      const selected =
-        this.completionState.matches[this.completionState.selectedIndex];
+    } else if (this.completionState && this.completionState.matches.length > 0) {
+      const selected = this.completionState.matches[this.completionState.selectedIndex];
       text = `/ commands · Up/Down move  Enter insert  Esc close · ${selected.description}`;
       tone = "info";
     } else if (activeQuestion) {
@@ -2187,8 +1843,7 @@ export default class RawChatUI {
   }
 
   private getActivityLabel(): string {
-    const state =
-      this.latestState ?? this.options.agent.getState(AgentEventState);
+    const state = this.latestState ?? this.options.agent.getState(AgentEventState);
     if (state.currentlyExecutingInputItem?.executionState.currentActivity) {
       return `${brailleSpinner[this.spinnerIndex]} ${state.currentlyExecutingInputItem.executionState.currentActivity}`;
     }
@@ -2196,8 +1851,7 @@ export default class RawChatUI {
   }
 
   private isAgentExecuting(): boolean {
-    const state =
-      this.latestState ?? this.options.agent.getState(AgentEventState);
+    const state = this.latestState ?? this.options.agent.getState(AgentEventState);
     return state.currentlyExecutingInputItem !== null;
   }
 
@@ -2205,8 +1859,7 @@ export default class RawChatUI {
     const activeQuestion = this.getFocusedQuestion();
     if (activeQuestion) {
       const cancelHint =
-        activeQuestion.question.type === "treeSelect" ||
-        activeQuestion.question.type === "fileSelect"
+        activeQuestion.question.type === "treeSelect" || activeQuestion.question.type === "fileSelect"
           ? "Waiting for input · Esc or q to cancel"
           : "Waiting for input · Esc to cancel";
       return STATUS_BAR(truncateVisible(cancelHint, columns));
@@ -2239,32 +1892,19 @@ export default class RawChatUI {
     activeStream: ActiveVisibleStream | null;
   } {
     const visibleEntries = this.getVisibleTranscript();
-    const activeEntry =
-      this.activeTranscriptStream &&
-      this.isEntryVisible(this.activeTranscriptStream.entry)
-        ? this.activeTranscriptStream.entry
-        : null;
+    const activeEntry = this.activeTranscriptStream ? this.activeTranscriptStream.entry : null;
 
     let text = "";
     for (const entry of visibleEntries) {
-      text += renderEntryText(
-        entry,
-        columns,
-        activeEntry?.id === entry.id,
-      );
+      text += renderEntryText(entry, columns, activeEntry?.id === entry.id);
     }
 
     const activeStream =
       activeEntry && this.activeTranscriptStream
-        ? this.createActiveVisibleStream(
-          this.activeTranscriptStream.type,
-          `${TEXT_INDENT}${getRawStreamText(activeEntry.body)}`,
-          activeEntry.tone,
-          columns,
-        )
+        ? this.createActiveVisibleStream(this.activeTranscriptStream.type, `${TEXT_INDENT}${getRawStreamText(activeEntry.body)}`, activeEntry.tone, columns)
         : null;
 
-    return {text, activeStream};
+    return { text, activeStream };
   }
 
   private getVisibleTranscript(): TranscriptEntry[] {
@@ -2275,18 +1915,11 @@ export default class RawChatUI {
     );*/
   }
 
-  private getVisibleTranscriptViewportLineCount(
-    maxRows: number,
-    columns: number,
-  ): number {
+  private getVisibleTranscriptViewportLineCount(maxRows: number, columns: number): number {
     if (maxRows <= 0) return 0;
 
     const visibleEntries = this.getVisibleTranscript();
-    const activeEntryId =
-      this.activeTranscriptStream &&
-      this.isEntryVisible(this.activeTranscriptStream.entry)
-        ? this.activeTranscriptStream.entry.id
-        : null;
+    const activeEntryId = this.activeTranscriptStream ? this.activeTranscriptStream.entry.id : null;
 
     let totalLines = 0;
     for (const entry of visibleEntries) {
@@ -2301,19 +1934,7 @@ export default class RawChatUI {
     return Math.min(maxRows, totalLines);
   }
 
-  private isEntryVisible(entry: TranscriptEntry): boolean {
-    return true;
-    return (
-      this.verbose || (entry.kind !== "reasoning" && entry.kind !== "artifact")
-    );
-  }
-
-  private createActiveVisibleStream(
-    type: "output.chat" | "output.reasoning",
-    rawBuffer: string,
-    tone: TranscriptTone,
-    columns: number,
-  ): ActiveVisibleStream {
+  private createActiveVisibleStream(type: "output.chat" | "output.reasoning", rawBuffer: string, tone: TranscriptTone, columns: number): ActiveVisibleStream {
     const displayedBuffer = renderBufferedStream(rawBuffer, tone, columns);
     return {
       type,
@@ -2325,36 +1946,22 @@ export default class RawChatUI {
   }
 
   private getAvailableInteractions(): ParsedInteractionRequest[] {
-    return (
-      this.latestState?.currentlyExecutingInputItem?.executionState
-        .availableInteractions ?? []
-    );
+    return this.latestState?.currentlyExecutingInputItem?.executionState.availableInteractions ?? [];
   }
 
   private getPrimaryFollowup(): FollowupInteraction | null {
-    return (
-      this.getAvailableInteractions().find(
-        (interaction): interaction is FollowupInteraction =>
-          interaction.type === "followup",
-      ) ?? null
-    );
+    return this.getAvailableInteractions().find((interaction): interaction is FollowupInteraction => interaction.type === "followup") ?? null;
   }
 
   private getRequiredQuestions(): QuestionInteraction[] {
     return this.getAvailableInteractions()
-      .filter(
-        (interaction): interaction is QuestionInteraction =>
-          interaction.type === "question" && !interaction.optional,
-      )
+      .filter((interaction): interaction is QuestionInteraction => interaction.type === "question" && !interaction.optional)
       .sort((left, right) => left.timestamp - right.timestamp);
   }
 
   private getOptionalQuestions(): QuestionInteraction[] {
     return this.getAvailableInteractions()
-      .filter(
-        (interaction): interaction is QuestionInteraction =>
-          interaction.type === "question" && interaction.optional,
-      )
+      .filter((interaction): interaction is QuestionInteraction => interaction.type === "question" && interaction.optional)
       .sort((left, right) => left.timestamp - right.timestamp);
   }
 
@@ -2367,12 +1974,7 @@ export default class RawChatUI {
     }
 
     if (this.activeOptionalQuestionId) {
-      return (
-        this.getOptionalQuestions().find(
-          (question) =>
-            question.interactionId === this.activeOptionalQuestionId,
-        ) ?? null
-      );
+      return this.getOptionalQuestions().find(question => question.interactionId === this.activeOptionalQuestionId) ?? null;
     }
 
     return null;
@@ -2380,9 +1982,7 @@ export default class RawChatUI {
 
   private cleanupInteractionState(): void {
     const interactions = this.getAvailableInteractions();
-    const interactionIds = new Set(
-      interactions.map((interaction) => interaction.interactionId),
-    );
+    const interactionIds = new Set(interactions.map(interaction => interaction.interactionId));
 
     for (const interactionId of this.followupEditors.keys()) {
       if (!interactionIds.has(interactionId)) {
@@ -2396,10 +1996,7 @@ export default class RawChatUI {
       }
     }
 
-    if (
-      this.activeOptionalQuestionId &&
-      !interactionIds.has(this.activeOptionalQuestionId)
-    ) {
+    if (this.activeOptionalQuestionId && !interactionIds.has(this.activeOptionalQuestionId)) {
       this.activeOptionalQuestionId = null;
     }
 
@@ -2408,11 +2005,7 @@ export default class RawChatUI {
       this.optionalPickerOpen = false;
       this.optionalQuestionIndex = 0;
     } else {
-      this.optionalQuestionIndex = clamp(
-        this.optionalQuestionIndex,
-        0,
-        optionalQuestions.length - 1,
-      );
+      this.optionalQuestionIndex = clamp(this.optionalQuestionIndex, 0, optionalQuestions.length - 1);
     }
   }
 
@@ -2425,22 +2018,17 @@ export default class RawChatUI {
     return editor;
   }
 
-  private getQuestionSession(
-    question: QuestionInteraction,
-  ): InlineQuestionSession {
+  private getQuestionSession(question: QuestionInteraction): InlineQuestionSession {
     let session = this.questionSessions.get(question.interactionId);
     if (session) return session;
 
     session = createInlineQuestionSession(
       question.question,
       {
-        onSubmit: (result) =>
-          this.sendInteractionResponse(question.interactionId, result),
-        onCancel: () =>
-          this.sendInteractionResponse(question.interactionId, null),
+        onSubmit: result => this.sendInteractionResponse(question.interactionId, result),
+        onCancel: () => this.sendInteractionResponse(question.interactionId, null),
         onRender: () => this.render(),
-        listFileSelectEntries: (path) =>
-          this.listQuestionDirectoryEntries(path),
+        listFileSelectEntries: path => this.listQuestionDirectoryEntries(path),
       },
       question.message,
     );
@@ -2449,12 +2037,8 @@ export default class RawChatUI {
     return session;
   }
 
-  private sendInteractionResponse(
-    interactionId: string,
-    result: unknown,
-  ): void {
-    const requestId =
-      this.latestState?.currentlyExecutingInputItem?.request.requestId;
+  private sendInteractionResponse(interactionId: string, result: unknown): void {
+    const requestId = this.latestState?.currentlyExecutingInputItem?.request.requestId;
     if (!requestId) {
       this.flash("No active interaction is waiting for a response.", "warning");
       return;
@@ -2473,14 +2057,7 @@ export default class RawChatUI {
   }
 
   private listQuestionDirectoryEntries(path: string): Promise<string[]> {
-    const fileSystem =
-      this.options.agent.requireServiceByType(FileSystemService);
-    return Array.fromAsync(
-      fileSystem.getDirectoryTree(
-        path,
-        {recursive: false, ignoreFilter: () => false},
-        this.options.agent,
-      ),
-    );
+    const fileSystem = this.options.agent.requireServiceByType(FileSystemService);
+    return Array.fromAsync(fileSystem.getDirectoryTree(path, { recursive: false, ignoreFilter: () => false }, this.options.agent));
   }
 }

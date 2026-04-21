@@ -1,18 +1,18 @@
-import type {ParsedFileSelectQuestion, ParsedFormQuestion, ParsedTextQuestion, ParsedTreeSelectQuestion, TreeLeaf} from "@tokenring-ai/agent/question";
-import {clamp} from "@tokenring-ai/utility/number/clamp";
-import {flattenWrappedLines} from "@tokenring-ai/utility/string/flattenWrappedLines";
-import {truncateVisible} from "@tokenring-ai/utility/string/truncateVisible";
-import {visibleLength} from "@tokenring-ai/utility/string/visibleLength";
+import type { ParsedFileSelectQuestion, ParsedFormQuestion, ParsedTextQuestion, ParsedTreeSelectQuestion, TreeLeaf } from "@tokenring-ai/agent/question";
+import { clamp } from "@tokenring-ai/utility/number/clamp";
+import { flattenWrappedLines } from "@tokenring-ai/utility/string/flattenWrappedLines";
+import { truncateVisible } from "@tokenring-ai/utility/string/truncateVisible";
+import { visibleLength } from "@tokenring-ai/utility/string/visibleLength";
 import chalk from "chalk";
-import {theme} from "../theme.ts";
+import { theme } from "../theme.ts";
 import InputEditor from "./InputEditor.ts";
 
 export type Keypress = {
-  name?: string;
-  ctrl?: boolean;
-  meta?: boolean;
-  shift?: boolean;
-  sequence?: string;
+  name?: string | undefined;
+  ctrl?: boolean | undefined;
+  meta?: boolean | undefined;
+  shift?: boolean | undefined;
+  sequence?: string | undefined;
 };
 
 export type RenderLayout = {
@@ -22,9 +22,9 @@ export type RenderLayout = {
 
 export type RenderBlock = {
   lines: string[];
-  cursorRow?: number;
-  cursorColumn?: number;
-  showCursor?: boolean;
+  cursorRow?: number | undefined;
+  cursorColumn?: number | undefined;
+  showCursor?: boolean | undefined;
 };
 
 export type InlineQuestionCallbacks = {
@@ -40,16 +40,9 @@ export interface InlineQuestionSession {
   handleKeypress(input: string, key: Keypress): boolean | Promise<boolean>;
 }
 
-type PrimitiveQuestion =
-  | ParsedTextQuestion
-  | ParsedTreeSelectQuestion
-  | ParsedFileSelectQuestion;
+type PrimitiveQuestion = ParsedTextQuestion | ParsedTreeSelectQuestion | ParsedFileSelectQuestion;
 
-type ParsedQuestion =
-  | ParsedTextQuestion
-  | ParsedTreeSelectQuestion
-  | ParsedFileSelectQuestion
-  | ParsedFormQuestion;
+type ParsedQuestion = ParsedTextQuestion | ParsedTreeSelectQuestion | ParsedFileSelectQuestion | ParsedFormQuestion;
 
 interface AsyncFileNode {
   name: string;
@@ -84,10 +77,7 @@ const RAW_CONTINUATION_PREFIX = "   ";
 const PROMPT_PREFIX = ` ${PROMPT_COLOR("→")} `;
 const CONTINUATION_PREFIX = RAW_CONTINUATION_PREFIX;
 
-function compareFileNodesForBrowsing(
-  left: AsyncFileNode,
-  right: AsyncFileNode,
-): number {
+function compareFileNodesForBrowsing(left: AsyncFileNode, right: AsyncFileNode): number {
   if (left.isDirectory !== right.isDirectory) {
     return left.isDirectory ? -1 : 1;
   }
@@ -106,7 +96,7 @@ function renderEditor(
     width: number;
     maxContentLines: number;
     placeholder: string;
-    masked?: boolean;
+    masked?: boolean | undefined;
   },
 ): {
   lines: string[];
@@ -149,16 +139,8 @@ function renderEditor(
     cursorColumn = visibleLength(lines[row]);
   }
 
-  const visibleCount = clamp(
-    lines.length,
-    1,
-    Math.max(1, options.maxContentLines),
-  );
-  const windowStart = clamp(
-    cursorRow - visibleCount + 1,
-    0,
-    Math.max(0, lines.length - visibleCount),
-  );
+  const visibleCount = clamp(lines.length, 1, Math.max(1, options.maxContentLines));
+  const windowStart = clamp(cursorRow - visibleCount + 1, 0, Math.max(0, lines.length - visibleCount));
   const visibleLines = lines.slice(windowStart, windowStart + visibleCount);
 
   return {
@@ -169,11 +151,7 @@ function renderEditor(
   };
 }
 
-function applyEditorKeypress(
-  editor: InputEditor,
-  input: string,
-  key: Keypress,
-): boolean {
+function applyEditorKeypress(editor: InputEditor, input: string, key: Keypress): boolean {
   if (key.ctrl && key.name === "a") {
     editor.moveHome();
     return true;
@@ -215,7 +193,7 @@ function applyEditorKeypress(
     return true;
   }
   if (key.name === "up") {
-    const {lineIndex} = editor.getCursorLocation();
+    const { lineIndex } = editor.getCursorLocation();
     if (lineIndex > 0) {
       editor.moveUp();
       return true;
@@ -223,7 +201,7 @@ function applyEditorKeypress(
     return false;
   }
   if (key.name === "down") {
-    const {lineIndex} = editor.getCursorLocation();
+    const { lineIndex } = editor.getCursorLocation();
     if (lineIndex < editor.getLineCount() - 1) {
       editor.moveDown();
       return true;
@@ -268,10 +246,7 @@ class TextQuestionSession implements InlineQuestionSession {
 
   render(layout: RenderLayout): RenderBlock {
     const lines: string[] = [];
-    const innerWidth = Math.max(
-      10,
-      layout.columns - visibleLength(RAW_PROMPT_PREFIX),
-    );
+    const innerWidth = Math.max(10, layout.columns - visibleLength(RAW_PROMPT_PREFIX));
     const maxContentLines = clamp(
       this.question.expectedLines > 1 ? this.question.expectedLines : 1,
       1,
@@ -280,34 +255,19 @@ class TextQuestionSession implements InlineQuestionSession {
 
     lines.push(QUESTION_COLOR(this.question.label));
     if (this.question.description) {
-      lines.push(
-        ...flattenWrappedLines(
-          [this.question.description],
-          layout.columns,
-          TEXT_INDENT,
-        ).map((line) => MUTED_COLOR(line)),
-      );
+      lines.push(...flattenWrappedLines([this.question.description], layout.columns, TEXT_INDENT).map(line => MUTED_COLOR(line)));
     }
 
     const editorView = renderEditor(this.editor, {
       width: innerWidth,
       maxContentLines,
-      placeholder: this.question.required
-        ? "Type a response"
-        : "Type a response or leave blank",
+      placeholder: this.question.required ? "Type a response" : "Type a response or leave blank",
       masked: this.question.masked,
     });
 
     editorView.lines.forEach((line, index) => {
       const prefix = index === 0 ? PROMPT_PREFIX : CONTINUATION_PREFIX;
-      const body =
-        editorView.isEmpty && index === 0
-          ? MUTED_COLOR(
-            this.question.required
-              ? "Required response"
-              : "Optional response",
-          )
-          : line;
+      const body = editorView.isEmpty && index === 0 ? MUTED_COLOR(this.question.required ? "Required response" : "Optional response") : line;
       lines.push(`${prefix}${body}`);
     });
 
@@ -315,23 +275,13 @@ class TextQuestionSession implements InlineQuestionSession {
       lines.push(ERROR_COLOR(this.flashMessage));
     }
 
-    lines.push(
-      MUTED_COLOR(
-        this.question.expectedLines > 1
-          ? "Enter submit  Alt+Enter newline  Esc cancel"
-          : "Enter submit  Esc cancel",
-      ),
-    );
+    lines.push(MUTED_COLOR(this.question.expectedLines > 1 ? "Enter submit  Alt+Enter newline  Esc cancel" : "Enter submit  Esc cancel"));
 
-    const promptStart =
-      lines.length - editorView.lines.length - (this.flashMessage ? 2 : 1);
+    const promptStart = lines.length - editorView.lines.length - (this.flashMessage ? 2 : 1);
     return {
       lines,
       cursorRow: promptStart + editorView.cursorRow,
-      cursorColumn:
-        (editorView.cursorRow === 0
-          ? visibleLength(RAW_PROMPT_PREFIX)
-          : visibleLength(RAW_CONTINUATION_PREFIX)) + editorView.cursorColumn,
+      cursorColumn: (editorView.cursorRow === 0 ? visibleLength(RAW_PROMPT_PREFIX) : visibleLength(RAW_CONTINUATION_PREFIX)) + editorView.cursorColumn,
       showCursor: true,
     };
   }
@@ -375,23 +325,23 @@ class TextQuestionSession implements InlineQuestionSession {
 
 type FlatTreeItem =
   | {
-  key: string;
-  depth: number;
-  node: TreeLeaf & { children: any };
-  isExpanded: boolean;
-  isParent: true;
-  descendantLeafCount: number;
-  selectedLeafCount: number;
-}
+      key: string;
+      depth: number;
+      node: TreeLeaf & { children: any };
+      isExpanded: boolean;
+      isParent: true;
+      descendantLeafCount: number;
+      selectedLeafCount: number;
+    }
   | {
-  key: string;
-  depth: number;
-  node: TreeLeaf & { value: string };
-  isParent: false;
-  isExpanded?: never;
-  descendantLeafCount?: never;
-  selectedLeafCount?: never;
-};
+      key: string;
+      depth: number;
+      node: TreeLeaf & { value: string };
+      isParent: false;
+      isExpanded?: never;
+      descendantLeafCount?: never;
+      selectedLeafCount?: never;
+    };
 
 function getNodeKey(node: TreeLeaf, ancestry: string[]): string {
   if ("value" in node) return node.value;
@@ -400,20 +350,14 @@ function getNodeKey(node: TreeLeaf, ancestry: string[]): string {
 
 function countLeafNodes(node: TreeLeaf): number {
   if ("children" in node) {
-    return node.children.reduce(
-      (total, child) => total + countLeafNodes(child),
-      0,
-    );
+    return node.children.reduce((total, child) => total + countLeafNodes(child), 0);
   }
   return 1;
 }
 
 function countSelectedLeafNodes(node: TreeLeaf, checked: Set<string>): number {
   if ("children" in node) {
-    return node.children.reduce(
-      (total, child) => total + countSelectedLeafNodes(child, checked),
-      0,
-    );
+    return node.children.reduce((total, child) => total + countSelectedLeafNodes(child, checked), 0);
   }
   return checked.has(node.value) ? 1 : 0;
 }
@@ -435,10 +379,7 @@ class TreeQuestionSession implements InlineQuestionSession {
 
   render(layout: RenderLayout): RenderBlock {
     const flatTree = this.getFlatTree();
-    const maxVisibleItems = Math.max(
-      4,
-      Math.min(flatTree.length, layout.rows - 10),
-    );
+    const maxVisibleItems = Math.max(4, Math.min(flatTree.length, layout.rows - 10));
 
     if (this.selectedIndex < this.scrollOffset) {
       this.scrollOffset = this.selectedIndex;
@@ -446,57 +387,28 @@ class TreeQuestionSession implements InlineQuestionSession {
       this.scrollOffset = this.selectedIndex - maxVisibleItems + 1;
     }
 
-    const visibleTree = flatTree.slice(
-      this.scrollOffset,
-      this.scrollOffset + maxVisibleItems,
-    );
+    const visibleTree = flatTree.slice(this.scrollOffset, this.scrollOffset + maxVisibleItems);
     const multiple = this.question.maximumSelections !== 1;
     const lines: string[] = [];
 
     lines.push(QUESTION_COLOR(this.question.label));
     if (this.question.description) {
-      lines.push(
-        ...flattenWrappedLines(
-          [this.question.description],
-          layout.columns,
-          TEXT_INDENT,
-        ).map((line) => MUTED_COLOR(line)),
-      );
+      lines.push(...flattenWrappedLines([this.question.description], layout.columns, TEXT_INDENT).map(line => MUTED_COLOR(line)));
     }
 
     for (let index = 0; index < visibleTree.length; index += 1) {
       const item = visibleTree[index];
       const actualIndex = this.scrollOffset + index;
       const isSelected = actualIndex === this.selectedIndex;
-      const isChecked =
-        "value" in item.node && this.checked.has(item.node.value);
+      const isChecked = "value" in item.node && this.checked.has(item.node.value);
 
-      const treeGlyph = item.isParent
-        ? multiple
-          ? item.selectedLeafCount > 0
-            ? "◐"
-            : "○"
-          : item.isExpanded
-            ? "▾"
-            : "▸"
-        : isChecked
-          ? "●"
-          : "-";
+      const treeGlyph = item.isParent ? (multiple ? (item.selectedLeafCount > 0 ? "◐" : "○") : item.isExpanded ? "▾" : "▸") : isChecked ? "●" : "-";
 
       const pointer = isSelected ? "›" : " ";
       const indent = "  ".repeat(item.depth);
-      const countSuffix =
-        multiple && item.isParent && item.descendantLeafCount > 0
-          ? ` (${item.selectedLeafCount}/${item.descendantLeafCount})`
-          : "";
-      const availableWidth = Math.max(
-        10,
-        layout.columns - visibleLength(indent) - 8,
-      );
-      const label = truncateVisible(
-        `${item.node.name}${countSuffix}`,
-        availableWidth,
-      );
+      const countSuffix = multiple && item.isParent && item.descendantLeafCount > 0 ? ` (${item.selectedLeafCount}/${item.descendantLeafCount})` : "";
+      const availableWidth = Math.max(10, layout.columns - visibleLength(indent) - 8);
+      const label = truncateVisible(`${item.node.name}${countSuffix}`, availableWidth);
 
       let color = TREE_IDLE;
       if (isSelected) {
@@ -511,12 +423,8 @@ class TreeQuestionSession implements InlineQuestionSession {
     }
 
     if (multiple) {
-      const min = this.question.minimumSelections
-        ? `  min ${this.question.minimumSelections}`
-        : "";
-      const max = this.question.maximumSelections
-        ? `  max ${this.question.maximumSelections}`
-        : "";
+      const min = this.question.minimumSelections ? `  min ${this.question.minimumSelections}` : "";
+      const max = this.question.maximumSelections ? `  max ${this.question.maximumSelections}` : "";
       lines.push(TREE_COLOR(`Selected ${this.checked.size}${min}${max}`));
     }
 
@@ -546,10 +454,7 @@ class TreeQuestionSession implements InlineQuestionSession {
       return true;
     }
     if (key.name === "down") {
-      this.selectedIndex = Math.min(
-        flatTree.length - 1,
-        this.selectedIndex + 1,
-      );
+      this.selectedIndex = Math.min(flatTree.length - 1, this.selectedIndex + 1);
       this.flashMessage = null;
       return true;
     }
@@ -559,10 +464,7 @@ class TreeQuestionSession implements InlineQuestionSession {
       return true;
     }
     if (key.name === "pagedown") {
-      this.selectedIndex = Math.min(
-        flatTree.length - 1,
-        this.selectedIndex + 8,
-      );
+      this.selectedIndex = Math.min(flatTree.length - 1, this.selectedIndex + 8);
       this.flashMessage = null;
       return true;
     }
@@ -606,10 +508,7 @@ class TreeQuestionSession implements InlineQuestionSession {
       if (!current) return false;
 
       if (multiple) {
-        if (
-          this.question.minimumSelections &&
-          this.checked.size < this.question.minimumSelections
-        ) {
+        if (this.question.minimumSelections && this.checked.size < this.question.minimumSelections) {
           this.flashMessage = `Select at least ${this.question.minimumSelections} item${this.question.minimumSelections === 1 ? "" : "s"}.`;
           return true;
         }
@@ -676,23 +575,18 @@ class TreeQuestionSession implements InlineQuestionSession {
 
   private getDescendantValues(node: TreeLeaf): string[] {
     if ("children" in node) {
-      return node.children.flatMap((child) => this.getDescendantValues(child));
+      return node.children.flatMap(child => this.getDescendantValues(child));
     }
     return [node.value];
   }
 
   private toggleSelection(node: TreeLeaf): void {
     const values = this.getDescendantValues(node);
-    const currentlyChecked = values.every((value) => this.checked.has(value));
+    const currentlyChecked = values.every(value => this.checked.has(value));
 
     if (currentlyChecked) {
-      const nextSize =
-        this.checked.size -
-        values.filter((value) => this.checked.has(value)).length;
-      if (
-        this.question.minimumSelections &&
-        nextSize < this.question.minimumSelections
-      ) {
+      const nextSize = this.checked.size - values.filter(value => this.checked.has(value)).length;
+      if (this.question.minimumSelections && nextSize < this.question.minimumSelections) {
         this.flashMessage = `At least ${this.question.minimumSelections} item${this.question.minimumSelections === 1 ? "" : "s"} must remain selected.`;
         return;
       }
@@ -704,19 +598,14 @@ class TreeQuestionSession implements InlineQuestionSession {
       return;
     }
 
-    const nextSize =
-      this.checked.size +
-      values.filter((value) => !this.checked.has(value)).length;
-    if (
-      this.question.maximumSelections &&
-      nextSize > this.question.maximumSelections
-    ) {
+    const nextSize = this.checked.size + values.filter(value => !this.checked.has(value)).length;
+    if (this.question.maximumSelections && nextSize > this.question.maximumSelections) {
       this.flashMessage = `Select at most ${this.question.maximumSelections} item${this.question.maximumSelections === 1 ? "" : "s"}.`;
       return;
     }
 
-    values.forEach((value) => {
-      this.checked.add(value)
+    values.forEach(value => {
+      this.checked.add(value);
     });
     this.flashMessage = null;
   }
@@ -748,13 +637,7 @@ class FileQuestionSession implements InlineQuestionSession {
 
     lines.push(QUESTION_COLOR(this.question.label));
     if (this.question.description) {
-      lines.push(
-        ...flattenWrappedLines(
-          [this.question.description],
-          layout.columns,
-          TEXT_INDENT,
-        ).map((line) => MUTED_COLOR(line)),
-      );
+      lines.push(...flattenWrappedLines([this.question.description], layout.columns, TEXT_INDENT).map(line => MUTED_COLOR(line)));
     }
 
     if (this.initialLoading) {
@@ -769,10 +652,7 @@ class FileQuestionSession implements InlineQuestionSession {
     }
 
     const flatTree = this.getFlatTree();
-    const maxVisibleItems = Math.max(
-      4,
-      Math.min(Math.max(1, flatTree.length), layout.rows - 12),
-    );
+    const maxVisibleItems = Math.max(4, Math.min(Math.max(1, flatTree.length), layout.rows - 12));
 
     if (this.selectedIndex < this.scrollOffset) {
       this.scrollOffset = this.selectedIndex;
@@ -781,22 +661,15 @@ class FileQuestionSession implements InlineQuestionSession {
     }
 
     if (multiple) {
-      const min = this.question.minimumSelections
-        ? `  min ${this.question.minimumSelections}`
-        : "";
-      const max = this.question.maximumSelections
-        ? `  max ${this.question.maximumSelections}`
-        : "";
+      const min = this.question.minimumSelections ? `  min ${this.question.minimumSelections}` : "";
+      const max = this.question.maximumSelections ? `  max ${this.question.maximumSelections}` : "";
       lines.push(TREE_COLOR(`Selected ${this.checked.size}${min}${max}`));
     }
 
     if (flatTree.length === 0) {
       lines.push(MUTED_COLOR("Current directory is empty."));
     } else {
-      const visibleTree = flatTree.slice(
-        this.scrollOffset,
-        this.scrollOffset + maxVisibleItems,
-      );
+      const visibleTree = flatTree.slice(this.scrollOffset, this.scrollOffset + maxVisibleItems);
 
       for (let index = 0; index < visibleTree.length; index += 1) {
         const item = visibleTree[index];
@@ -804,30 +677,12 @@ class FileQuestionSession implements InlineQuestionSession {
         const isSelected = actualIndex === this.selectedIndex;
         const isChecked = this.checked.has(item.node.value);
         const isSelectable = this.isSelectable(item.node);
-        const isPartial =
-          item.node.isDirectory && this.hasCheckedDescendant(item.node.value);
+        const isPartial = item.node.isDirectory && this.hasCheckedDescendant(item.node.value);
         const pointer = isSelected ? "›" : " ";
         const indent = "  ".repeat(item.depth);
-        const branchGlyph = item.isLoading
-          ? "…"
-          : item.node.isDirectory
-            ? item.isExpanded
-              ? "▾"
-              : "▸"
-            : " ";
-        const toggleGlyph = multiple
-          ? `${isSelectable ? (isChecked ? "◉" : "◯") : " "} `
-          : "";
-        const label = truncateVisible(
-          item.node.name,
-          Math.max(
-            10,
-            layout.columns -
-            visibleLength(indent) -
-            visibleLength(toggleGlyph) -
-            8,
-          ),
-        );
+        const branchGlyph = item.isLoading ? "…" : item.node.isDirectory ? (item.isExpanded ? "▾" : "▸") : " ";
+        const toggleGlyph = multiple ? `${isSelectable ? (isChecked ? "◉" : "◯") : " "} ` : "";
+        const label = truncateVisible(item.node.name, Math.max(10, layout.columns - visibleLength(indent) - visibleLength(toggleGlyph) - 8));
 
         let color = TREE_IDLE;
         if (isSelected) {
@@ -838,9 +693,7 @@ class FileQuestionSession implements InlineQuestionSession {
           color = TREE_PARTIAL;
         }
 
-        lines.push(
-          color(` ${pointer} ${indent}${branchGlyph} ${toggleGlyph}${label}`),
-        );
+        lines.push(color(` ${pointer} ${indent}${branchGlyph} ${toggleGlyph}${label}`));
       }
     }
 
@@ -883,10 +736,7 @@ class FileQuestionSession implements InlineQuestionSession {
     }
 
     if (key.name === "down") {
-      this.selectedIndex = Math.min(
-        Math.max(0, flatTree.length - 1),
-        this.selectedIndex + 1,
-      );
+      this.selectedIndex = Math.min(Math.max(0, flatTree.length - 1), this.selectedIndex + 1);
       this.flashMessage = null;
       return true;
     }
@@ -898,10 +748,7 @@ class FileQuestionSession implements InlineQuestionSession {
     }
 
     if (key.name === "pagedown") {
-      this.selectedIndex = Math.min(
-        Math.max(0, flatTree.length - 1),
-        this.selectedIndex + 8,
-      );
+      this.selectedIndex = Math.min(Math.max(0, flatTree.length - 1), this.selectedIndex + 8);
       this.flashMessage = null;
       return true;
     }
@@ -944,10 +791,7 @@ class FileQuestionSession implements InlineQuestionSession {
 
     if (key.name === "return") {
       if (multiple) {
-        if (
-          this.question.minimumSelections &&
-          this.checked.size < this.question.minimumSelections
-        ) {
+        if (this.question.minimumSelections && this.checked.size < this.question.minimumSelections) {
           this.flashMessage = `Select at least ${this.question.minimumSelections} item${this.question.minimumSelections === 1 ? "" : "s"}.`;
           return true;
         }
@@ -993,7 +837,7 @@ class FileQuestionSession implements InlineQuestionSession {
   private async loadPath(path: string): Promise<AsyncFileNode[]> {
     const entries = await this.callbacks.listFileSelectEntries(path);
     return entries
-      .map((entry) => {
+      .map(entry => {
         const isDirectory = entry.endsWith("/");
         const value = isDirectory ? entry.slice(0, -1) : entry;
         const name = value.slice(value.lastIndexOf("/") + 1);
@@ -1021,7 +865,7 @@ class FileQuestionSession implements InlineQuestionSession {
 
         const isExpanded = this.expanded.has(node.value);
         const isLoading = this.loadingPaths.has(node.value);
-        result.push({node, depth, isExpanded, isLoading});
+        result.push({ node, depth, isExpanded, isLoading });
 
         if (isExpanded && node.children) {
           traverse(node.children, depth + 1);
@@ -1034,10 +878,7 @@ class FileQuestionSession implements InlineQuestionSession {
   }
 
   private isSelectable(node: AsyncFileNode): boolean {
-    return (
-      (node.isDirectory && this.question.allowDirectories) ||
-      (!node.isDirectory && this.question.allowFiles)
-    );
+    return (node.isDirectory && this.question.allowDirectories) || (!node.isDirectory && this.question.allowFiles);
   }
 
   private hasCheckedDescendant(path: string): boolean {
@@ -1085,14 +926,10 @@ class FileQuestionSession implements InlineQuestionSession {
     }
   }
 
-  private updateTreeNodes(
-    tree: AsyncFileNode[],
-    path: string,
-    children: AsyncFileNode[],
-  ): AsyncFileNode[] {
-    return tree.map((node) => {
+  private updateTreeNodes(tree: AsyncFileNode[], path: string, children: AsyncFileNode[]): AsyncFileNode[] {
+    return tree.map(node => {
       if (node.value === path) {
-        return {...node, children};
+        return { ...node, children };
       }
       if (node.children) {
         return {
@@ -1106,10 +943,7 @@ class FileQuestionSession implements InlineQuestionSession {
 
   private toggleSelection(path: string): void {
     if (this.checked.has(path)) {
-      if (
-        this.question.minimumSelections &&
-        this.checked.size <= this.question.minimumSelections
-      ) {
+      if (this.question.minimumSelections && this.checked.size <= this.question.minimumSelections) {
         this.flashMessage = `Select at least ${this.question.minimumSelections} item${this.question.minimumSelections === 1 ? "" : "s"}.`;
         return;
       }
@@ -1119,10 +953,7 @@ class FileQuestionSession implements InlineQuestionSession {
       return;
     }
 
-    if (
-      this.question.maximumSelections &&
-      this.checked.size >= this.question.maximumSelections
-    ) {
+    if (this.question.maximumSelections && this.checked.size >= this.question.maximumSelections) {
       this.flashMessage = `Select at most ${this.question.maximumSelections} item${this.question.maximumSelections === 1 ? "" : "s"}.`;
       return;
     }
@@ -1159,13 +990,7 @@ class FormQuestionSession implements InlineQuestionSession {
     ];
 
     if (currentSection.description) {
-      lines.push(
-        ...flattenWrappedLines(
-          [currentSection.description],
-          layout.columns,
-          TEXT_INDENT,
-        ).map((line) => MUTED_COLOR(line)),
-      );
+      lines.push(...flattenWrappedLines([currentSection.description], layout.columns, TEXT_INDENT).map(line => MUTED_COLOR(line)));
     }
 
     const offset = lines.length;
@@ -1173,8 +998,7 @@ class FormQuestionSession implements InlineQuestionSession {
 
     return {
       lines,
-      cursorRow:
-        child.cursorRow === undefined ? undefined : child.cursorRow + offset,
+      cursorRow: child.cursorRow === undefined ? undefined : child.cursorRow + offset,
       cursorColumn: child.cursorColumn,
       showCursor: child.showCursor,
     };
@@ -1201,7 +1025,7 @@ class FormQuestionSession implements InlineQuestionSession {
         onCancel: () => this.callbacks.onCancel(),
         onRender: this.callbacks.onRender,
         listFileSelectEntries: this.callbacks.listFileSelectEntries,
-        onSubmit: (result) => {
+        onSubmit: result => {
           const sectionName = currentSection.name;
           this.responses[sectionName] ??= {};
           this.responses[sectionName][fieldKey] = result;
@@ -1235,11 +1059,7 @@ class FormQuestionSession implements InlineQuestionSession {
   }
 }
 
-function createPrimitiveSession(
-  question: PrimitiveQuestion,
-  callbacks: InlineQuestionCallbacks,
-  _message: string,
-): InlineQuestionSession {
+function createPrimitiveSession(question: PrimitiveQuestion, callbacks: InlineQuestionCallbacks, _message: string): InlineQuestionSession {
   switch (question.type) {
     case "text":
       return new TextQuestionSession(question, callbacks);
@@ -1250,11 +1070,7 @@ function createPrimitiveSession(
   }
 }
 
-export function createInlineQuestionSession(
-  question: ParsedQuestion,
-  callbacks: InlineQuestionCallbacks,
-  message: string,
-): InlineQuestionSession {
+export function createInlineQuestionSession(question: ParsedQuestion, callbacks: InlineQuestionCallbacks, message: string): InlineQuestionSession {
   if (question.type === "form") {
     return new FormQuestionSession(question, callbacks);
   }

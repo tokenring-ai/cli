@@ -1,36 +1,36 @@
+import process from "node:process";
+import readline from "node:readline";
+import { setInterval as setIntervalPromise } from "node:timers/promises";
 import type Agent from "@tokenring-ai/agent/Agent";
 import AgentManager from "@tokenring-ai/agent/services/AgentManager";
-import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
+import { AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
 import type TokenRingApp from "@tokenring-ai/app";
-import type {ChatAgentConfig} from "@tokenring-ai/chat/schema";
-import {brailleSpinner} from "@tokenring-ai/utility/string/brailleSpinner";
+import type { ChatAgentConfig } from "@tokenring-ai/chat/schema";
+import { brailleSpinner } from "@tokenring-ai/utility/string/brailleSpinner";
 import getRandomItem from "@tokenring-ai/utility/string/getRandomItem";
 import ridiculousMessages from "@tokenring-ai/utility/string/ridiculousMessages";
-import {visibleLength} from "@tokenring-ai/utility/string/visibleLength";
-import {wrapPlainText} from "@tokenring-ai/utility/string/wrapPlainText";
-import {WebHostService} from "@tokenring-ai/web-host";
+import { visibleLength } from "@tokenring-ai/utility/string/visibleLength";
+import { wrapPlainText } from "@tokenring-ai/utility/string/wrapPlainText";
+import { WebHostService } from "@tokenring-ai/web-host";
 import SPAResource from "@tokenring-ai/web-host/SPAResource";
 import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
 import chalk from "chalk";
-import process from "node:process";
-import readline from "node:readline";
-import {setInterval as setIntervalPromise} from "node:timers/promises";
-import type {z} from "zod";
-import {type AgentSelectionResult, parseAgentSelectionValue} from "../AgentSelection.ts";
-import type {CLIConfigSchema} from "../schema.ts";
-import {theme} from "../theme.ts";
+import type { z } from "zod";
+import { type AgentSelectionResult, parseAgentSelectionValue } from "../AgentSelection.ts";
+import type { CLIConfigSchema } from "../schema.ts";
+import { theme } from "../theme.ts";
 
 type CLIConfig = z.infer<typeof CLIConfigSchema>;
 
 type SelectionEntry =
   | { type: "heading"; label: string }
   | {
-  type: "option";
-  label: string;
-  value: string;
-  previewTitle: string;
-  previewLines: string[];
-};
+      type: "option";
+      label: string;
+      value: string;
+      previewTitle: string;
+      previewLines: string[];
+    };
 
 type KeyHandler = (input: string, key: readline.Key) => void;
 type ScreenTone = "heading" | "selected" | "normal";
@@ -89,18 +89,9 @@ function padRight(text: string, width: number): string {
 }
 
 function formatBanner(config: CLIConfig, width: number): string[] {
-  const wideBannerWidth = config.loadingBannerWide
-    .split(/\n/)
-    .reduce((acc, line) => Math.max(acc, line.length), 0);
-  const narrowBannerWidth = config.loadingBannerNarrow
-    .split(/\n/)
-    .reduce((acc, line) => Math.max(acc, line.length), 0);
-  const banner =
-    width > wideBannerWidth
-      ? config.loadingBannerWide
-      : width > narrowBannerWidth
-        ? config.loadingBannerNarrow
-        : config.loadingBannerCompact;
+  const wideBannerWidth = config.loadingBannerWide.split(/\n/).reduce((acc, line) => Math.max(acc, line.length), 0);
+  const narrowBannerWidth = config.loadingBannerNarrow.split(/\n/).reduce((acc, line) => Math.max(acc, line.length), 0);
+  const banner = width > wideBannerWidth ? config.loadingBannerWide : width > narrowBannerWidth ? config.loadingBannerNarrow : config.loadingBannerCompact;
 
   return banner.split("\n");
 }
@@ -113,27 +104,20 @@ function wrapLines(lines: string[], width: number): string[] {
   return result;
 }
 
-function renderBox(
-  title: string,
-  bodyLines: string[],
-  width: number,
-): string[] {
-  if (width < 8) return bodyLines.map((line) => fitLine(line, width));
+function renderBox(title: string, bodyLines: string[], width: number): string[] {
+  if (width < 8) return bodyLines.map(line => fitLine(line, width));
 
   const innerWidth = Math.max(1, width - 4);
   const top = `┌${"─".repeat(innerWidth + 2)}┐`;
   const heading = `│ ${padRight(title, innerWidth)} │`;
   const divider = `├${"─".repeat(innerWidth + 2)}┤`;
   const lines = wrapLines(bodyLines, innerWidth);
-  const content = lines.map((line) => `│ ${padRight(line, innerWidth)} │`);
+  const content = lines.map(line => `│ ${padRight(line, innerWidth)} │`);
 
   return [top, heading, divider, ...content, `└${"─".repeat(innerWidth + 2)}┘`];
 }
 
-function findFirstDifferentLineIndex(
-  previousLines: string[],
-  nextLines: string[],
-): number {
+function findFirstDifferentLineIndex(previousLines: string[], nextLines: string[]): number {
   const limit = Math.min(previousLines.length, nextLines.length);
   for (let index = 0; index < limit; index += 1) {
     if (previousLines[index] !== nextLines[index]) {
@@ -157,14 +141,8 @@ class ScreenPainter {
       return;
     }
 
-    const firstDifferentLine = findFirstDifferentLineIndex(
-      this.previousLines,
-      nextLines,
-    );
-    if (
-      firstDifferentLine === this.previousLines.length &&
-      firstDifferentLine === nextLines.length
-    ) {
+    const firstDifferentLine = findFirstDifferentLineIndex(this.previousLines, nextLines);
+    if (firstDifferentLine === this.previousLines.length && firstDifferentLine === nextLines.length) {
       return;
     }
 
@@ -203,11 +181,7 @@ class ScreenPainter {
   }
 }
 
-function cleanupTerminal(
-  terminalState: TerminalState,
-  keyHandler: KeyHandler,
-  resizeHandler: () => void,
-): void {
+function cleanupTerminal(terminalState: TerminalState, keyHandler: KeyHandler, resizeHandler: () => void): void {
   process.stdin.off("keypress", keyHandler);
   process.stdout.off("resize", resizeHandler);
   if (process.stdin.isTTY) {
@@ -221,10 +195,7 @@ function cleanupTerminal(
   showCursor();
 }
 
-function setupTerminal(
-  keyHandler: KeyHandler,
-  resizeHandler: () => void,
-): TerminalState {
+function setupTerminal(keyHandler: KeyHandler, resizeHandler: () => void): TerminalState {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     return {
       rawModeBeforeStart: false,
@@ -271,10 +242,7 @@ function buildSelectionEntries(app: TokenRingApp): SelectionEntry[] {
 
   if (webHostService) {
     const entries: SelectionEntry[] = [];
-    for (const [
-      resourceName,
-      resource,
-    ] of webHostService.getResourceEntries()) {
+    for (const [resourceName, resource] of webHostService.getResourceEntries()) {
       if (resource instanceof SPAResource) {
         entries.push({
           type: "option",
@@ -283,9 +251,7 @@ function buildSelectionEntries(app: TokenRingApp): SelectionEntry[] {
           previewTitle: "Web Application",
           previewLines: [
             "Launch the web application in your system browser.",
-            webHostURL
-              ? `${webHostURL}${resource.config.prefix.substring(1)}`
-              : "Web host URL unavailable.",
+            webHostURL ? `${webHostURL}${resource.config.prefix.substring(1)}` : "Web host URL unavailable.",
           ],
         });
       }
@@ -301,17 +267,14 @@ function buildSelectionEntries(app: TokenRingApp): SelectionEntry[] {
   const currentAgents = agentManager.getAgents();
   if (currentAgents.length > 0) {
     const entries = currentAgents
-      .map((agent) => {
+      .map(agent => {
         const eventState = agent.getState(AgentEventState);
         return {
           type: "option" as const,
           label: agent.displayName,
           value: `connect:${agent.id}`,
           previewTitle: `Agent ${agent.id}`,
-          previewLines: [
-            agent.config.displayName,
-            `Status: ${eventState.idle ? "idle" : "running"}`,
-          ],
+          previewLines: [agent.config.displayName, `Status: ${eventState.idle ? "idle" : "running"}`],
         };
       })
       .sort((left, right) => left.label.localeCompare(right.label));
@@ -320,20 +283,14 @@ function buildSelectionEntries(app: TokenRingApp): SelectionEntry[] {
 
   for (const [type, config] of agentManager.getAgentConfigEntries()) {
     const category = config.category || "Other";
-    const enabledTools =
-      "chat" in config
-        ? ((config as unknown as ChatAgentConfig).chat.enabledTools ?? [])
-        : [];
+    const enabledTools = "chat" in config ? ((config as unknown as ChatAgentConfig).chat.enabledTools ?? []) : [];
     const entries = categories.get(category) ?? [];
     entries.push({
       type: "option",
       label: `${config.displayName} (${type})`,
       value: `spawn:${type}`,
       previewTitle: config.displayName,
-      previewLines: [
-        config.description,
-        `Enabled tools: ${enabledTools.join(", ") || "(none)"}`,
-      ],
+      previewLines: [config.description, `Enabled tools: ${enabledTools.join(", ") || "(none)"}`],
     });
     categories.set(category, entries);
   }
@@ -361,49 +318,27 @@ function buildSelectionEntries(app: TokenRingApp): SelectionEntry[] {
   for (const category of pinnedOrder) {
     const categoryEntries = categories.get(category);
     if (!categoryEntries || categoryEntries.length === 0) continue;
-    entries.push({type: "heading", label: category});
-    entries.push(
-      ...categoryEntries.sort((left, right) =>
-        left.label.localeCompare(right.label),
-      ),
-    );
+    entries.push({ type: "heading", label: category });
+    entries.push(...categoryEntries.sort((left, right) => left.label.localeCompare(right.label)));
     categories.delete(category);
   }
-  for (const [category, categoryEntries] of [...categories.entries()].sort(
-    ([left], [right]) => left.localeCompare(right),
-  )) {
+  for (const [category, categoryEntries] of [...categories.entries()].sort(([left], [right]) => left.localeCompare(right))) {
     if (categoryEntries.length === 0) continue;
-    entries.push({type: "heading", label: category});
-    entries.push(
-      ...categoryEntries.sort((left, right) =>
-        left.label.localeCompare(right.label),
-      ),
-    );
+    entries.push({ type: "heading", label: category });
+    entries.push(...categoryEntries.sort((left, right) => left.label.localeCompare(right.label)));
   }
   return entries;
 }
 
-function getSelectedOption(
-  entries: SelectionEntry[],
-  selectedOptionIndex: number,
-): Extract<SelectionEntry, { type: "option" }> | null {
-  const options = entries.filter(
-    (entry): entry is Extract<SelectionEntry, { type: "option" }> =>
-      entry.type === "option",
-  );
+function getSelectedOption(entries: SelectionEntry[], selectedOptionIndex: number): Extract<SelectionEntry, { type: "option" }> | null {
+  const options = entries.filter((entry): entry is Extract<SelectionEntry, { type: "option" }> => entry.type === "option");
   return options[selectedOptionIndex] ?? null;
 }
 
-function renderSelectionScreen(
-  config: CLIConfig,
-  entries: SelectionEntry[],
-  selectedOptionIndex: number,
-): string[] {
-  const {width, height} = getTerminalSize();
+function renderSelectionScreen(config: CLIConfig, entries: SelectionEntry[], selectedOptionIndex: number): string[] {
+  const { width, height } = getTerminalSize();
   if (width < MIN_WIDTH || height < MIN_HEIGHT) {
-    return [
-      WARNING_COLOR(`Terminal too small. Minimum: ${MIN_WIDTH}x${MIN_HEIGHT}`),
-    ];
+    return [WARNING_COLOR(`Terminal too small. Minimum: ${MIN_WIDTH}x${MIN_HEIGHT}`)];
   }
 
   const selected = getSelectedOption(entries, selectedOptionIndex);
@@ -434,93 +369,52 @@ function renderSelectionScreen(
       ? `${HEADER_COLOR(config.screenBanner)}${" ".repeat(Math.max(1, width - visibleLength(config.screenBanner) - visibleLength("https://tokenring.ai")))}${MUTED_COLOR("https://tokenring.ai")}`
       : HEADER_COLOR(config.screenBanner);
 
-  const instructionLine = MUTED_COLOR(
-    "Up/Down or j/k to move, Enter to select, q or Esc to quit",
-  );
-  const listWidth =
-    selected && width >= 90 ? Math.max(30, Math.floor(width * 0.45)) : width;
+  const instructionLine = MUTED_COLOR("Up/Down or j/k to move, Enter to select, q or Esc to quit");
+  const listWidth = selected && width >= 90 ? Math.max(30, Math.floor(width * 0.45)) : width;
   const detailWidth = width - listWidth - 3;
   const leftBody = flattenedLines;
   const maxBodyHeight = Math.max(1, height - 3);
-  const clampedIndex = Math.min(
-    selectedLineIndex,
-    Math.max(0, leftBody.length - 1),
-  );
+  const clampedIndex = Math.min(selectedLineIndex, Math.max(0, leftBody.length - 1));
   const windowStart = Math.max(0, clampedIndex - Math.floor(maxBodyHeight / 2));
   const visibleLeft = leftBody.slice(windowStart, windowStart + maxBodyHeight);
 
   if (selected && detailWidth >= 24) {
-    const detailLines = renderBox(
-      selected.previewTitle,
-      selected.previewLines,
-      detailWidth,
-    );
+    const detailLines = renderBox(selected.previewTitle, selected.previewLines, detailWidth);
     const rows = Math.max(visibleLeft.length, detailLines.length);
     const body: string[] = [];
     for (let index = 0; index < rows; index += 1) {
       const leftEntry = visibleLeft[index];
       const leftText = padRight(leftEntry?.text ?? "", listWidth);
       const right = detailLines[index] ?? "";
-      const left = applyTone({text: leftText, tone: leftEntry?.tone});
+      const left = applyTone({ text: leftText, tone: leftEntry?.tone });
       body.push(`${left}   ${right}`);
     }
     return clipLines([headerLine, instructionLine, "", ...body], height);
   }
 
-  const body = visibleLeft.map((line) => applyTone(line));
-  const detail = selected
-    ? [
-      "",
-      INFO_COLOR(selected.previewTitle),
-      ...wrapLines(selected.previewLines, width),
-    ]
-    : [];
-  return clipLines(
-    [headerLine, instructionLine, "", ...body, ...detail],
-    height,
-  );
+  const body = visibleLeft.map(line => applyTone(line));
+  const detail = selected ? ["", INFO_COLOR(selected.previewTitle), ...wrapLines(selected.previewLines, width)] : [];
+  return clipLines([headerLine, instructionLine, "", ...body, ...detail], height);
 }
 
-function renderLoadingScreenLines(
-  _app: TokenRingApp,
-  config: CLIConfig,
-  renderTick: number,
-): string[] {
-  const {width, height} = getTerminalSize();
-  const bannerLines = formatBanner(config, width).map((line) =>
-    LOADING_COLOR(centerLine(line, width)),
-  );
+function renderLoadingScreenLines(_app: TokenRingApp, config: CLIConfig, renderTick: number): string[] {
+  const { width, height } = getTerminalSize();
+  const bannerLines = formatBanner(config, width).map(line => LOADING_COLOR(centerLine(line, width)));
   const spinnerLine = LOADING_COLOR(
-    centerLine(
-      `${brailleSpinner[renderTick % brailleSpinner.length]} ${getRandomItem(ridiculousMessages, renderTick / 10)}`,
-      width,
-    ),
+    centerLine(`${brailleSpinner[renderTick % brailleSpinner.length]} ${getRandomItem(ridiculousMessages, renderTick / 10)}`, width),
   );
   const reservedLines = bannerLines.length + 2;
   const padding = Math.max(0, (height - reservedLines) / 2);
 
-  return clipLines(
-    [
-      ...Array.from({length: padding}, () => ""),
-      ...bannerLines,
-      "",
-      spinnerLine,
-    ],
-    height,
-  );
+  return clipLines([...Array.from({ length: padding }, () => ""), ...bannerLines, "", spinnerLine], height);
 }
 
-export async function runLoadingScreen(
-  app: TokenRingApp,
-  config: CLIConfig,
-  signal: AbortSignal,
-): Promise<void> {
+export async function runLoadingScreen(app: TokenRingApp, config: CLIConfig, signal: AbortSignal): Promise<void> {
   if (!process.stdout.isTTY) return;
 
   let renderTick = 0;
   const painter = new ScreenPainter();
-  const render = () =>
-    painter.render(renderLoadingScreenLines(app, config, renderTick));
+  const render = () => painter.render(renderLoadingScreenLines(app, config, renderTick));
 
   const keyHandler: KeyHandler = (_input, key) => {
     if (key.ctrl && key.name === "c") {
@@ -532,7 +426,7 @@ export async function runLoadingScreen(
 
   try {
     render();
-    for await (const _ of setIntervalPromise(100, undefined, {signal})) {
+    for await (const _ of setIntervalPromise(100, undefined, { signal })) {
       renderTick += 1;
       render();
     }
@@ -546,22 +440,16 @@ export async function runLoadingScreen(
   }
 }
 
-export async function promptForAgentSelection(
-  app: TokenRingApp,
-  config: CLIConfig,
-  signal: AbortSignal,
-): Promise<AgentSelectionResult | null> {
+export async function promptForAgentSelection(app: TokenRingApp, config: CLIConfig, signal: AbortSignal): Promise<AgentSelectionResult | null> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     return null;
   }
 
   const entries = buildSelectionEntries(app);
-  const optionCount = entries.filter((entry) => entry.type === "option").length;
+  const optionCount = entries.filter(entry => entry.type === "option").length;
   if (optionCount === 0) {
     clearScreen();
-    process.stdout.write(
-      `${WARNING_COLOR("No agents, workflows, or web applications are available.")}\n`,
-    );
+    process.stdout.write(`${WARNING_COLOR("No agents, workflows, or web applications are available.")}\n`);
     return null;
   }
 
@@ -581,14 +469,10 @@ export async function promptForAgentSelection(
     };
 
     const abortHandler = () => finish(null);
-    const render = () =>
-      painter.render(
-        renderSelectionScreen(config, entries, selectedOptionIndex),
-      );
+    const render = () => painter.render(renderSelectionScreen(config, entries, selectedOptionIndex));
 
     const moveSelection = (delta: number) => {
-      selectedOptionIndex =
-        (selectedOptionIndex + delta + optionCount) % optionCount;
+      selectedOptionIndex = (selectedOptionIndex + delta + optionCount) % optionCount;
       render();
     };
 
@@ -618,7 +502,7 @@ export async function promptForAgentSelection(
     const resizeHandler = () => render();
     const terminalState = setupTerminal(keyHandler, resizeHandler);
 
-    signal.addEventListener("abort", abortHandler, {once: true});
+    signal.addEventListener("abort", abortHandler, { once: true });
     try {
       render();
     } catch (error: unknown) {
@@ -633,9 +517,7 @@ export async function retryAgentSelection(
   app: TokenRingApp,
   config: CLIConfig,
   signal: AbortSignal,
-  resolveSelection: (
-    selection: AgentSelectionResult | null,
-  ) => Promise<Agent | "retry" | null>,
+  resolveSelection: (selection: AgentSelectionResult | null) => Promise<Agent | "retry" | null>,
 ): Promise<Agent | null> {
   while (!signal.aborted) {
     const selection = await promptForAgentSelection(app, config, signal);

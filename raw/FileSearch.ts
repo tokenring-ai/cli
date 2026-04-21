@@ -1,4 +1,4 @@
-import {clamp} from "@tokenring-ai/utility/number/clamp";
+import { clamp } from "@tokenring-ai/utility/number/clamp";
 
 export type FileSearchToken = {
   start: number;
@@ -38,17 +38,11 @@ function getPathDepth(filePath: string): number {
   return filePath.split("/").length - 1;
 }
 
-export function compareFilePathsForBrowsing(
-  left: string,
-  right: string,
-): number {
+export function compareFilePathsForBrowsing(left: string, right: string): number {
   const depthDifference = getPathDepth(left) - getPathDepth(right);
   if (depthDifference !== 0) return depthDifference;
 
-  const baseNameDifference = COLLATOR.compare(
-    getBaseName(left),
-    getBaseName(right),
-  );
+  const baseNameDifference = COLLATOR.compare(getBaseName(left), getBaseName(right));
   if (baseNameDifference !== 0) return baseNameDifference;
 
   const lengthDifference = left.length - right.length;
@@ -57,10 +51,7 @@ export function compareFilePathsForBrowsing(
   return COLLATOR.compare(left, right);
 }
 
-export function findActiveFileSearchToken(
-  text: string,
-  cursor: number,
-): FileSearchToken | null {
+export function findActiveFileSearchToken(text: string, cursor: number): FileSearchToken | null {
   const boundedCursor = clamp(cursor, 0, text.length);
   let start = boundedCursor;
   let end = boundedCursor;
@@ -132,8 +123,7 @@ export function scoreFileSearchMatch(filePath: string, query: string): number {
       consecutiveMatches = 0;
     }
 
-    const previousChar =
-      nextMatchIndex === 0 ? "/" : normalizedPath[nextMatchIndex - 1];
+    const previousChar = nextMatchIndex === 0 ? "/" : normalizedPath[nextMatchIndex - 1];
     if (PATH_SEPARATORS.has(previousChar)) {
       score += SCORE_PATH_SEPARATOR_BONUS;
     }
@@ -151,11 +141,7 @@ export function scoreFileSearchMatch(filePath: string, query: string): number {
   return score;
 }
 
-export function getFileSearchMatches(
-  filePaths: readonly string[],
-  query: string,
-  limit = 8,
-): string[] {
+export function getFileSearchMatches(filePaths: readonly string[], query: string, limit = 8): string[] {
   const maxResults = Math.max(0, limit);
   const normalizedQuery = query.trim();
   if (maxResults === 0) {
@@ -163,25 +149,21 @@ export function getFileSearchMatches(
   }
 
   return filePaths
-    .map((filePath) => ({
+    .map(filePath => ({
       filePath,
       score: scoreFileSearchMatch(filePath, normalizedQuery),
     }))
-    .filter((candidate) => Number.isFinite(candidate.score))
+    .filter(candidate => Number.isFinite(candidate.score))
     .sort((left, right) => {
       const scoreDifference = right.score - left.score;
       if (scoreDifference !== 0) return scoreDifference;
       return compareFilePathsForBrowsing(left.filePath, right.filePath);
     })
     .slice(0, maxResults)
-    .map((candidate) => candidate.filePath);
+    .map(candidate => candidate.filePath);
 }
 
-export function replaceFileSearchToken(
-  text: string,
-  token: FileSearchToken,
-  replacement: string,
-): { text: string; cursor: number } {
+export function replaceFileSearchToken(text: string, token: FileSearchToken, replacement: string): { text: string; cursor: number } {
   const prefix = text.slice(0, token.start);
   const suffix = text.slice(token.end);
   const insertion = suffix.length === 0 ? `${replacement} ` : replacement;

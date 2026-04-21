@@ -1,11 +1,11 @@
-import type Agent from "@tokenring-ai/agent/Agent";
-import {ChatModelRegistry} from "@tokenring-ai/ai-client/ModelRegistry";
-import {parseModelAndSettings} from "@tokenring-ai/ai-client/util/modelSettings";
-import {ChatService} from "@tokenring-ai/chat";
-import {clamp} from "@tokenring-ai/utility/number/clamp";
-import {visibleLength} from "@tokenring-ai/utility/string/visibleLength";
-import {wrapPlainText} from "@tokenring-ai/utility/string/wrapPlainText";
 import process from "node:process";
+import type Agent from "@tokenring-ai/agent/Agent";
+import { ChatModelRegistry } from "@tokenring-ai/ai-client/ModelRegistry";
+import { parseModelAndSettings } from "@tokenring-ai/ai-client/util/modelSettings";
+import { ChatService } from "@tokenring-ai/chat";
+import { clamp } from "@tokenring-ai/utility/number/clamp";
+import { visibleLength } from "@tokenring-ai/utility/string/visibleLength";
+import { wrapPlainText } from "@tokenring-ai/utility/string/wrapPlainText";
 
 const ANSI_SGR_PATTERN = /\x1b\[([0-9;]*)m/g;
 
@@ -29,8 +29,7 @@ export function formatPercentLeft(value: number | null): string {
 export function formatCompactNumber(value: number | null, suffix = ""): string {
   if (value === null) return `--${suffix}`;
   if (value < 1000) return `${value}${suffix}`;
-  if (value < 1_000_000)
-    return `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1).replace(/\.0$/, "")}k${suffix}`;
+  if (value < 1_000_000) return `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1).replace(/\.0$/, "")}k${suffix}`;
   return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}m${suffix}`;
 }
 
@@ -49,11 +48,7 @@ export function formatTimer(timestamp: number): string {
   return `auto ${seconds}s`;
 }
 
-export function flattenWrappedLines(
-  lines: string[],
-  width: number,
-  prefix = "",
-): string[] {
+export function flattenWrappedLines(lines: string[], width: number, prefix = ""): string[] {
   const result: string[] = [];
   const innerWidth = Math.max(1, width - visibleLength(prefix));
 
@@ -77,10 +72,7 @@ function countWrappedRows(line: string, columns: number): number {
 
 export function countScreenRows(lines: string[] | undefined, columns: number): number {
   if (!lines || lines.length === 0) return 0;
-  return lines.reduce(
-    (total, line) => total + countWrappedRows(line, columns),
-    0,
-  );
+  return lines.reduce((total, line) => total + countWrappedRows(line, columns), 0);
 }
 
 type AnsiWrapState = {
@@ -110,7 +102,7 @@ function createAnsiWrapState(): AnsiWrapState {
 }
 
 function cloneAnsiWrapState(state: AnsiWrapState): AnsiWrapState {
-  return {...state};
+  return { ...state };
 }
 
 function hasAnsiWrapState(state: AnsiWrapState): boolean {
@@ -142,10 +134,7 @@ function serializeAnsiWrapState(state: AnsiWrapState): string {
 }
 
 function applyAnsiSgrSequence(state: AnsiWrapState, paramsText: string): void {
-  const params =
-    paramsText.length === 0
-      ? [0]
-      : paramsText.split(";").map((part) => Number.parseInt(part, 10) || 0);
+  const params = paramsText.length === 0 ? [0] : paramsText.split(";").map(part => Number.parseInt(part, 10) || 0);
 
   for (let index = 0; index < params.length; index += 1) {
     const code = params[index];
@@ -267,8 +256,7 @@ export function wrapAnsiStyledLine(text: string, width: number): string[] {
     textIndex += character.length;
 
     if (visibleCount >= width && textIndex < text.length) {
-      const nextPrefix =
-        "   " + serializeAnsiWrapState(cloneAnsiWrapState(state));
+      const nextPrefix = "   " + serializeAnsiWrapState(cloneAnsiWrapState(state));
       wrapped.push(`${current}${hasAnsiWrapState(state) ? "\x1b[0m" : ""}`);
       current = nextPrefix;
       visibleCount = 0;
@@ -283,10 +271,7 @@ export function getOutputWrapWidth(columns: number): number {
   return Math.max(1, Math.min(150, columns - 3));
 }
 
-export function findFirstDifferentLineIndex(
-  previousLines: string[],
-  nextLines: string[],
-): number {
+export function findFirstDifferentLineIndex(previousLines: string[], nextLines: string[]): number {
   const sharedLength = Math.min(previousLines.length, nextLines.length);
   for (let index = 0; index < sharedLength; index += 1) {
     if (previousLines[index] !== nextLines[index]) {
@@ -296,7 +281,6 @@ export function findFirstDifferentLineIndex(
   return sharedLength;
 }
 
-
 export function getCurrentModelLabel(agent: Agent): string {
   const chatService = agent.getServiceByType(ChatService);
   return chatService?.getModel(agent) ?? "(no model)";
@@ -304,8 +288,7 @@ export function getCurrentModelLabel(agent: Agent): string {
 
 export function getRemainingContextPercent(agent: Agent): number | null {
   const chatService = agent.getServiceByType(ChatService);
-  const modelRegistry =
-    agent.getServiceByType(ChatModelRegistry);
+  const modelRegistry = agent.getServiceByType(ChatModelRegistry);
   if (!chatService || !modelRegistry) return null;
 
   const message = chatService.getLastMessage(agent);
@@ -314,7 +297,7 @@ export function getRemainingContextPercent(agent: Agent): number | null {
   const model = chatService.getModel(agent);
   if (!model) return null;
 
-  const {base} = parseModelAndSettings(model.toLowerCase());
+  const { base } = parseModelAndSettings(model.toLowerCase());
   const spec = modelRegistry.modelSpecs.get(base);
   if (!spec?.maxContextLength) return null;
 
@@ -330,7 +313,7 @@ export function getActiveToolCount(agent: Agent): number | null {
   return chatService.getEnabledTools(agent).length;
 }
 
-export function getTokenUsage(agent: Agent ): number | null {
+export function getTokenUsage(agent: Agent): number | null {
   const chatService = agent.getServiceByType(ChatService);
   if (!chatService) return null;
 
@@ -348,10 +331,7 @@ export function getChatCost(agent: Agent): number | null {
   const messages = chatService.getChatMessages(agent);
   if (messages.length === 0) return 0;
 
-  return messages.reduce(
-    (total, message) => total + (message.response.cost.total ?? 0),
-    0,
-  );
+  return messages.reduce((total, message) => total + (message.response.cost.total ?? 0), 0);
 }
 
 export function getTerminalSize(): { columns: number; rows: number } {

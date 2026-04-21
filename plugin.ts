@@ -1,12 +1,12 @@
-import type {TokenRingPlugin} from "@tokenring-ai/app";
-import {z} from "zod";
+import type { TokenRingPlugin } from "@tokenring-ai/app";
+import { z } from "zod";
 import AgentCLI from "./AgentCLI.ts";
 
-import packageJSON from "./package.json" with {type: "json"};
-import {CLIConfigSchema} from "./schema.ts";
+import packageJSON from "./package.json" with { type: "json" };
+import { CLIConfigSchema } from "./schema.ts";
 
 const packageConfigSchema = z.object({
-  cli: CLIConfigSchema.optional(),
+  cli: CLIConfigSchema.exactOptional(),
 });
 
 export default {

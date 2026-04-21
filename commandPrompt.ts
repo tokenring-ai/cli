@@ -1,6 +1,6 @@
-import chalk from "chalk";
 import process from "node:process";
 import readline from "node:readline";
+import chalk from "chalk";
 
 export class PartialInputError extends Error {
   constructor(public buffer: string) {
@@ -11,8 +11,8 @@ export class PartialInputError extends Error {
 export interface CommandPromptOptions {
   rl: readline.Interface; // Accept the interface from the caller
   message: string;
-  prefix?: string;
-  history?: string[];
+  prefix?: string | undefined;
+  history?: string[] | undefined;
   autoCompletion?: string[] | ((line: string) => Promise<string[]> | string[]);
   signal?: AbortSignal;
 }
@@ -20,16 +20,8 @@ export interface CommandPromptOptions {
 /**
  * A prompt implementation using a shared Node.js readline interface.
  */
-export function commandPrompt(
-  options: CommandPromptOptions,
-): Promise<string> {
-  const {
-    rl,
-    message = ">",
-    prefix = chalk.yellowBright("user"),
-    history = [],
-    signal,
-  } = options;
+export function commandPrompt(options: CommandPromptOptions): Promise<string> {
+  const { rl, message = ">", prefix = chalk.yellowBright("user"), history = [], signal } = options;
 
   if (signal?.aborted) {
     throw new Error("Aborted");
@@ -71,7 +63,7 @@ export function commandPrompt(
       signal?.removeEventListener("abort", onAbort);
 
       // Robustly clear the multi-line prompt and input
-      const {rows} = rl.getCursorPos();
+      const { rows } = rl.getCursorPos();
       for (let i = 0; i <= rows; i++) {
         readline.cursorTo(process.stdout, 0);
         readline.clearLine(process.stdout, 0);
@@ -82,7 +74,7 @@ export function commandPrompt(
     };
 
     if (signal) {
-      signal.addEventListener("abort", onAbort, {once: true});
+      signal.addEventListener("abort", onAbort, { once: true });
     }
 
     rl.on("line", onLine);

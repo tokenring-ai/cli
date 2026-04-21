@@ -4,22 +4,20 @@ export type AgentSelectionResult =
   | { type: "open"; url: string }
   | { type: "workflow"; workflowKey: string };
 
-export function parseAgentSelectionValue(
-  value: string,
-): AgentSelectionResult | null {
+export function parseAgentSelectionValue(value: string): AgentSelectionResult | null {
   const match = value.match(/^(.*?):(.*)$/);
   if (!match) return null;
 
   const [, action, remainder] = match;
   switch (action) {
     case "spawn":
-      return {type: "spawn", agentType: remainder};
+      return { type: "spawn", agentType: remainder };
     case "connect":
-      return {type: "connect", agentId: remainder};
+      return { type: "connect", agentId: remainder };
     case "open":
-      return {type: "open", url: remainder};
+      return { type: "open", url: remainder };
     case "workflow":
-      return {type: "workflow", workflowKey: remainder};
+      return { type: "workflow", workflowKey: remainder };
     default:
       return null;
   }

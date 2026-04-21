@@ -1,4 +1,4 @@
-import {clamp} from "@tokenring-ai/utility/number/clamp";
+import { clamp } from "@tokenring-ai/utility/number/clamp";
 
 type LineRange = {
   start: number;
@@ -35,8 +35,7 @@ export default class InputEditor {
   insert(text: string): void {
     if (text.length === 0) return;
 
-    this.buffer =
-      this.buffer.slice(0, this.cursor) + text + this.buffer.slice(this.cursor);
+    this.buffer = this.buffer.slice(0, this.cursor) + text + this.buffer.slice(this.cursor);
     this.cursor += text.length;
     this.preferredColumn = null;
   }
@@ -48,8 +47,7 @@ export default class InputEditor {
   backspace(): void {
     if (this.cursor === 0) return;
 
-    this.buffer =
-      this.buffer.slice(0, this.cursor - 1) + this.buffer.slice(this.cursor);
+    this.buffer = this.buffer.slice(0, this.cursor - 1) + this.buffer.slice(this.cursor);
     this.cursor -= 1;
     this.preferredColumn = null;
   }
@@ -57,8 +55,7 @@ export default class InputEditor {
   deleteForward(): void {
     if (this.cursor >= this.buffer.length) return;
 
-    this.buffer =
-      this.buffer.slice(0, this.cursor) + this.buffer.slice(this.cursor + 1);
+    this.buffer = this.buffer.slice(0, this.cursor) + this.buffer.slice(this.cursor + 1);
     this.preferredColumn = null;
   }
 
@@ -79,21 +76,19 @@ export default class InputEditor {
   }
 
   deleteToStartOfLine(): void {
-    const {lineStart} = this.getCursorLocation();
+    const { lineStart } = this.getCursorLocation();
     if (lineStart === this.cursor) return;
 
-    this.buffer =
-      this.buffer.slice(0, lineStart) + this.buffer.slice(this.cursor);
+    this.buffer = this.buffer.slice(0, lineStart) + this.buffer.slice(this.cursor);
     this.cursor = lineStart;
     this.preferredColumn = null;
   }
 
   deleteToEndOfLine(): void {
-    const {lineEnd} = this.getCursorLocation();
+    const { lineEnd } = this.getCursorLocation();
     if (lineEnd === this.cursor) return;
 
-    this.buffer =
-      this.buffer.slice(0, this.cursor) + this.buffer.slice(lineEnd);
+    this.buffer = this.buffer.slice(0, this.cursor) + this.buffer.slice(lineEnd);
     this.preferredColumn = null;
   }
 
@@ -130,16 +125,10 @@ export default class InputEditor {
     if (this.cursor >= this.buffer.length) return;
 
     let nextCursor = this.cursor;
-    while (
-      nextCursor < this.buffer.length &&
-      /\s/.test(this.buffer[nextCursor] ?? "")
-      ) {
+    while (nextCursor < this.buffer.length && /\s/.test(this.buffer[nextCursor] ?? "")) {
       nextCursor += 1;
     }
-    while (
-      nextCursor < this.buffer.length &&
-      !/\s/.test(this.buffer[nextCursor] ?? "")
-      ) {
+    while (nextCursor < this.buffer.length && !/\s/.test(this.buffer[nextCursor] ?? "")) {
       nextCursor += 1;
     }
 
@@ -148,44 +137,36 @@ export default class InputEditor {
   }
 
   moveHome(): void {
-    const {lineStart} = this.getCursorLocation();
+    const { lineStart } = this.getCursorLocation();
     this.cursor = lineStart;
     this.preferredColumn = null;
   }
 
   moveEnd(): void {
-    const {lineEnd} = this.getCursorLocation();
+    const { lineEnd } = this.getCursorLocation();
     this.cursor = lineEnd;
     this.preferredColumn = null;
   }
 
   moveUp(): void {
     const lines = this.getLineRanges();
-    const {lineIndex, column} = this.getCursorLocation();
+    const { lineIndex, column } = this.getCursorLocation();
     if (lineIndex === 0) return;
 
     const preferredColumn = this.preferredColumn ?? column;
     const targetLine = lines[lineIndex - 1];
-    this.cursor = clamp(
-      targetLine.start + preferredColumn,
-      targetLine.start,
-      targetLine.end,
-    );
+    this.cursor = clamp(targetLine.start + preferredColumn, targetLine.start, targetLine.end);
     this.preferredColumn = preferredColumn;
   }
 
   moveDown(): void {
     const lines = this.getLineRanges();
-    const {lineIndex, column} = this.getCursorLocation();
+    const { lineIndex, column } = this.getCursorLocation();
     if (lineIndex >= lines.length - 1) return;
 
     const preferredColumn = this.preferredColumn ?? column;
     const targetLine = lines[lineIndex + 1];
-    this.cursor = clamp(
-      targetLine.start + preferredColumn,
-      targetLine.start,
-      targetLine.end,
-    );
+    this.cursor = clamp(targetLine.start + preferredColumn, targetLine.start, targetLine.end);
     this.preferredColumn = preferredColumn;
   }
 
@@ -225,12 +206,12 @@ export default class InputEditor {
 
     for (let index = 0; index < this.buffer.length; index += 1) {
       if (this.buffer[index] === "\n") {
-        ranges.push({start, end: index});
+        ranges.push({ start, end: index });
         start = index + 1;
       }
     }
 
-    ranges.push({start, end: this.buffer.length});
+    ranges.push({ start, end: this.buffer.length });
 
     return ranges;
   }
