@@ -1,3 +1,4 @@
+import type { MaybePromise } from "bun";
 import process from "node:process";
 import readline from "node:readline";
 import chalk from "chalk";
@@ -13,7 +14,7 @@ export interface CommandPromptOptions {
   message: string;
   prefix?: string | undefined;
   history?: string[] | undefined;
-  autoCompletion?: string[] | ((line: string) => Promise<string[]> | string[]);
+  autoCompletion?: string[] | ((line: string) => MaybePromise<string[]>);
   signal?: AbortSignal;
 }
 
