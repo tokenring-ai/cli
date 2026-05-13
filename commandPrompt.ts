@@ -1,6 +1,6 @@
-import type { MaybePromise } from "bun";
 import process from "node:process";
 import readline from "node:readline";
+import type { MaybePromise } from "bun";
 import chalk from "chalk";
 
 export class PartialInputError extends Error {
@@ -9,6 +9,7 @@ export class PartialInputError extends Error {
     this.name = "PartialInputError";
   }
 }
+
 export interface CommandPromptOptions {
   rl: readline.Interface; // Accept the interface from the caller
   message: string;

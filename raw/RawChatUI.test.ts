@@ -1,6 +1,6 @@
-import {beforeEach, describe, expect, it, vi} from "vitest";
-import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
-import {FileSystemState} from "@tokenring-ai/filesystem/state/fileSystemState";
+import { AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
+import { FileSystemState } from "@tokenring-ai/filesystem/state/fileSystemState";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import RawChatUI from "./RawChatUI.ts";
 
 describe("RawChatUI footer redraws", () => {
@@ -41,7 +41,8 @@ describe("RawChatUI footer redraws", () => {
     const ui = createUI();
 
     const writeSpy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
-    const renderFullReplay = vi.spyOn(ui as any, "renderFullReplay").mockImplementation(() => {});
+    const renderFullReplay = vi.spyOn(ui as any, "renderFullReplay").mockImplementation(() => {
+    });
     vi.spyOn(ui as any, "renderFooter").mockReturnValue({
       lines: ["hint", "composer", "status"],
       showCursor: false,
@@ -55,7 +56,7 @@ describe("RawChatUI footer redraws", () => {
       showCursor: false,
     };
 
-    (ui as any).renderIncremental({kind: "none"});
+    (ui as any).renderIncremental({ kind: "none" });
 
     expect(renderFullReplay).toHaveBeenCalledTimes(1);
     expect(writeSpy).not.toHaveBeenCalled();
@@ -65,7 +66,8 @@ describe("RawChatUI footer redraws", () => {
     const ui = createUI();
 
     const writeSpy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
-    const renderFullReplay = vi.spyOn(ui as any, "renderFullReplay").mockImplementation(() => {});
+    const renderFullReplay = vi.spyOn(ui as any, "renderFullReplay").mockImplementation(() => {
+    });
     vi.spyOn(ui as any, "renderFooter").mockReturnValue({
       lines: ["hint", "composer", "status"],
       showCursor: false,
@@ -79,7 +81,7 @@ describe("RawChatUI footer redraws", () => {
       showCursor: false,
     };
 
-    (ui as any).renderIncremental({kind: "none"});
+    (ui as any).renderIncremental({ kind: "none" });
 
     expect(renderFullReplay).not.toHaveBeenCalled();
     expect(writeSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
@@ -141,7 +143,8 @@ describe("RawChatUI footer redraws", () => {
       .mockImplementationOnce(() => {
         throw new Error("broken render");
       })
-      .mockImplementation(() => {});
+      .mockImplementation(() => {
+      });
 
     expect(() => (ui as any).render()).not.toThrow();
     expect(renderFullReplay).toHaveBeenCalledTimes(2);
@@ -159,7 +162,7 @@ describe("RawChatUI footer redraws", () => {
           throw new Error("State slice FileSystemState not found");
         }
         if (stateType === AgentEventState) {
-          return {currentlyExecutingInputItem: null};
+          return { currentlyExecutingInputItem: null };
         }
         return null;
       }),
@@ -180,7 +183,7 @@ describe("RawChatUI footer redraws", () => {
     });
 
     expect(() =>
-      ui.renderEvent({type: "output.info", timestamp: Date.now(), message: "hi"} as any),
+      ui.renderEvent({ type: "output.info", timestamp: Date.now(), message: "hi" } as any),
     ).not.toThrow();
     expect((ui as any).flashMessage).toMatchObject({
       text: "Failed to process event: bad event",

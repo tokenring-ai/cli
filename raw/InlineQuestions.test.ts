@@ -1,5 +1,5 @@
-import {vi} from "vitest";
-import {createInlineQuestionSession} from "./InlineQuestions.ts";
+import { vi } from "vitest";
+import { createInlineQuestionSession } from "./InlineQuestions.ts";
 
 async function settle(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -41,24 +41,24 @@ describe("InlineQuestions fileSelect", () => {
     await settle();
 
     expect(listFileSelectEntries).toHaveBeenCalledWith(".");
-    const rootRender = session.render({columns: 80, rows: 24}).lines.join("\n");
+    const rootRender = session.render({ columns: 80, rows: 24 }).lines.join("\n");
     expect(rootRender).toContain("README.md");
     expect(rootRender.indexOf("src")).toBeLessThan(rootRender.indexOf("README.md"));
 
-    await session.handleKeypress("", {name: "space"});
+    await session.handleKeypress("", { name: "space" });
     await settle();
 
     expect(listFileSelectEntries).toHaveBeenCalledWith("src");
-    const expandedRender = session.render({columns: 80, rows: 24}).lines.join("\n");
+    const expandedRender = session.render({ columns: 80, rows: 24 }).lines.join("\n");
     expect(expandedRender).toContain("index.ts");
     expect(expandedRender.indexOf("index.ts")).toBeLessThan(expandedRender.indexOf("z.ts"));
 
-    await session.handleKeypress("", {name: "down"});
-    await session.handleKeypress("", {name: "space"});
-    await session.handleKeypress("", {name: "down"});
-    await session.handleKeypress("", {name: "down"});
-    await session.handleKeypress("", {name: "space"});
-    await session.handleKeypress("", {name: "return"});
+    await session.handleKeypress("", { name: "down" });
+    await session.handleKeypress("", { name: "space" });
+    await session.handleKeypress("", { name: "down" });
+    await session.handleKeypress("", { name: "down" });
+    await session.handleKeypress("", { name: "space" });
+    await session.handleKeypress("", { name: "return" });
 
     expect(onCancel).not.toHaveBeenCalled();
     expect(onSubmit).toHaveBeenCalledWith(["src/index.ts", "README.md"]);
@@ -85,7 +85,7 @@ describe("InlineQuestions fileSelect", () => {
     });
 
     await settle();
-    await session.handleKeypress("", {name: "q"});
+    await session.handleKeypress("", { name: "q" });
 
     expect(onSubmit).not.toHaveBeenCalled();
     expect(onCancel).toHaveBeenCalledTimes(1);

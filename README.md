@@ -2,9 +2,12 @@
 
 ## Overview
 
-The `@tokenring-ai/cli` package provides a comprehensive command-line interface for interacting with TokenRing AI agents. This terminal-based interface enables users to manage agents, execute commands, and handle human interface requests with a rich, responsive UI using raw terminal rendering with ANSI escape codes.
+The `@tokenring-ai/cli` package provides a comprehensive command-line interface for interacting with TokenRing AI
+agents. This terminal-based interface enables users to manage agents, execute commands, and handle human interface
+requests with a rich, responsive UI using raw terminal rendering with ANSI escape codes.
 
-The CLI implements the `TokenRingService` interface through the `AgentCLI` class and can be installed as a plugin via `app.install()`.
+The CLI implements the `TokenRingService` interface through the `AgentCLI` class and can be installed as a plugin via
+`app.install()`.
 
 ### Key Features
 
@@ -61,19 +64,19 @@ The CLI package supports configuration options that define the user interface be
 
 ### Configuration Options
 
-| Option                        | Type                | Required      | Default   | Description                                                                                  |
-|-------------------------------|---------------------|---------------|-----------|----------------------------------------------------------------------------------------------|
-| `chatBanner`                  | string              | Yes           | -         | Banner message displayed during agent chat sessions                                          |
-| `loadingBannerNarrow`         | string              | Yes           | -         | Banner for narrow terminal windows during loading                                            |
-| `loadingBannerWide`           | string              | Yes           | -         | Banner for wide terminal windows during loading                                              |
-| `loadingBannerCompact`        | string              | Yes           | -         | Banner for compact terminal layouts during loading                                           |
-| `screenBanner`                | string              | Yes           | -         | Banner message displayed on all interactive screens                                          |
-| `uiFramework`                 | `'ink' \| 'opentui'`| No            | `'opentui'` | UI rendering framework (reserved for future use)                                           |
-| `verbose`                     | boolean             | No            | `false`   | Enable verbose output including reasoning and artifacts                                      |
-| `startAgent`                  | object              | No            | -         | Optional agent to automatically spawn on startup                                             |
-| `startAgent.type`             | string              | If startAgent | -         | Agent type to spawn (e.g., 'coder', 'writer')                                                |
-| `startAgent.prompt`           | string              | If startAgent | -         | Initial prompt to send to the agent                                                          |
-| `startAgent.shutdownWhenDone` | boolean             | If startAgent | `true`    | Whether to shutdown after agent completes                                                    |
+| Option                        | Type                 | Required      | Default     | Description                                             |
+|-------------------------------|----------------------|---------------|-------------|---------------------------------------------------------|
+| `chatBanner`                  | string               | Yes           | -           | Banner message displayed during agent chat sessions     |
+| `loadingBannerNarrow`         | string               | Yes           | -           | Banner for narrow terminal windows during loading       |
+| `loadingBannerWide`           | string               | Yes           | -           | Banner for wide terminal windows during loading         |
+| `loadingBannerCompact`        | string               | Yes           | -           | Banner for compact terminal layouts during loading      |
+| `screenBanner`                | string               | Yes           | -           | Banner message displayed on all interactive screens     |
+| `uiFramework`                 | `'ink' \| 'opentui'` | No            | `'opentui'` | UI rendering framework (reserved for future use)        |
+| `verbose`                     | boolean              | No            | `false`     | Enable verbose output including reasoning and artifacts |
+| `startAgent`                  | object               | No            | -           | Optional agent to automatically spawn on startup        |
+| `startAgent.type`             | string               | If startAgent | -           | Agent type to spawn (e.g., 'coder', 'writer')           |
+| `startAgent.prompt`           | string               | If startAgent | -           | Initial prompt to send to the agent                     |
+| `startAgent.shutdownWhenDone` | boolean              | If startAgent | `true`      | Whether to shutdown after agent completes               |
 
 ### Configuration Example
 
@@ -94,11 +97,13 @@ cli:
 
 ### Environment Variables
 
-The CLI package does not define specific environment variables. Configuration is provided through the plugin configuration or direct service instantiation.
+The CLI package does not define specific environment variables. Configuration is provided through the plugin
+configuration or direct service instantiation.
 
 ## Chat Commands
 
-Available commands are dynamically loaded from the `AgentCommandService` registered in the application. The CLI provides auto-completion for all registered commands when typing `/` in the chat input.
+Available commands are dynamically loaded from the `AgentCommandService` registered in the application. The CLI provides
+auto-completion for all registered commands when typing `/` in the chat input.
 
 ### Command Auto-completion
 
@@ -123,7 +128,8 @@ const commands = Array.from(agentCommandService?.getCommandEntries().values()).m
 
 ## Tools
 
-The CLI package itself does not define tools directly. Instead, it integrates with tools provided by other packages through the agent system. The following tools are commonly available when using the CLI with agent services:
+The CLI package itself does not define tools directly. Instead, it integrates with tools provided by other packages
+through the agent system. The following tools are commonly available when using the CLI with agent services:
 
 ### Available Tools (via Agent Integration)
 
@@ -190,7 +196,8 @@ export default class AgentCLI implements TokenRingService {
 
 #### AgentLoop Class
 
-Handles the interactive loop for individual agents, managing input collection, event rendering, and human request handling.
+Handles the interactive loop for individual agents, managing input collection, event rendering, and human request
+handling.
 
 **Interface:**
 
@@ -249,7 +256,8 @@ The `AgentLoop` processes the following agent events via `AgentEventState` subsc
 
 #### RawChatUI Class
 
-The main chat UI component that handles terminal rendering, input editing, and interaction management. This is a raw terminal-based UI that works directly with ANSI escape codes for a responsive, full-featured terminal experience.
+The main chat UI component that handles terminal rendering, input editing, and interaction management. This is a raw
+terminal-based UI that works directly with ANSI escape codes for a responsive, full-featured terminal experience.
 
 **Interface:**
 
@@ -258,9 +266,13 @@ export default class RawChatUI {
   constructor(options: RawChatUIOptions);
 
   start(): void;
+
   stop(): void;
+
   renderEvent(event: AgentEventEnvelope): void;
+
   syncState(state: AgentEventState): void;
+
   flash(text: string, tone?: FlashMessage["tone"], durationMs?: number): void;
 }
 ```
@@ -323,8 +335,8 @@ The CLI package implements the `TokenRingService` interface through the `AgentCL
 
 ```typescript
 import TokenRingApp from '@tokenring-ai/app';
-import AgentCLI, { CLIConfigSchema } from '@tokenring-ai/cli';
-import type { TokenRingService } from '@tokenring-ai/app/types';
+import AgentCLI, {CLIConfigSchema} from '@tokenring-ai/cli';
+import type {TokenRingService} from '@tokenring-ai/app/types';
 
 const app: TokenRingApp = new TokenRingApp();
 
@@ -370,16 +382,17 @@ export type AgentSelectionResult =
 
 **Selection Types:**
 
-| Type       | Description                              | Value Field      |
-|------------|------------------------------------------|------------------|
-| `spawn`    | Spawn a new agent                        | `agentType`      |
-| `connect`  | Connect to an existing agent             | `agentId`        |
-| `open`     | Open a web application in browser        | `url`            |
-| `workflow` | Spawn a workflow instance                | `workflowKey`    |
+| Type       | Description                       | Value Field   |
+|------------|-----------------------------------|---------------|
+| `spawn`    | Spawn a new agent                 | `agentType`   |
+| `connect`  | Connect to an existing agent      | `agentId`     |
+| `open`     | Open a web application in browser | `url`         |
+| `workflow` | Spawn a workflow instance         | `workflowKey` |
 
 ### RPC Endpoints
 
-The CLI package does not define RPC endpoints directly. It relies on the `@tokenring-ai/web-host` package for any web-based RPC communication.
+The CLI package does not define RPC endpoints directly. It relies on the `@tokenring-ai/web-host` package for any
+web-based RPC communication.
 
 ### Usage Examples
 
@@ -463,7 +476,8 @@ const config = {
 
 ### Theme Configuration
 
-The CLI uses a color theme defined in `theme.ts` that controls the appearance of all UI elements. The theme is applied throughout the raw terminal interface using `chalk.hex()` for colored output.
+The CLI uses a color theme defined in `theme.ts` that controls the appearance of all UI elements. The theme is applied
+throughout the raw terminal interface using `chalk.hex()` for colored output.
 
 #### Theme Properties
 
@@ -540,48 +554,48 @@ const errorText = chalk.hex(theme.chatSystemErrorMessage)('Error occurred');
 
 #### General
 
-| Shortcut            | Action                                      |
-|---------------------|---------------------------------------------|
-| `Ctrl+C`            | Cancel current activity or shut down agent  |
-| `Ctrl+L`            | Clear and replay the screen (full replay)   |
-| `Alt+A` / `F1`      | Open agent selection screen                 |
+| Shortcut       | Action                                     |
+|----------------|--------------------------------------------|
+| `Ctrl+C`       | Cancel current activity or shut down agent |
+| `Ctrl+L`       | Clear and replay the screen (full replay)  |
+| `Alt+A` / `F1` | Open agent selection screen                |
 
 #### Model and Tools
 
-| Shortcut            | Action                                      |
-|---------------------|---------------------------------------------|
-| `Alt+M` / `F3`      | Trigger "model select" command              |
-| `Alt+T` / `F2`      | Trigger "tools select" command              |
-| `Alt+V` / `F4`      | Toggle verbose mode                         |
+| Shortcut       | Action                         |
+|----------------|--------------------------------|
+| `Alt+M` / `F3` | Trigger "model select" command |
+| `Alt+T` / `F2` | Trigger "tools select" command |
+| `Alt+V` / `F4` | Toggle verbose mode            |
 
 #### Questions and Interactions
 
-| Shortcut            | Action                                      |
-|---------------------|---------------------------------------------|
-| `Alt+Q` / `F6`      | Toggle optional questions picker            |
+| Shortcut       | Action                           |
+|----------------|----------------------------------|
+| `Alt+Q` / `F6` | Toggle optional questions picker |
 
 #### Input Editing
 
-| Shortcut                     | Action                                      |
-|------------------------------|---------------------------------------------|
-| `Tab`                        | Command completion or insert file match     |
-| `Escape`                     | Cancel activity or dismiss completion       |
-| `Ctrl+O` / `Meta+Enter`      | Insert newline                              |
-| `Ctrl+P` / `Up`              | Browse history (previous) or move up        |
-| `Ctrl+N` / `Down`            | Browse history (next) or move down          |
-| `PageUp` / `PageDown`        | Page through completions                    |
-| `Ctrl+A`                     | Move to start of line                       |
-| `Ctrl+E`                     | Move to end of line                         |
-| `Ctrl+U`                     | Delete to start of line                     |
-| `Ctrl+K`                     | Delete to end of line                       |
-| `Ctrl+W`                     | Delete word backward                        |
-| `Ctrl+D`                     | Delete forward                              |
-| `Alt+B`                      | Move word left                              |
-| `Alt+F`                      | Move word right                             |
-| `Home`                       | Move to start of line                       |
-| `End`                        | Move to end of line                         |
-| `Backspace`                  | Delete character before cursor              |
-| `Delete`                     | Delete character after cursor               |
+| Shortcut                | Action                                  |
+|-------------------------|-----------------------------------------|
+| `Tab`                   | Command completion or insert file match |
+| `Escape`                | Cancel activity or dismiss completion   |
+| `Ctrl+O` / `Meta+Enter` | Insert newline                          |
+| `Ctrl+P` / `Up`         | Browse history (previous) or move up    |
+| `Ctrl+N` / `Down`       | Browse history (next) or move down      |
+| `PageUp` / `PageDown`   | Page through completions                |
+| `Ctrl+A`                | Move to start of line                   |
+| `Ctrl+E`                | Move to end of line                     |
+| `Ctrl+U`                | Delete to start of line                 |
+| `Ctrl+K`                | Delete to end of line                   |
+| `Ctrl+W`                | Delete word backward                    |
+| `Ctrl+D`                | Delete forward                          |
+| `Alt+B`                 | Move word left                          |
+| `Alt+F`                 | Move word right                         |
+| `Home`                  | Move to start of line                   |
+| `End`                   | Move to end of line                     |
+| `Backspace`             | Delete character before cursor          |
+| `Delete`                | Delete character after cursor           |
 
 ### Integration
 
@@ -590,15 +604,17 @@ const errorText = chalk.hex(theme.chatSystemErrorMessage)('Error occurred');
 The CLI integrates with the agent system through the following mechanisms:
 
 1. **Agent Selection**: Presents available options from `AgentManager` service including:
-   - Running agents (connect to existing sessions)
-   - Agent types (spawn new agents)
-   - Workflows (spawn workflow instances)
-   - Web applications (open in browser via `WebHostService`)
+
+- Running agents (connect to existing sessions)
+- Agent types (spawn new agents)
+- Workflows (spawn workflow instances)
+- Web applications (open in browser via `WebHostService`)
 
 2. **Event Subscription**: Subscribes to `AgentEventState` via `agent.subscribeStateAsync()` for:
-   - Real-time event streaming
-   - Incremental rendering of chat output, reasoning, and system messages
-   - Agent lifecycle events (created, stopped, status updates)
+
+- Real-time event streaming
+- Incremental rendering of chat output, reasoning, and system messages
+- Agent lifecycle events (created, stopped, status updates)
 
 3. **Input Handling**: Sends user input to agents via:
 
@@ -620,13 +636,15 @@ The CLI integrates with the agent system through the following mechanisms:
    ```
 
 6. **State Access**: Reads agent state for display purposes:
-   - `AgentEventState`: Event history and current activity
-   - `CommandHistoryState`: Previous commands for history navigation
-   - `FileSystemState`: Working directory for status display
+
+- `AgentEventState`: Event history and current activity
+- `CommandHistoryState`: Previous commands for history navigation
+- `FileSystemState`: Working directory for status display
 
 ### Input Handling
 
-The CLI package handles interactive input through the `RawChatUI` class, which supports various agent interaction types via `InlineQuestionSession` implementations.
+The CLI package handles interactive input through the `RawChatUI` class, which supports various agent interaction types
+via `InlineQuestionSession` implementations.
 
 #### Question Types
 
@@ -640,7 +658,8 @@ The CLI supports the following question types from agents via `ParsedInteraction
 | **Form**        | Multi-section forms combining multiple field types | Navigate through fields with Enter, Esc to cancel current section                                      |
 | **Followup**    | Simple follow-up prompts for additional input      | Enter to submit, Alt+Enter/Shift+Enter for newline                                                     |
 
-All question handling is done inline in the terminal with responsive layout adaptation. Optional questions can be accessed via `Alt+Q` / `F6`.
+All question handling is done inline in the terminal with responsive layout adaptation. Optional questions can be
+accessed via `Alt+Q` / `F6`.
 
 #### File Search
 

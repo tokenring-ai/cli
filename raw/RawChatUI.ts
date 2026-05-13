@@ -246,20 +246,6 @@ export default class RawChatUI {
   private dismissedCompletionSignature: string | null = null;
   private dismissedFileSearchSignature: string | null = null;
 
-  private readonly dataHandler = (data: Buffer | string) => {
-    if (this.suspended) return;
-    this.handleTerminalData(data);
-  };
-
-  private readonly keypressHandler = (input: string, key: readline.Key) => {
-    if (this.suspended) return;
-    this.handleKeypress(input, key);
-  };
-
-  private readonly resizeHandler = () => {
-    this.handleResize();
-  };
-
   constructor(options: RawChatUIOptions) {
     this.options = options;
     this.verbose = options.config.verbose;
@@ -330,6 +316,20 @@ export default class RawChatUI {
     this.setFlashMessage(text, tone, durationMs);
     this.render();
   }
+
+  private readonly dataHandler = (data: Buffer | string) => {
+    if (this.suspended) return;
+    this.handleTerminalData(data);
+  };
+
+  private readonly keypressHandler = (input: string, key: readline.Key) => {
+    if (this.suspended) return;
+    this.handleKeypress(input, key);
+  };
+
+  private readonly resizeHandler = () => {
+    this.handleResize();
+  };
 
   private setFlashMessage(text: string, tone: FlashMessage["tone"], durationMs = 2400): void {
     this.flashMessage = {

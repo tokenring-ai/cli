@@ -1,4 +1,4 @@
-import {describe, expect, it} from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   combineBlocks,
   formatToolCallBody,
@@ -20,7 +20,7 @@ describe("ChatRenderUtils", () => {
         replacementStart: 1,
         replacementEnd: 4,
         query: "he",
-        matches: [{name: "help"}, {name: "hello"}],
+        matches: [{ name: "help" }, { name: "hello" }],
       }),
     ).toBe("1:4:he:help,hello");
 
@@ -78,8 +78,8 @@ describe("ChatRenderUtils", () => {
   });
 
   it("formats terminal cursor movement helpers", () => {
-    expect(moveToFooterTop({lineCount: 0, cursorRow: 3})).toBe("");
-    expect(moveToFooterTop({lineCount: 4, cursorRow: 2})).toBe("\r\x1b[2F");
+    expect(moveToFooterTop({ lineCount: 0, cursorRow: 3 })).toBe("");
+    expect(moveToFooterTop({ lineCount: 4, cursorRow: 2 })).toBe("\r\x1b[2F");
 
     expect(
       getFooterCursorSequence({
@@ -94,7 +94,7 @@ describe("ChatRenderUtils", () => {
   it("combines blocks and preserves the final cursor position", () => {
     expect(
       combineBlocks([
-        {lines: ["hint"], showCursor: false},
+        { lines: ["hint"], showCursor: false },
         {
           lines: ["prompt", "value"],
           cursorRow: 1,

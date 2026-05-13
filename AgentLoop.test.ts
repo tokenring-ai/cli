@@ -1,10 +1,10 @@
-import {describe, expect, it, vi} from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import AgentLoop from "./AgentLoop.ts";
 
 function createState(events: any[]) {
   return {
     events,
-    * yieldEventsByCursor(cursor: {position: number}) {
+    * yieldEventsByCursor(cursor: { position: number }) {
       for (; cursor.position < events.length; cursor.position += 1) {
         yield events[cursor.position];
       }
@@ -25,13 +25,15 @@ describe("AgentLoop", () => {
       .mockImplementationOnce(() => {
         throw new Error("bad render");
       })
-      .mockImplementation(() => {});
+      .mockImplementation(() => {
+      });
     const syncState = vi
       .fn()
       .mockImplementationOnce(() => {
         throw new Error("bad sync");
       })
-      .mockImplementation(() => {});
+      .mockImplementation(() => {
+      });
 
     (loop as any).ui = {
       flash,
@@ -39,8 +41,8 @@ describe("AgentLoop", () => {
       syncState,
     };
 
-    const event1 = {type: "output.info", timestamp: 1, message: "one"};
-    const event2 = {type: "output.info", timestamp: 2, message: "two"};
+    const event1 = { type: "output.info", timestamp: 1, message: "one" };
+    const event2 = { type: "output.info", timestamp: 2, message: "two" };
 
     await (loop as any).consumeEvents(
       (async function* () {
