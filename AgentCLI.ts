@@ -13,6 +13,7 @@ import type { AgentSelectionResult } from "./AgentSelection.ts";
 import type { CommandDefinition } from "./raw/CommandCompletions.ts";
 import { retryAgentSelection, runLoadingScreen } from "./raw/NativeScreens.ts";
 import type { CLIConfigSchema } from "./schema.ts";
+import { WebHostService } from "@tokenring-ai/web-host";
 
 /**
  * AgentCLI is a command-line interface for interacting with an TokenRingApp.
@@ -166,6 +167,23 @@ export default class AgentCLI implements TokenRingService {
           return workflowService.spawnWorkflow(selection.workflowKey, {
             headless: false,
           });
+        }
+        case "webhost": {
+          const webHostService = this.app.requireService(WebHostService);
+          switch (selection.action) {
+            case "start":
+              if (! webHostService.listening) {
+                await webHostService.listen();
+              }
+              return "retry";
+            case "stop":
+              if (webHostService.listening) {
+                webHostService.stop();
+              }
+              return "retry";
+            default:
+              throw new Error(`Unknown webhost action: ${selection.action}`);
+          }
         }
       }
     } catch (error: unknown) {

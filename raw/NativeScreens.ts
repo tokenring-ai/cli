@@ -235,16 +235,24 @@ function clipLines(lines: string[], height: number): string[] {
 
 function buildSelectionEntries(app: TokenRingApp): SelectionEntry[] {
   const agentManager = app.requireService(AgentManager);
-  const webHostService = app.getService(WebHostService);
-  const workflowService = app.getService(WorkflowService);
-  const webHostURL = webHostService?.getURL()?.toString() ?? "";
+  const webHostService = app.requireService(WebHostService);
+  const workflowService = app.requireService(WorkflowService);
   const categories = new Map<string, SelectionEntry[]>();
 
-  if (webHostService) {
-    const entries: SelectionEntry[] = [];
+  const webAppEntries: SelectionEntry[] = [];
+  if (webHostService.listening) {
+    webAppEntries.push({
+      type: "option",
+      label: "Stop Web Server",
+      value: "webhost:stop",
+      previewTitle: "Stop Web Server",
+      previewLines: ["Stop the web server and disconnect all connected clients."],
+    });
+
+    const webHostURL = webHostService.getURL().toString()
     for (const [resourceName, resource] of webHostService.getResourceEntries()) {
       if (resource instanceof SPAResource) {
-        entries.push({
+        webAppEntries.push({
           type: "option",
           label: `Connect to ${resourceName}`,
           value: `open:${webHostURL}${resource.config.prefix.substring(1)}`,
@@ -256,13 +264,20 @@ function buildSelectionEntries(app: TokenRingApp): SelectionEntry[] {
         });
       }
     }
-    if (entries.length > 0) {
-      categories.set(
-        "Web Application",
-        entries.sort((left, right) => left.label.localeCompare(right.label)),
-      );
-    }
+  } else {
+    webAppEntries.push({
+      type: "option",
+      label: "Start Web Server",
+      value: "webhost:start",
+      previewTitle: "Start Web Server",
+      previewLines: ["Start up a web server on an unused port, to remotely manage this TokenRing instance."],
+    });
   }
+  categories.set(
+    "Web Application",
+    webAppEntries.sort((left, right) => left.label.localeCompare(right.label)),
+  );
+
 
   const currentAgents = agentManager.getAgents();
   if (currentAgents.length > 0) {
@@ -295,22 +310,20 @@ function buildSelectionEntries(app: TokenRingApp): SelectionEntry[] {
     categories.set(category, entries);
   }
 
-  if (workflowService) {
-    const workflows = workflowService.listWorkflowEntries();
-    if (workflows.length > 0) {
-      categories.set(
-        "Workflows",
-        workflows
-          .map(([name, workflow]) => ({
-            type: "option" as const,
-            label: `${workflow.displayName} (${name})`,
-            value: `workflow:${name}`,
-            previewTitle: workflow.displayName,
-            previewLines: [workflow.description],
-          }))
-          .sort((left, right) => left.label.localeCompare(right.label)),
-      );
-    }
+  const workflows = workflowService.listWorkflowEntries();
+  if (workflows.length > 0) {
+    categories.set(
+      "Workflows",
+      workflows
+        .map(([name, workflow]) => ({
+          type: "option" as const,
+          label: `${workflow.displayName} (${name})`,
+          value: `workflow:${name}`,
+          previewTitle: workflow.displayName,
+          previewLines: [workflow.description],
+        }))
+        .sort((left, right) => left.label.localeCompare(right.label)),
+    );
   }
 
   const pinnedOrder = ["Web Application", "Running Agents"];

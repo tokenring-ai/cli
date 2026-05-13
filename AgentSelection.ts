@@ -2,7 +2,8 @@ export type AgentSelectionResult =
   | { type: "spawn"; agentType: string }
   | { type: "connect"; agentId: string }
   | { type: "open"; url: string }
-  | { type: "workflow"; workflowKey: string };
+  | { type: "workflow"; workflowKey: string }
+  | { type: "webhost"; action: string };
 
 export function parseAgentSelectionValue(value: string): AgentSelectionResult | null {
   const match = value.match(/^(.*?):(.*)$/);
@@ -10,6 +11,8 @@ export function parseAgentSelectionValue(value: string): AgentSelectionResult | 
 
   const [, action, remainder] = match;
   switch (action) {
+    case "webhost":
+      return { type: "webhost", action: remainder };
     case "spawn":
       return { type: "spawn", agentType: remainder };
     case "connect":
