@@ -89,7 +89,7 @@ export default class AgentLoop {
       await raceAbort(this.consumeEvents(events$, signal), signal);
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name === "AbortError") {
-      } else if (error instanceof Error && error.name === "AbortError") {
+      } else if (Error.isError(error) && error.name === "AbortError") {
       } else {
         process.stderr.write(formatLogMessages(["Error while running agent loop", error as Error]));
       }
@@ -128,14 +128,14 @@ export default class AgentLoop {
         try {
           this.renderEvent(event);
         } catch (error: unknown) {
-          this.ui?.flash(`Failed to render event: ${error instanceof Error ? error.message : String(error)}`, "error", 10_000);
+          this.ui?.flash(`Failed to render event: ${Error.isError(error) ? error.message : String(error)}`, "error", 10_000);
         }
       }
 
       try {
         this.handleAgentState(state);
       } catch (error: unknown) {
-        this.ui?.flash(`Failed to sync agent state: ${error instanceof Error ? error.message : String(error)}`, "error", 10_000);
+        this.ui?.flash(`Failed to sync agent state: ${Error.isError(error) ? error.message : String(error)}`, "error", 10_000);
       }
     }
   }

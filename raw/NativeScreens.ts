@@ -444,7 +444,7 @@ export async function runLoadingScreen(app: TokenRingApp, config: CLIConfig, sig
       render();
     }
   } catch (error: unknown) {
-    if (!(error instanceof Error) || error.name !== "AbortError") {
+    if (!(Error.isError(error)) || error.name !== "AbortError") {
       throw error;
     }
   } finally {

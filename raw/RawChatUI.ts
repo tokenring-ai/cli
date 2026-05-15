@@ -340,7 +340,7 @@ export default class RawChatUI {
   }
 
   private describeError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+    return Error.isError(error) ? error.message : String(error);
   }
 
   private reportInternalError(prefix: string, error: unknown): void {
@@ -1093,7 +1093,7 @@ export default class RawChatUI {
         this.workspaceFiles = Array.from(new Set(files)).sort(compareFilePathsForBrowsing);
       } catch (error: unknown) {
         this.workspaceFiles = null;
-        this.workspaceFilesLoadError = error instanceof Error ? `Workspace file search failed: ${error.message}` : "Workspace file search failed.";
+        this.workspaceFilesLoadError = Error.isError(error) ? `Workspace file search failed: ${error.message}` : "Workspace file search failed.";
       } finally {
         this.workspaceFilesPromise = null;
         this.syncChatFileSearchState();
