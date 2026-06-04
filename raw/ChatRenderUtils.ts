@@ -1,10 +1,10 @@
 import type { AgentEventEnvelope, ParsedInteractionRequest } from "@tokenring-ai/agent/AgentEvents";
+import { markdown } from "bun";
 import chalk from "chalk";
 import { theme } from "../theme.ts";
-import applyMarkdownStyles from "../utility/applyMarkdownStyles.ts";
 import type { FileSearchToken } from "./FileSearch.ts";
 import type { RenderBlock } from "./InlineQuestions.ts";
-import { getOutputWrapWidth, splitLines, trimBoundaryNewlines, wrapAnsiStyledLine } from "./utility.ts";
+import { getOutputWrapWidth, trimBoundaryNewlines } from "./utility.ts";
 
 export type TranscriptTone = "chat" | "reasoning" | "info" | "warning" | "error" | "input" | "success" | "muted";
 
@@ -16,7 +16,7 @@ export type TranscriptEntry = {
   title: string | null;
   body: string;
   tone: TranscriptTone;
-  markdown: boolean;
+  markdown?: never;
 };
 
 export type QuestionInteraction = Extract<ParsedInteractionRequest, { type: "question" }>;
@@ -139,16 +139,22 @@ export function renderEntryText(entry: TranscriptEntry, columns: number, keepOpe
   const outputWidth = getOutputWrapWidth(columns);
 
   if (entry.title) {
-    const styledTitle = TITLE_COLOR(`${HEADER_PREFIX}${applyMarkdownStyles(entry.title)}`);
-    lines.push(...wrapAnsiStyledLine(styledTitle, outputWidth));
+    //const styledTitle = TITLE_COLOR(`${HEADER_PREFIX}${applyMarkdownStyles(entry.title)}`);
+    //lines.push(...wrapAnsiStyledLine(styledTitle, outputWidth));
+
+    lines.push(
+      ...markdown
+        .ansi(entry.title, { columns: outputWidth })
+        .split("\n")
+        .map((line, i) => TITLE_COLOR(`${i === 0 ? HEADER_PREFIX : TEXT_INDENT}${line}`))
+    );
   }
 
   const body = trimBoundaryNewlines(entry.body);
   if (body.length > 0) {
-    for (const sourceLine of body.split("\n")) {
-      const styled = entry.markdown ? TONE_COLORS[entry.tone](applyMarkdownStyles(sourceLine)) : TONE_COLORS[entry.tone](sourceLine);
-      lines.push(...wrapAnsiStyledLine(`${TEXT_INDENT}${styled}`, outputWidth));
-    }
+    lines.push(...markdown.ansi(body, {
+      columns: outputWidth,
+    }).trim().split("\n").map(line => TONE_COLORS[entry.tone](`${TEXT_INDENT}${line}`)));
   }
 
   if (keepOpen) {
@@ -194,8 +200,7 @@ function decodeAsText(body: string, encoding: "text" | "base64"): string {
   }
 }
 
-export function formatArtifactBody(event: ArtifactEvent, verbose: boolean): { body: string; markdown: boolean } {
-  let markdown = true;
+export function formatArtifactBody(event: ArtifactEvent, verbose: boolean): string {
   const lines = [`${event.name} (${event.mimeType})`];
   if (verbose) {
     if (event.encoding === "href") {
@@ -213,30 +218,31 @@ export function formatArtifactBody(event: ArtifactEvent, verbose: boolean): { bo
         case "text/x-diff":
         case "text/html":
           lines.push(decodeAsText(event.body, event.encoding));
-          markdown = false;
           break;
         case "image/png":
         case "image/jpeg":
           lines.push("Artifact is an image and cannot be displayed in the CLI");
-          markdown = false;
           break;
         default: {
           const _unknownMimeType: never = event.mimeType;
           lines.push(`Unknown MIME type '${_unknownMimeType as string}' encountered. Artifact cannot be displayed.`);
-          markdown = false;
           break;
         }
       }
     }
   }
-  return { markdown, body: lines.join("\n") };
+  return lines.join("\n");
 }
 
 export function renderBufferedStream(rawBuffer: string, tone: TranscriptTone, columns: number): string {
   const outputWidth = getOutputWrapWidth(columns);
-  return splitLines(rawBuffer)
+  return markdown.ansi(rawBuffer, {
+    columns: outputWidth
+  }).trim().split("\n").map(line => TONE_COLORS[tone](`${TEXT_INDENT}${line}`)).join("\n");
+
+  /*return splitLines(rawBuffer)
     .flatMap(line => wrapAnsiStyledLine(TONE_COLORS[tone](applyMarkdownStyles(line)), outputWidth))
-    .join("\n");
+    .join("\n");*/
 }
 
 export function getRawStreamText(message: string): string {

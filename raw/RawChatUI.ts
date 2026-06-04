@@ -1,5 +1,3 @@
-import process from "node:process";
-import readline from "node:readline";
 import type Agent from "@tokenring-ai/agent/Agent";
 import type { AgentEventEnvelope, ParsedInteractionRequest } from "@tokenring-ai/agent/AgentEvents";
 import { AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
@@ -12,6 +10,8 @@ import { truncateVisible } from "@tokenring-ai/utility/string/truncateVisible";
 import { visibleLength } from "@tokenring-ai/utility/string/visibleLength";
 import type { MaybePromise } from "bun";
 import chalk from "chalk";
+import process from "node:process";
+import readline from "node:readline";
 import type { z } from "zod";
 import type { CLIConfigSchema } from "../schema.ts";
 import { theme } from "../theme.ts";
@@ -39,7 +39,7 @@ import {
 } from "./ChatRenderUtils.ts";
 import { type CommandDefinition, getCommandCompletionContext } from "./CommandCompletions.ts";
 import { compareFilePathsForBrowsing, type FileSearchToken, findActiveFileSearchToken, getFileSearchMatches, replaceFileSearchToken } from "./FileSearch.ts";
-import { createInlineQuestionSession, type Keypress as InlineKeypress, type InlineQuestionSession, type RenderBlock } from "./InlineQuestions.ts";
+import { createInlineQuestionSession, type InlineQuestionSession, type Keypress as InlineKeypress, type RenderBlock } from "./InlineQuestions.ts";
 import InputEditor from "./InputEditor.ts";
 import {
   countScreenRows,
@@ -91,23 +91,23 @@ type FooterSnapshot = {
 
 type TranscriptDelta =
   | {
-      kind: "none";
-    }
+  kind: "none";
+}
   | {
-      kind: "append";
-      text: string;
-      footerNeedsLeadingNewline: boolean;
-    }
+  kind: "append";
+  text: string;
+  footerNeedsLeadingNewline: boolean;
+}
   | {
-      kind: "rewriteStreamTail";
-      footerNeedsLeadingNewline: boolean;
-      blockTopOffsetFromFooterTop: number;
-      previousLines: string[];
-    };
+  kind: "rewriteStreamTail";
+  footerNeedsLeadingNewline: boolean;
+  blockTopOffsetFromFooterTop: number;
+  previousLines: string[];
+};
 
 type TranscriptEventAction =
   | { action: "clearOnly" }
-  | { action: "addEntry"; kind: TranscriptEntryKind; title: string; body: string; tone: TranscriptTone; markdown: boolean }
+  | { action: "addEntry"; kind: TranscriptEntryKind; title: string; body: string; tone: TranscriptTone; markdown?: never }
   | { action: "stream"; type: "output.chat" | "output.reasoning"; title: string; message: string; tone: TranscriptTone };
 
 type ActiveVisibleStream = {
@@ -1113,25 +1113,24 @@ export default class RawChatUI {
           title: "System",
           body: this.verbose ? event.message : (event.message.split("\n")[0] ?? ""),
           tone: "info",
-          markdown: false,
         };
       case "output.chat":
         return { action: "stream", type: "output.chat", title: "Assistant", message: event.message, tone: "chat" };
       case "output.reasoning":
         return { action: "stream", type: "output.reasoning", title: "Reasoning", message: event.message, tone: "reasoning" };
       case "output.info":
-        return { action: "addEntry", kind: "info", title: "Info", body: event.message, tone: "info", markdown: false };
+        return { action: "addEntry", kind: "info", title: "Info", body: event.message, tone: "info" };
       case "output.warning":
-        return { action: "addEntry", kind: "warning", title: "Warning", body: event.message, tone: "warning", markdown: false };
+        return { action: "addEntry", kind: "warning", title: "Warning", body: event.message, tone: "warning" };
       case "output.error":
-        return { action: "addEntry", kind: "error", title: "Error", body: event.message, tone: "error", markdown: false };
+        return { action: "addEntry", kind: "error", title: "Error", body: event.message, tone: "error" };
       case "output.artifact":
         return {
           action: "addEntry",
           kind: "artifact",
           title: `Artifact: ${event.name}`,
           tone: "info",
-          ...formatArtifactBody(event, this.verbose),
+          body: formatArtifactBody(event, this.verbose),
         };
       case "toolCall":
         return {
@@ -1140,7 +1139,6 @@ export default class RawChatUI {
           title: event.summary,
           body: formatToolCallBody(event, this.verbose),
           tone: "info",
-          markdown: true,
         };
       case "agent.response":
         return {
@@ -1149,10 +1147,9 @@ export default class RawChatUI {
           title: event.status === "success" ? "Response" : "Error",
           body: event.message,
           tone: event.status === "success" ? "success" : "error",
-          markdown: event.status === "success",
         };
       case "input.received":
-        return { action: "addEntry", kind: "input", title: "You", body: event.input.message, tone: "input", markdown: false };
+        return { action: "addEntry", kind: "input", title: "You", body: event.input.message, tone: "input" };
       case "agent.stopped":
       case "agent.status":
       case "input.execution":
@@ -1180,7 +1177,6 @@ export default class RawChatUI {
           title: classified.title,
           body: classified.body,
           tone: classified.tone,
-          markdown: classified.markdown,
         });
         break;
       case "stream":
@@ -1203,7 +1199,7 @@ export default class RawChatUI {
           this.closeVisibleStream();
           return { kind: "none" };
         }
-        return this.buildCompleteEntryDelta(classified.title, classified.body, classified.tone, classified.markdown, columns, classified.kind);
+        return this.buildCompleteEntryDelta(classified.title, classified.body, classified.tone, columns, classified.kind);
       }
       case "stream": {
         if (!this.verbose && classified.type === "output.reasoning") {
@@ -1219,7 +1215,7 @@ export default class RawChatUI {
     title: string,
     body: string,
     tone: TranscriptTone,
-    markdown: boolean,
+    //markdown: boolean,
     columns: number,
     kind: TranscriptEntryKind = "info",
   ): TranscriptDelta {
@@ -1235,7 +1231,7 @@ export default class RawChatUI {
           title,
           body,
           tone,
-          markdown,
+          //markdown,
         },
         columns,
       )}`,
@@ -1335,7 +1331,6 @@ export default class RawChatUI {
       title,
       body: message,
       tone,
-      markdown: true,
     });
     this.activeTranscriptStream = { type, entry };
   }
