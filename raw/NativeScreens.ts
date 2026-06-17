@@ -1,6 +1,3 @@
-import process from "node:process";
-import readline from "node:readline";
-import { setInterval as setIntervalPromise } from "node:timers/promises";
 import type Agent from "@tokenring-ai/agent/Agent";
 import AgentManager from "@tokenring-ai/agent/services/AgentManager";
 import { AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
@@ -15,6 +12,9 @@ import { WebHostService } from "@tokenring-ai/web-host";
 import SPAResource from "@tokenring-ai/web-host/SPAResource";
 import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
 import chalk from "chalk";
+import process from "node:process";
+import readline from "node:readline";
+import { setInterval as setIntervalPromise } from "node:timers/promises";
 import type { z } from "zod";
 import { type AgentSelectionResult, parseAgentSelectionValue } from "../AgentSelection.ts";
 import type { CLIConfigSchema } from "../schema.ts";

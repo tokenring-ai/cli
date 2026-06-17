@@ -1,11 +1,12 @@
-import process from "node:process";
-import { setTimeout as delay } from "node:timers/promises";
 import { AgentCommandService, AgentManager } from "@tokenring-ai/agent";
 import type Agent from "@tokenring-ai/agent/Agent";
 import type TokenRingApp from "@tokenring-ai/app";
 import type { TokenRingService } from "@tokenring-ai/app/types";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
+import { WebHostService } from "@tokenring-ai/web-host";
 import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
+import process from "node:process";
+import { setTimeout as delay } from "node:timers/promises";
 import open from "open";
 import type { z } from "zod";
 import AgentLoop from "./AgentLoop";
@@ -13,7 +14,6 @@ import type { AgentSelectionResult } from "./AgentSelection.ts";
 import type { CommandDefinition } from "./raw/CommandCompletions.ts";
 import { retryAgentSelection, runLoadingScreen } from "./raw/NativeScreens.ts";
 import type { CLIConfigSchema } from "./schema.ts";
-import { WebHostService } from "@tokenring-ai/web-host";
 
 /**
  * AgentCLI is a command-line interface for interacting with an TokenRingApp.
