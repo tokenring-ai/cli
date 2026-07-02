@@ -6,7 +6,7 @@
     "@tokenring-ai/app": "workspace:*",
     "@tokenring-ai/ai-client": "workspace:*",
     "@tokenring-ai/chat": "workspace:*",
-    "zod": "^4.3.6",
+    "zod": "^4.4.3",
     "@tokenring-ai/agent": "workspace:*",
     "@tokenring-ai/utility": "workspace:*",
     "@tokenring-ai/web-host": "workspace:*",
