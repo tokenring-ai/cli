@@ -155,6 +155,7 @@ export default class InputEditor {
 
     const preferredColumn = this.preferredColumn ?? column;
     const targetLine = lines[lineIndex - 1];
+    if (!targetLine) return;
     this.cursor = clamp(targetLine.start + preferredColumn, targetLine.start, targetLine.end);
     this.preferredColumn = preferredColumn;
   }
@@ -166,6 +167,7 @@ export default class InputEditor {
 
     const preferredColumn = this.preferredColumn ?? column;
     const targetLine = lines[lineIndex + 1];
+    if (!targetLine) return;
     this.cursor = clamp(targetLine.start + preferredColumn, targetLine.start, targetLine.end);
     this.preferredColumn = preferredColumn;
   }
@@ -178,16 +180,17 @@ export default class InputEditor {
   } {
     const lines = this.getLineRanges();
     let lineIndex = lines.length - 1;
+    let line: LineRange = lines[lineIndex]!;
 
     for (let index = 0; index < lines.length; index += 1) {
-      const line = lines[index];
-      if (this.cursor <= line.end || index === lines.length - 1) {
+      const candidate = lines[index]!;
+      if (this.cursor <= candidate.end || index === lines.length - 1) {
         lineIndex = index;
+        line = candidate;
         break;
       }
     }
 
-    const line = lines[lineIndex];
     return {
       lineIndex,
       column: this.cursor - line.start,

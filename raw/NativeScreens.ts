@@ -249,7 +249,7 @@ function buildSelectionEntries(app: TokenRingApp): SelectionEntry[] {
       previewLines: ["Stop the web server and disconnect all connected clients."],
     });
 
-    const webHostURL = webHostService.getURL().toString()
+    const webHostURL = webHostService.getURL().toString();
     for (const [resourceName, resource] of webHostService.getResourceEntries()) {
       if (resource instanceof SPAResource) {
         webAppEntries.push({
@@ -277,7 +277,6 @@ function buildSelectionEntries(app: TokenRingApp): SelectionEntry[] {
     "Web Application",
     webAppEntries.sort((left, right) => left.label.localeCompare(right.label)),
   );
-
 
   const currentAgents = agentManager.getAgents();
   if (currentAgents.length > 0) {
@@ -396,7 +395,7 @@ function renderSelectionScreen(config: CLIConfig, entries: SelectionEntry[], sel
     const rows = Math.max(visibleLeft.length, detailLines.length);
     const body: string[] = [];
     for (let index = 0; index < rows; index += 1) {
-      const leftEntry = visibleLeft[index];
+      const leftEntry = visibleLeft[index]!;
       const leftText = padRight(leftEntry?.text ?? "", listWidth);
       const right = detailLines[index] ?? "";
       const left = applyTone({ text: leftText, tone: leftEntry?.tone });
@@ -444,7 +443,7 @@ export async function runLoadingScreen(app: TokenRingApp, config: CLIConfig, sig
       render();
     }
   } catch (error: unknown) {
-    if (!(Error.isError(error)) || error.name !== "AbortError") {
+    if (!Error.isError(error) || error.name !== "AbortError") {
       throw error;
     }
   } finally {

@@ -146,15 +146,21 @@ export function renderEntryText(entry: TranscriptEntry, columns: number, keepOpe
       ...markdown
         .ansi(entry.title, { columns: outputWidth })
         .split("\n")
-        .map((line, i) => TITLE_COLOR(`${i === 0 ? HEADER_PREFIX : TEXT_INDENT}${line}`))
+        .map((line, i) => TITLE_COLOR(`${i === 0 ? HEADER_PREFIX : TEXT_INDENT}${line}`)),
     );
   }
 
   const body = trimBoundaryNewlines(entry.body);
   if (body.length > 0) {
-    lines.push(...markdown.ansi(body, {
-      columns: outputWidth,
-    }).trim().split("\n").map(line => TONE_COLORS[entry.tone](`${TEXT_INDENT}${line}`)));
+    lines.push(
+      ...markdown
+        .ansi(body, {
+          columns: outputWidth,
+        })
+        .trim()
+        .split("\n")
+        .map(line => TONE_COLORS[entry.tone](`${TEXT_INDENT}${line}`)),
+    );
   }
 
   if (keepOpen) {
@@ -193,9 +199,8 @@ function decodeAsText(body: string, encoding: "text" | "base64"): string {
     case "base64":
       return Buffer.from(body, "base64").toString("utf-8");
     default: {
-      // noinspection JSUnusedLocalSymbols
-      const _foo: never = encoding;
-      throw new Error(`Unsupported encoding: ${encoding as string}`);
+      const exhaustive: any = encoding satisfies never;
+      throw new Error(`Unsupported encoding: ${exhaustive}`);
     }
   }
 }
@@ -224,8 +229,8 @@ export function formatArtifactBody(event: ArtifactEvent, verbose: boolean): stri
           lines.push("Artifact is an image and cannot be displayed in the CLI");
           break;
         default: {
-          const _unknownMimeType: never = event.mimeType;
-          lines.push(`Unknown MIME type '${_unknownMimeType as string}' encountered. Artifact cannot be displayed.`);
+          const exhaustive: any = event.mimeType satisfies never;
+          lines.push(`Unknown MIME type '${exhaustive}' encountered. Artifact cannot be displayed.`);
           break;
         }
       }
@@ -236,9 +241,14 @@ export function formatArtifactBody(event: ArtifactEvent, verbose: boolean): stri
 
 export function renderBufferedStream(rawBuffer: string, tone: TranscriptTone, columns: number): string {
   const outputWidth = getOutputWrapWidth(columns);
-  return markdown.ansi(rawBuffer, {
-    columns: outputWidth
-  }).trim().split("\n").map(line => TONE_COLORS[tone](`${TEXT_INDENT}${line}`)).join("\n");
+  return markdown
+    .ansi(rawBuffer, {
+      columns: outputWidth,
+    })
+    .trim()
+    .split("\n")
+    .map(line => TONE_COLORS[tone](`${TEXT_INDENT}${line}`))
+    .join("\n");
 
   /*return splitLines(rawBuffer)
     .flatMap(line => wrapAnsiStyledLine(TONE_COLORS[tone](applyMarkdownStyles(line)), outputWidth))

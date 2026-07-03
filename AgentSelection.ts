@@ -12,15 +12,15 @@ export function parseAgentSelectionValue(value: string): AgentSelectionResult | 
   const [, action, remainder] = match;
   switch (action) {
     case "webhost":
-      return { type: "webhost", action: remainder };
+      return { type: "webhost", action: remainder! };
     case "spawn":
-      return { type: "spawn", agentType: remainder };
+      return { type: "spawn", agentType: remainder! };
     case "connect":
-      return { type: "connect", agentId: remainder };
+      return { type: "connect", agentId: remainder! };
     case "open":
-      return { type: "open", url: remainder };
+      return { type: "open", url: remainder! };
     case "workflow":
-      return { type: "workflow", workflowKey: remainder };
+      return { type: "workflow", workflowKey: remainder! };
     default:
       return null;
   }

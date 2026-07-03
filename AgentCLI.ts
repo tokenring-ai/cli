@@ -172,7 +172,7 @@ export default class AgentCLI implements TokenRingService {
           const webHostService = this.app.requireService(WebHostService);
           switch (selection.action) {
             case "start":
-              if (! webHostService.listening) {
+              if (!webHostService.listening) {
                 await webHostService.listen();
               }
               return "retry";

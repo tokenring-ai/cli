@@ -117,10 +117,14 @@ function renderEditor(
   for (let index = 0; index < source.length; index += 1) {
     if (index === cursor) {
       cursorRow = row;
-      cursorColumn = visibleLength(lines[row]);
+      cursorColumn = visibleLength(lines[row]!);
     }
 
     const char = source[index];
+    if (char === undefined) {
+      continue;
+    }
+
     if (char === "\n") {
       row += 1;
       lines.push("");
@@ -128,7 +132,7 @@ function renderEditor(
     }
 
     lines[row] += char;
-    if (visibleLength(lines[row]) >= width) {
+    if (visibleLength(lines[row]!) >= width) {
       row += 1;
       lines.push("");
     }
@@ -136,7 +140,7 @@ function renderEditor(
 
   if (cursor === source.length) {
     cursorRow = row;
-    cursorColumn = visibleLength(lines[row]);
+    cursorColumn = visibleLength(lines[row]!);
   }
 
   const visibleCount = clamp(lines.length, 1, Math.max(1, options.maxContentLines));
@@ -325,23 +329,23 @@ class TextQuestionSession implements InlineQuestionSession {
 
 type FlatTreeItem =
   | {
-      key: string;
-      depth: number;
-      node: TreeLeaf & { children: any };
-      isExpanded: boolean;
-      isParent: true;
-      descendantLeafCount: number;
-      selectedLeafCount: number;
-    }
+  key: string;
+  depth: number;
+  node: TreeLeaf & { children: any };
+  isExpanded: boolean;
+  isParent: true;
+  descendantLeafCount: number;
+  selectedLeafCount: number;
+}
   | {
-      key: string;
-      depth: number;
-      node: TreeLeaf & { value: string };
-      isParent: false;
-      isExpanded?: never;
-      descendantLeafCount?: never;
-      selectedLeafCount?: never;
-    };
+  key: string;
+  depth: number;
+  node: TreeLeaf & { value: string };
+  isParent: false;
+  isExpanded?: never;
+  descendantLeafCount?: never;
+  selectedLeafCount?: never;
+};
 
 function getNodeKey(node: TreeLeaf, ancestry: string[]): string {
   if ("value" in node) return node.value;
@@ -398,6 +402,9 @@ class TreeQuestionSession implements InlineQuestionSession {
 
     for (let index = 0; index < visibleTree.length; index += 1) {
       const item = visibleTree[index];
+      if (!item) {
+        continue;
+      }
       const actualIndex = this.scrollOffset + index;
       const isSelected = actualIndex === this.selectedIndex;
       const isChecked = "value" in item.node && this.checked.has(item.node.value);
@@ -673,6 +680,9 @@ class FileQuestionSession implements InlineQuestionSession {
 
       for (let index = 0; index < visibleTree.length; index += 1) {
         const item = visibleTree[index];
+        if (!item) {
+          continue;
+        }
         const actualIndex = this.scrollOffset + index;
         const isSelected = actualIndex === this.selectedIndex;
         const isChecked = this.checked.has(item.node.value);
@@ -978,8 +988,14 @@ class FormQuestionSession implements InlineQuestionSession {
 
   render(layout: RenderLayout): RenderBlock {
     const currentSection = this.question.sections[this.currentSectionIndex];
+    if (!currentSection) {
+      return { lines: [], showCursor: false };
+    }
     const fieldKeys = Object.keys(currentSection.fields);
     const currentFieldKey = fieldKeys[this.currentFieldIndex];
+    if (currentFieldKey === undefined) {
+      return { lines: [], showCursor: false };
+    }
     const child = this.currentSession.render(layout);
 
     const lines = [
@@ -1015,9 +1031,18 @@ class FormQuestionSession implements InlineQuestionSession {
 
   private createCurrentSession(): InlineQuestionSession {
     const currentSection = this.question.sections[this.currentSectionIndex];
+    if (!currentSection) {
+      throw new Error(`Invalid section index ${this.currentSectionIndex}`);
+    }
     const fieldKeys = Object.keys(currentSection.fields);
     const fieldKey = fieldKeys[this.currentFieldIndex];
+    if (fieldKey === undefined) {
+      throw new Error(`Invalid field index ${this.currentFieldIndex}`);
+    }
     const field = currentSection.fields[fieldKey];
+    if (!field) {
+      throw new Error(`Field key "${fieldKey}" is missing on section`);
+    }
 
     return createPrimitiveSession(
       field,
@@ -1028,7 +1053,10 @@ class FormQuestionSession implements InlineQuestionSession {
         onSubmit: result => {
           const sectionName = currentSection.name;
           this.responses[sectionName] ??= {};
-          this.responses[sectionName][fieldKey] = result;
+          const sectionResponse = this.responses[sectionName];
+          if (sectionResponse) {
+            sectionResponse[fieldKey] = result;
+          }
           this.advance();
         },
       },
@@ -1038,6 +1066,9 @@ class FormQuestionSession implements InlineQuestionSession {
 
   private advance(): void {
     const currentSection = this.question.sections[this.currentSectionIndex];
+    if (!currentSection) {
+      return;
+    }
     const fieldKeys = Object.keys(currentSection.fields);
 
     if (this.currentFieldIndex < fieldKeys.length - 1) {
@@ -1067,6 +1098,10 @@ function createPrimitiveSession(question: PrimitiveQuestion, callbacks: InlineQu
       return new TreeQuestionSession(question, callbacks);
     case "fileSelect":
       return new FileQuestionSession(question, callbacks);
+    default: {
+      const exhaustiveCheck: any = question satisfies never;
+      throw new Error(`Unhandled primitive question type: ${exhaustiveCheck}`);
+    }
   }
 }
 

@@ -123,7 +123,7 @@ export function scoreFileSearchMatch(filePath: string, query: string): number {
       consecutiveMatches = 0;
     }
 
-    const previousChar = nextMatchIndex === 0 ? "/" : normalizedPath[nextMatchIndex - 1];
+    const previousChar = nextMatchIndex === 0 ? "/" : normalizedPath[nextMatchIndex - 1]!;
     if (PATH_SEPARATORS.has(previousChar)) {
       score += SCORE_PATH_SEPARATOR_BONUS;
     }

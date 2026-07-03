@@ -126,7 +126,7 @@ export function getTokenUsage(agent: Agent): number | null {
   const messages = chatService.getChatMessages(agent);
   if (messages.length === 0) return 0;
 
-  const usage = messages[messages.length - 1].response.totalUsage;
+  const usage = messages[messages.length - 1]!.response.totalUsage;
   return (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
 }
 

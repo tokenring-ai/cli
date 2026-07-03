@@ -91,19 +91,19 @@ type FooterSnapshot = {
 
 type TranscriptDelta =
   | {
-  kind: "none";
-}
+      kind: "none";
+    }
   | {
-  kind: "append";
-  text: string;
-  footerNeedsLeadingNewline: boolean;
-}
+      kind: "append";
+      text: string;
+      footerNeedsLeadingNewline: boolean;
+    }
   | {
-  kind: "rewriteStreamTail";
-  footerNeedsLeadingNewline: boolean;
-  blockTopOffsetFromFooterTop: number;
-  previousLines: string[];
-};
+      kind: "rewriteStreamTail";
+      footerNeedsLeadingNewline: boolean;
+      blockTopOffsetFromFooterTop: number;
+      previousLines: string[];
+    };
 
 type TranscriptEventAction =
   | { action: "clearOnly" }
@@ -152,18 +152,18 @@ function renderEditor(
   for (let index = 0; index < text.length; index += 1) {
     if (index === cursor) {
       cursorRow = row;
-      cursorColumn = visibleLength(lines[row]);
+      cursorColumn = visibleLength(lines[row]!);
     }
 
-    const char = text[index];
+    const char = text[index]!;
     if (char === "\n") {
       row += 1;
       lines.push("");
       continue;
     }
 
-    lines[row] += char;
-    if (visibleLength(lines[row]) >= width) {
+    lines[row]! += char;
+    if (visibleLength(lines[row]!) >= width) {
       row += 1;
       lines.push("");
     }
@@ -171,7 +171,7 @@ function renderEditor(
 
   if (cursor === text.length) {
     cursorRow = row;
-    cursorColumn = visibleLength(lines[row]);
+    cursorColumn = visibleLength(lines[row]!);
   }
 
   const visibleCount = clamp(lines.length, 1, Math.max(1, maxContentLines));
@@ -886,7 +886,7 @@ export default class RawChatUI {
       this.historyIndex += 1;
     }
 
-    this.chatEditor.setText(history[this.historyIndex]);
+    this.chatEditor.setText(history[this.historyIndex]!);
     this.afterChatEdit();
   }
 
@@ -1157,9 +1157,8 @@ export default class RawChatUI {
       case "input.interaction":
         return { action: "clearOnly" };
       default: {
-        // noinspection UnnecessaryLocalVariableJS
-        const unknownEventType: never = event;
-        throw new Error(`Unhandled event type: ${unknownEventType as string}`);
+        const exhaustive: any = event satisfies never;
+        throw new Error(`Unhandled event type: ${exhaustive.type}`);
       }
     }
   }
@@ -1812,7 +1811,7 @@ export default class RawChatUI {
         tone = "info";
       }
     } else if (this.completionState && this.completionState.matches.length > 0) {
-      const selected = this.completionState.matches[this.completionState.selectedIndex];
+      const selected = this.completionState.matches[this.completionState.selectedIndex]!;
       text = `/ commands · Up/Down move  Enter insert  Esc close · ${selected.description}`;
       tone = "info";
     } else if (activeQuestion) {
@@ -1962,7 +1961,7 @@ export default class RawChatUI {
 
   private getFocusedQuestion(): QuestionInteraction | null {
     const required = this.getRequiredQuestions();
-    if (required.length > 0) {
+    if (required?.[0]) {
       this.activeOptionalQuestionId = null;
       this.optionalPickerOpen = false;
       return required[0];
