@@ -1,3 +1,4 @@
+import process from "node:process";
 import type Agent from "@tokenring-ai/agent/Agent";
 import { ChatModelRegistry } from "@tokenring-ai/ai-client/ModelRegistry";
 import { parseModelAndSettings } from "@tokenring-ai/ai-client/util/modelSettings";
@@ -5,7 +6,6 @@ import { ChatService } from "@tokenring-ai/chat";
 import { clamp } from "@tokenring-ai/utility/number/clamp";
 import { visibleLength } from "@tokenring-ai/utility/string/visibleLength";
 import { wrapPlainText } from "@tokenring-ai/utility/string/wrapPlainText";
-import process from "node:process";
 
 export function trimBoundaryNewlines(text: string): string {
   return text.replace(/^\n+|\n+$/g, "");
@@ -142,7 +142,7 @@ export function getChatCost(agent: Agent): number | null {
 
 export function getTerminalSize(): { columns: number; rows: number } {
   return {
-    columns: process.stdout.columns ?? 80,
-    rows: process.stdout.rows ?? 24,
+    columns: process.stdout.columns,
+    rows: process.stdout.rows,
   };
 }

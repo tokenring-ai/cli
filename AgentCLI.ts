@@ -1,3 +1,5 @@
+import process from "node:process";
+import { setTimeout as delay } from "node:timers/promises";
 import { AgentCommandService, AgentManager } from "@tokenring-ai/agent";
 import type Agent from "@tokenring-ai/agent/Agent";
 import type TokenRingApp from "@tokenring-ai/app";
@@ -5,8 +7,6 @@ import type { TokenRingService } from "@tokenring-ai/app/types";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
 import { WebHostService } from "@tokenring-ai/web-host";
 import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
-import process from "node:process";
-import { setTimeout as delay } from "node:timers/promises";
 import open from "open";
 import type { z } from "zod";
 import AgentLoop from "./AgentLoop";
@@ -77,7 +77,7 @@ export default class AgentCLI implements TokenRingService {
             from: "CLI startup prompt",
             message: this.config.startAgent.prompt,
           });
-          if (this.config.startAgent?.shutdownWhenDone) {
+          if (this.config.startAgent.shutdownWhenDone) {
             initialAgent.handleInput({
               from: "CLI startup prompt",
               message: "/agent shutdown",
@@ -90,7 +90,6 @@ export default class AgentCLI implements TokenRingService {
     }
 
     for (let agent = initialAgent ?? (await this.promptForAgent(signal)); agent; agent = await this.promptForAgent(signal)) {
-      initialAgent = undefined;
       try {
         const agentLoop = new AgentLoop(agent, {
           availableCommands: this.getAvailableCommands(),

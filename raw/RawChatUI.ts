@@ -1,3 +1,5 @@
+import process from "node:process";
+import readline from "node:readline";
 import type Agent from "@tokenring-ai/agent/Agent";
 import type { AgentEventEnvelope, ParsedInteractionRequest } from "@tokenring-ai/agent/AgentEvents";
 import { AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
@@ -10,8 +12,6 @@ import { truncateVisible } from "@tokenring-ai/utility/string/truncateVisible";
 import { visibleLength } from "@tokenring-ai/utility/string/visibleLength";
 import type { MaybePromise } from "bun";
 import chalk from "chalk";
-import process from "node:process";
-import readline from "node:readline";
 import type { z } from "zod";
 import type { CLIConfigSchema } from "../schema.ts";
 import { theme } from "../theme.ts";
@@ -39,7 +39,7 @@ import {
 } from "./ChatRenderUtils.ts";
 import { type CommandDefinition, getCommandCompletionContext } from "./CommandCompletions.ts";
 import { compareFilePathsForBrowsing, type FileSearchToken, findActiveFileSearchToken, getFileSearchMatches, replaceFileSearchToken } from "./FileSearch.ts";
-import { createInlineQuestionSession, type InlineQuestionSession, type Keypress as InlineKeypress, type RenderBlock } from "./InlineQuestions.ts";
+import { createInlineQuestionSession, type Keypress as InlineKeypress, type InlineQuestionSession, type RenderBlock } from "./InlineQuestions.ts";
 import InputEditor from "./InputEditor.ts";
 import {
   countScreenRows,
@@ -448,7 +448,7 @@ export default class RawChatUI {
     this.resizeTimer = globalThis.setTimeout(() => {
       this.requestFullReplay();
     }, 16);
-    this.resizeTimer?.unref();
+    this.resizeTimer.unref();
   }
 
   private handleKeypress(input: string, key: readline.Key): void {
@@ -1961,7 +1961,7 @@ export default class RawChatUI {
 
   private getFocusedQuestion(): QuestionInteraction | null {
     const required = this.getRequiredQuestions();
-    if (required?.[0]) {
+    if (required[0]) {
       this.activeOptionalQuestionId = null;
       this.optionalPickerOpen = false;
       return required[0];

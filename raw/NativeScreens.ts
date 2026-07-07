@@ -1,3 +1,6 @@
+import process from "node:process";
+import readline from "node:readline";
+import { setInterval as setIntervalPromise } from "node:timers/promises";
 import type Agent from "@tokenring-ai/agent/Agent";
 import AgentManager from "@tokenring-ai/agent/services/AgentManager";
 import { AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
@@ -12,9 +15,6 @@ import { WebHostService } from "@tokenring-ai/web-host";
 import SPAResource from "@tokenring-ai/web-host/SPAResource";
 import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
 import chalk from "chalk";
-import process from "node:process";
-import readline from "node:readline";
-import { setInterval as setIntervalPromise } from "node:timers/promises";
 import type { z } from "zod";
 import { type AgentSelectionResult, parseAgentSelectionValue } from "../AgentSelection.ts";
 import type { CLIConfigSchema } from "../schema.ts";
@@ -64,8 +64,8 @@ function showCursor(): void {
 
 function getTerminalSize(): { width: number; height: number } {
   return {
-    width: process.stdout.columns ?? 80,
-    height: process.stdout.rows ?? 24,
+    width: process.stdout.columns,
+    height: process.stdout.rows,
   };
 }
 
@@ -396,9 +396,9 @@ function renderSelectionScreen(config: CLIConfig, entries: SelectionEntry[], sel
     const body: string[] = [];
     for (let index = 0; index < rows; index += 1) {
       const leftEntry = visibleLeft[index]!;
-      const leftText = padRight(leftEntry?.text ?? "", listWidth);
+      const leftText = padRight(leftEntry.text, listWidth);
       const right = detailLines[index] ?? "";
-      const left = applyTone({ text: leftText, tone: leftEntry?.tone });
+      const left = applyTone({ text: leftText, tone: leftEntry.tone });
       body.push(`${left}   ${right}`);
     }
     return clipLines([headerLine, instructionLine, "", ...body], height);

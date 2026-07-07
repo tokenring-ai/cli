@@ -329,23 +329,23 @@ class TextQuestionSession implements InlineQuestionSession {
 
 type FlatTreeItem =
   | {
-  key: string;
-  depth: number;
-  node: TreeLeaf & { children: any };
-  isExpanded: boolean;
-  isParent: true;
-  descendantLeafCount: number;
-  selectedLeafCount: number;
-}
+      key: string;
+      depth: number;
+      node: TreeLeaf & { children: any };
+      isExpanded: boolean;
+      isParent: true;
+      descendantLeafCount: number;
+      selectedLeafCount: number;
+    }
   | {
-  key: string;
-  depth: number;
-  node: TreeLeaf & { value: string };
-  isParent: false;
-  isExpanded?: never;
-  descendantLeafCount?: never;
-  selectedLeafCount?: never;
-};
+      key: string;
+      depth: number;
+      node: TreeLeaf & { value: string };
+      isParent: false;
+      isExpanded?: never;
+      descendantLeafCount?: never;
+      selectedLeafCount?: never;
+    };
 
 function getNodeKey(node: TreeLeaf, ancestry: string[]): string {
   if ("value" in node) return node.value;
@@ -533,7 +533,7 @@ class TreeQuestionSession implements InlineQuestionSession {
         return true;
       }
 
-      this.callbacks.onSubmit([current.node.value ?? current.node.name]);
+      this.callbacks.onSubmit([current.node.value]);
       return true;
     }
 
@@ -1052,11 +1052,7 @@ class FormQuestionSession implements InlineQuestionSession {
         listFileSelectEntries: this.callbacks.listFileSelectEntries,
         onSubmit: result => {
           const sectionName = currentSection.name;
-          this.responses[sectionName] ??= {};
-          const sectionResponse = this.responses[sectionName];
-          if (sectionResponse) {
-            sectionResponse[fieldKey] = result;
-          }
+          (this.responses[sectionName] ??= {})[fieldKey] = result;
           this.advance();
         },
       },

@@ -1,9 +1,9 @@
+import process from "node:process";
 import type Agent from "@tokenring-ai/agent/Agent";
 import type { AgentEventEnvelope } from "@tokenring-ai/agent/AgentEvents";
 import AgentManager from "@tokenring-ai/agent/services/AgentManager";
 import { type AgentEventCursor, AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
-import process from "node:process";
 import type { z } from "zod";
 import type { CommandDefinition } from "./raw/CommandCompletions.ts";
 import RawChatUI from "./raw/RawChatUI.ts";
@@ -94,7 +94,7 @@ export default class AgentLoop {
         process.stderr.write(formatLogMessages(["Error while running agent loop", error as Error]));
       }
     } finally {
-      this.ui?.stop();
+      this.ui.stop();
       this.ui = null;
       this.abort.abort();
       this.abort = null;
