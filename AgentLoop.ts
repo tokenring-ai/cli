@@ -38,7 +38,6 @@ export default class AgentLoop {
   private abort: AbortController | null = null;
   private eventCursor: AgentEventCursor = { position: 0 };
   private ui: RawChatUI | null = null;
-  private exitAction: "select-agent" | "delete-agent" | null = null;
 
   constructor(
     readonly agent: Agent,
@@ -47,7 +46,6 @@ export default class AgentLoop {
 
   async run(externalSignal: AbortSignal): Promise<void> {
     this.abort = new AbortController();
-    this.exitAction = null;
     const signal = this.abort.signal;
 
     const onExternalAbort = () => this.abort?.abort();
@@ -67,12 +65,11 @@ export default class AgentLoop {
         });
       },
       onOpenAgentSelection: () => {
-        this.exitAction = "select-agent";
         this.shutdown();
       },
       onDeleteIdleAgent: () => {
-        this.exitAction = "delete-agent";
         this.shutdown();
+        this.deleteCurrentAgent();
       },
       onAbortCurrentActivity: () => this.agent.abortCurrentOperation("Cancelled from CLI"),
     });
@@ -100,11 +97,6 @@ export default class AgentLoop {
       this.abort = null;
       externalSignal.removeEventListener("abort", onExternalAbort);
     }
-
-    if (this.exitAction === "delete-agent") {
-      this.deleteCurrentAgent();
-    }
-    this.exitAction = null;
   }
 
   private shutdown(): void {
