@@ -23,7 +23,6 @@
     ".": "./index.ts",
     "./*": "./*.ts"
   },
-  "types": "./dist-types/index.d.ts",
   "license": "MIT",
   "scripts": {
     "build": "tsc --noEmit",
