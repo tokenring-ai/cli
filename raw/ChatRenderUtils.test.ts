@@ -132,7 +132,6 @@ describe("ChatRenderUtils", () => {
         title: "Assistant",
         body: "**bold**",
         tone: "chat",
-        markdown: true,
       },
       80,
     );

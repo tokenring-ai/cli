@@ -33,7 +33,7 @@ describe("InlineQuestions fileSelect", () => {
       onCancel,
       onRender,
       listFileSelectEntries,
-    });
+    }, "Select Files");
 
     expect(onRender).not.toHaveBeenCalled();
     expect(listFileSelectEntries).not.toHaveBeenCalled();
@@ -82,7 +82,7 @@ describe("InlineQuestions fileSelect", () => {
       onCancel,
       onRender,
       listFileSelectEntries,
-    });
+    }, "Select Files");
 
     await settle();
     await session.handleKeypress("", { name: "q" });
