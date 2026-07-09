@@ -192,53 +192,6 @@ export function formatToolCallBody(event: ToolCallEvent, includeResult = false):
   return lines.join("\n");
 }
 
-function decodeAsText(body: string, encoding: "text" | "base64"): string {
-  switch (encoding) {
-    case "text":
-      return body;
-    case "base64":
-      return Buffer.from(body, "base64").toString("utf-8");
-    default: {
-      const exhaustive: any = encoding satisfies never;
-      throw new Error(`Unsupported encoding: ${exhaustive}`);
-    }
-  }
-}
-
-export function formatArtifactBody(event: ArtifactEvent, verbose: boolean): string {
-  const lines = [`${event.name} (${event.mimeType})`];
-  if (verbose) {
-    if (event.encoding === "href") {
-      lines.push(`Artifact can be viewed at: [${event.body}](${event.body})`);
-    } else {
-      switch (event.mimeType) {
-        case "application/json":
-          lines.push(`\`\`\`json\n${decodeAsText(event.body, event.encoding)}\n\`\`\``);
-          break;
-        case "text/markdown":
-          lines.push(decodeAsText(event.body, event.encoding));
-          break;
-        case "text/plain":
-        case "message/rfc822":
-        case "text/x-diff":
-        case "text/html":
-          lines.push(decodeAsText(event.body, event.encoding));
-          break;
-        case "image/png":
-        case "image/jpeg":
-          lines.push("Artifact is an image and cannot be displayed in the CLI");
-          break;
-        default: {
-          const exhaustive: any = event.mimeType satisfies never;
-          lines.push(`Unknown MIME type '${exhaustive}' encountered. Artifact cannot be displayed.`);
-          break;
-        }
-      }
-    }
-  }
-  return lines.join("\n");
-}
-
 export function renderBufferedStream(rawBuffer: string, tone: TranscriptTone, columns: number): string {
   const outputWidth = getOutputWrapWidth(columns);
   return markdown

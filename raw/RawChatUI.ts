@@ -17,7 +17,6 @@ import type { CLIConfigSchema } from "../schema.ts";
 import { theme } from "../theme.ts";
 import {
   combineBlocks,
-  formatArtifactBody,
   formatToolCallBody,
   getCommandCompletionSignature,
   getFileSearchTokenSignature,
@@ -1124,14 +1123,6 @@ export default class RawChatUI {
         return { action: "addEntry", kind: "warning", title: "Warning", body: event.message, tone: "warning" };
       case "output.error":
         return { action: "addEntry", kind: "error", title: "Error", body: event.message, tone: "error" };
-      case "output.artifact":
-        return {
-          action: "addEntry",
-          kind: "artifact",
-          title: `Artifact: ${event.name}`,
-          tone: "info",
-          body: formatArtifactBody(event, this.verbose),
-        };
       case "toolCall":
         return {
           action: "addEntry",
