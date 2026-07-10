@@ -16,7 +16,6 @@
     "open": "^11.0.0"
   },
   "devDependencies": {
-    "vitest": "^4.1.1",
     "typescript": "^6.0.2"
   },
   "exports": {
@@ -26,9 +25,9 @@
   "license": "MIT",
   "scripts": {
     "build": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage"
   },
   "type": "module"
 }

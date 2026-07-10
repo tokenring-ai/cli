@@ -116,8 +116,12 @@ describe("ChatRenderUtils", () => {
       actions: ["first line\nsecond line", ""],
     };
 
-    expect(formatToolCallBody(event as any, false)).toBe("└ first line\n second line");
-    expect(formatToolCallBody(event as any, true)).toBe("└ first line\n second line\ncommand output");
+    expect(formatToolCallBody(event as any, false)).toBe(
+      "└ first line\n second line",
+    );
+    expect(formatToolCallBody(event as any, true)).toBe(
+      "└ first line\n second line\ncommand output",
+    );
   });
 
   it("renders transcript entries and streamed markdown without raw markdown markers", () => {

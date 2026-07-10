@@ -1,4 +1,3 @@
-import { describe, expect, it } from "bun:test";
 import { compareFilePathsForBrowsing, findActiveFileSearchToken, getFileSearchMatches, replaceFileSearchToken } from "./FileSearch.ts";
 
 describe("FileSearch", () => {
@@ -15,15 +14,28 @@ describe("FileSearch", () => {
   });
 
   it("prefers basename and subsequence matches", () => {
-    const matches = getFileSearchMatches(["README.md", "pkg/cli/raw/RawChatUI.ts", "pkg/cli/raw/InputEditor.ts", "pkg/cli/README.md"], "rawc", 3);
+    const matches = getFileSearchMatches([
+      "README.md",
+      "pkg/cli/raw/RawChatUI.ts",
+      "pkg/cli/raw/InputEditor.ts",
+      "pkg/cli/README.md",
+    ], "rawc", 3);
 
     expect(matches[0]).toBe("pkg/cli/raw/RawChatUI.ts");
   });
 
   it("sorts shallower files first when the query is empty", () => {
-    const paths = ["pkg/cli/raw/InputEditor.ts", "README.md", "pkg/cli/README.md"];
+    const paths = [
+      "pkg/cli/raw/InputEditor.ts",
+      "README.md",
+      "pkg/cli/README.md",
+    ];
 
-    expect([...paths].sort(compareFilePathsForBrowsing)).toEqual(["README.md", "pkg/cli/README.md", "pkg/cli/raw/InputEditor.ts"]);
+    expect([...paths].sort(compareFilePathsForBrowsing)).toEqual([
+      "README.md",
+      "pkg/cli/README.md",
+      "pkg/cli/raw/InputEditor.ts",
+    ]);
   });
 
   it("replaces the active token with the selected path", () => {

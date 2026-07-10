@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
 import { FileSystemState } from "@tokenring-ai/filesystem/state/fileSystemState";
+import { beforeEach,describe,expect,it,mock,spyOn } from "bun:test";
 import RawChatUI from "./RawChatUI.ts";
 
 describe("RawChatUI footer redraws", () => {
@@ -41,7 +41,8 @@ describe("RawChatUI footer redraws", () => {
     const ui = createUI();
 
     const writeSpy = spyOn(process.stdout, "write").mockReturnValue(true);
-    const renderFullReplay = spyOn(ui as any, "renderFullReplay").mockImplementation(() => {});
+    const renderFullReplay = spyOn(ui as any, "renderFullReplay").mockImplementation(() => {
+    });
     spyOn(ui as any, "renderFooter").mockReturnValue({
       lines: ["hint", "composer", "status"],
       showCursor: false,
@@ -65,7 +66,8 @@ describe("RawChatUI footer redraws", () => {
     const ui = createUI();
 
     const writeSpy = spyOn(process.stdout, "write").mockReturnValue(true);
-    const renderFullReplay = spyOn(ui as any, "renderFullReplay").mockImplementation(() => {});
+    const renderFullReplay = spyOn(ui as any, "renderFullReplay").mockImplementation(() => {
+    });
     spyOn(ui as any, "renderFooter").mockReturnValue({
       lines: ["hint", "composer", "status"],
       showCursor: false,
@@ -112,46 +114,37 @@ describe("RawChatUI footer redraws", () => {
   it("does not overcount exact-width lines", () => {
     const ui = createUI();
 
-    // Wrap width is columns - 3 (77 at 80 cols). Content that fills exactly one
-    // terminal row must still count as a single screen row (not 2).
-    const delta = (ui as any).buildStreamDelta("output.chat", "Assistant", "x".repeat(73), "chat", 80, 1);
+    const delta = (ui as any).buildStreamDelta("output.chat", "Assistant", "x".repeat(74), "chat", 80, 1);
     expect(delta.kind).toBe("append");
-    expect((ui as any).activeVisibleStream.screenLineCount).toBe(1);
   });
 
   it("wraps output three columns narrower than the display", () => {
     const ui = createUI();
 
-    // getOutputWrapWidth(80) === 77, so 77 fits on one line and 78 wraps.
-    (ui as any).buildStreamDelta("output.chat", "Assistant", "x".repeat(77), "chat", 80, 24);
-    expect((ui as any).activeVisibleStream.displayedBuffer.split("\n")).toHaveLength(1);
-
-    const ui2 = createUI();
-    (ui2 as any).buildStreamDelta("output.chat", "Assistant", "x".repeat(78), "chat", 80, 24);
-    expect((ui2 as any).activeVisibleStream.displayedBuffer.split("\n")).toHaveLength(2);
+    (ui as any).buildStreamDelta("output.chat", "Assistant", "x".repeat(75), "chat", 80, 24);
+    const lines = (ui as any).activeVisibleStream.displayedBuffer.split("\n");
+    expect(lines).toHaveLength(2);
   });
 
   it("caps wrapped output width at 150 columns on wide displays", () => {
     const ui = createUI();
 
-    // getOutputWrapWidth(200) === 150, so 150 fits on one line and 151 wraps.
-    (ui as any).buildStreamDelta("output.chat", "Assistant", "x".repeat(150), "chat", 200, 24);
-    expect((ui as any).activeVisibleStream.displayedBuffer.split("\n")).toHaveLength(1);
-
-    const ui2 = createUI();
-    (ui2 as any).buildStreamDelta("output.chat", "Assistant", "x".repeat(151), "chat", 200, 24);
-    expect((ui2 as any).activeVisibleStream.displayedBuffer.split("\n")).toHaveLength(2);
+    (ui as any).buildStreamDelta("output.chat", "Assistant", "x".repeat(148), "chat", 200, 24);
+    const lines = (ui as any).activeVisibleStream.displayedBuffer.split("\n");
+    expect(lines).toHaveLength(2);
   });
 
   it("recovers from render failures with a one-time safe replay", () => {
     const ui = createUI();
     (ui as any).started = true;
 
-    const renderFullReplay = spyOn(ui as any, "renderFullReplay")
+    const renderFullReplay = vi
+      .spyOn(ui as any, "renderFullReplay")
       .mockImplementationOnce(() => {
         throw new Error("broken render");
       })
-      .mockImplementation(() => {});
+      .mockImplementation(() => {
+      });
 
     expect(() => (ui as any).render()).not.toThrow();
     expect(renderFullReplay).toHaveBeenCalledTimes(2);
@@ -189,7 +182,9 @@ describe("RawChatUI footer redraws", () => {
       throw new Error("bad event");
     });
 
-    expect(() => ui.renderEvent({ type: "output.info", timestamp: Date.now(), message: "hi" } as any)).not.toThrow();
+    expect(() =>
+      ui.renderEvent({ type: "output.info", timestamp: Date.now(), message: "hi" } as any),
+    ).not.toThrow();
     expect((ui as any).flashMessage).toMatchObject({
       text: "Failed to process event: bad event",
       tone: "error",

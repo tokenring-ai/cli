@@ -1,4 +1,3 @@
-import { describe, expect, it } from "bun:test";
 import { type CommandDefinition, getCommandCompletionContext, getLongestCommonPrefix } from "./CommandCompletions.ts";
 
 const commands: CommandDefinition[] = [
@@ -16,7 +15,10 @@ describe("CommandCompletions", () => {
     const context = getCommandCompletionContext("/model s", "/model s".length, commands);
 
     expect(context?.query).toBe("model s");
-    expect(context?.matches.map(command => command.name)).toEqual(["model set", "model select"]);
+    expect(context?.matches.map((command) => command.name)).toEqual([
+      "model set",
+      "model select",
+    ]);
   });
 
   it("ignores non-command input", () => {

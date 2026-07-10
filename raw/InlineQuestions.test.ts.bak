@@ -1,8 +1,8 @@
-import { describe, expect, it, mock } from "bun:test";
+import { mock } from "bun:test";
 import { createInlineQuestionSession } from "./InlineQuestions.ts";
 
 async function settle(): Promise<void> {
-  await new Promise(resolve => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe("InlineQuestions fileSelect", () => {
@@ -20,24 +20,20 @@ describe("InlineQuestions fileSelect", () => {
       return [];
     });
 
-    const session = createInlineQuestionSession(
-      {
-        type: "fileSelect",
-        label: "Select Files",
-        allowFiles: true,
-        allowDirectories: false,
-        defaultValue: [],
-        minimumSelections: 1,
-        maximumSelections: 5,
-      },
-      {
-        onSubmit,
-        onCancel,
-        onRender,
-        listFileSelectEntries,
-      },
-      "Select Files",
-    );
+    const session = createInlineQuestionSession({
+      type: "fileSelect",
+      label: "Select Files",
+      allowFiles: true,
+      allowDirectories: false,
+      defaultValue: [],
+      minimumSelections: 1,
+      maximumSelections: 5,
+    }, {
+      onSubmit,
+      onCancel,
+      onRender,
+      listFileSelectEntries,
+    }, "Select Files");
 
     expect(onRender).not.toHaveBeenCalled();
     expect(listFileSelectEntries).not.toHaveBeenCalled();
@@ -74,23 +70,19 @@ describe("InlineQuestions fileSelect", () => {
     const onRender = mock();
     const listFileSelectEntries = mock(async () => ["README.md"]);
 
-    const session = createInlineQuestionSession(
-      {
-        type: "fileSelect",
-        label: "Select Files",
-        allowFiles: true,
-        allowDirectories: false,
-        defaultValue: [],
-        maximumSelections: 5,
-      },
-      {
-        onSubmit,
-        onCancel,
-        onRender,
-        listFileSelectEntries,
-      },
-      "Select Files",
-    );
+    const session = createInlineQuestionSession({
+      type: "fileSelect",
+      label: "Select Files",
+      allowFiles: true,
+      allowDirectories: false,
+      defaultValue: [],
+      maximumSelections: 5,
+    }, {
+      onSubmit,
+      onCancel,
+      onRender,
+      listFileSelectEntries,
+    }, "Select Files");
 
     await settle();
     await session.handleKeypress("", { name: "q" });
