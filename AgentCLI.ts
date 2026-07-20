@@ -1,12 +1,11 @@
-import process from "node:process";
-import { setTimeout as delay } from "node:timers/promises";
 import { AgentCommandService, AgentManager } from "@tokenring-ai/agent";
 import type Agent from "@tokenring-ai/agent/Agent";
 import type TokenRingApp from "@tokenring-ai/app";
 import type { TokenRingService } from "@tokenring-ai/app/types";
 import formatLogMessages from "@tokenring-ai/utility/string/formatLogMessage";
-import { WebHostService } from "@tokenring-ai/web-host";
 import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
+import process from "node:process";
+import { setTimeout as delay } from "node:timers/promises";
 import open from "open";
 import type { z } from "zod";
 import AgentLoop from "./AgentLoop";
@@ -62,7 +61,8 @@ export default class AgentCLI implements TokenRingService {
 
   async run(signal: AbortSignal): Promise<void> {
     this.loadingScreenAbortController.abort();
-    await this.loadingScreenTask?.catch(() => {});
+    await this.loadingScreenTask?.catch(() => {
+    });
 
     let initialAgent: Agent | undefined;
     if (this.config.startAgent) {
@@ -166,23 +166,6 @@ export default class AgentCLI implements TokenRingService {
           return workflowService.spawnWorkflow(selection.workflowKey, {
             headless: false,
           });
-        }
-        case "webhost": {
-          const webHostService = this.app.requireService(WebHostService);
-          switch (selection.action) {
-            case "start":
-              if (!webHostService.listening) {
-                await webHostService.listen();
-              }
-              return "retry";
-            case "stop":
-              if (webHostService.listening) {
-                webHostService.stop();
-              }
-              return "retry";
-            default:
-              throw new Error(`Unknown webhost action: ${selection.action}`);
-          }
         }
       }
     } catch (error: unknown) {

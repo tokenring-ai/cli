@@ -12,7 +12,7 @@ import ridiculousMessages from "@tokenring-ai/utility/string/ridiculousMessages"
 import { visibleLength } from "@tokenring-ai/utility/string/visibleLength";
 import { wrapPlainText } from "@tokenring-ai/utility/string/wrapPlainText";
 import { WebHostService } from "@tokenring-ai/web-host";
-import SPAResource from "@tokenring-ai/web-host/SPAResource";
+import FallbackResource from "@tokenring-ai/web-host/FallbackResource";
 import WorkflowService from "@tokenring-ai/workflow/WorkflowService";
 import chalk from "chalk";
 import type { z } from "zod";
@@ -240,38 +240,20 @@ function buildSelectionEntries(app: TokenRingApp): SelectionEntry[] {
   const categories = new Map<string, SelectionEntry[]>();
 
   const webAppEntries: SelectionEntry[] = [];
-  if (webHostService.listening) {
-    webAppEntries.push({
-      type: "option",
-      label: "Stop Web Server",
-      value: "webhost:stop",
-      previewTitle: "Stop Web Server",
-      previewLines: ["Stop the web server and disconnect all connected clients."],
-    });
-
-    const webHostURL = webHostService.getURL().toString();
-    for (const [resourceName, resource] of webHostService.getResourceEntries()) {
-      if (resource instanceof SPAResource) {
-        webAppEntries.push({
-          type: "option",
-          label: `Connect to ${resourceName}`,
-          value: `open:${webHostURL}${resource.config.prefix.substring(1)}`,
-          previewTitle: "Web Application",
-          previewLines: [
-            "Launch the web application in your system browser.",
-            webHostURL ? `${webHostURL}${resource.config.prefix.substring(1)}` : "Web host URL unavailable.",
-          ],
-        });
-      }
+  const webHostURL = webHostService.getURL().toString();
+  for (const [resourceName, resource] of webHostService.getResourceEntries()) {
+    if (resource instanceof FallbackResource) {
+      webAppEntries.push({
+        type: "option",
+        label: `Connect to ${resourceName}`,
+        value: `open:${webHostURL}${resource.config.prefix.substring(1)}`,
+        previewTitle: "Web Application",
+        previewLines: [
+          "Launch the web application in your system browser.",
+          webHostURL ? `${webHostURL}${resource.config.prefix.substring(1)}` : "Web host URL unavailable.",
+        ],
+      });
     }
-  } else {
-    webAppEntries.push({
-      type: "option",
-      label: "Start Web Server",
-      value: "webhost:start",
-      previewTitle: "Start Web Server",
-      previewLines: ["Start up a web server on an unused port, to remotely manage this TokenRing instance."],
-    });
   }
   categories.set(
     "Web Application",
